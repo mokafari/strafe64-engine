@@ -744,6 +744,7 @@ extern	vmCvar_t	g_timeBindRef;
 extern	vmCvar_t	g_timeBindCurve;
 extern	vmCvar_t	g_timeBindSmooth;
 extern	vmCvar_t	g_timeBindFire;
+extern	vmCvar_t	g_timeBindLog;
 extern	vmCvar_t	g_strafeAccel;		// live air-strafe tuning cvars
 extern	vmCvar_t	g_airWishClamp;
 extern	vmCvar_t	g_airAccel;

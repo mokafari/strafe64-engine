@@ -62,6 +62,7 @@ vmCvar_t	g_timeBindRef;		// horizontal speed (u/s) that counts as full intent
 vmCvar_t	g_timeBindCurve;	// exponent shaping intent->timescale (>1 stays slow longer)
 vmCvar_t	g_timeBindSmooth;	// approach rate toward target (higher = snappier)
 vmCvar_t	g_timeBindFire;		// intent floor while firing (0 = shooting doesn't advance time)
+vmCvar_t	g_timeBindLog;		// 1 = logarithmic (Matrix) slow-mo curve, 0 = linear
 vmCvar_t	g_strafeAccel;		// live air-strafe tuning -> pm_strafeAccelerate
 vmCvar_t	g_airWishClamp;		// -> pm_wishSpeedClamp (the skill cap; keep ~30)
 vmCvar_t	g_airAccel;			// -> pm_airaccelerate
@@ -167,6 +168,7 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_timeBindCurve, "g_timeBindCurve", "1.5", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_timeBindSmooth, "g_timeBindSmooth", "8", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_timeBindFire, "g_timeBindFire", "0.5", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_timeBindLog, "g_timeBindLog", "1", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_strafeAccel, "pm_strafeAccelerate", "70", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_airWishClamp, "pm_wishSpeedClamp", "30", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_airAccel, "pm_airaccelerate", "1", CVAR_ARCHIVE, 0, qfalse  },

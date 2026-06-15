@@ -18,7 +18,9 @@ fi
 
 cmake -S "$ENGINE" -B "$BUILD" -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
-	-DCMAKE_OSX_ARCHITECTURES=arm64
+	-DCMAKE_OSX_ARCHITECTURES=arm64 \
+	-DBUILD_GAME_QVMS=OFF   # STRAFE 64 runs native dylibs (vm_* 0); the QVM
+	                        # libc subset lacks pow() used by the timebind curve
 
 cmake --build "$BUILD"
 echo "built -> $BUILD/Release"
