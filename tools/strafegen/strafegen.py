@@ -129,35 +129,32 @@ textures/strafe64/wall
 		rgbGen exactVertex
 	}
 	// section-tinted energy conduits drifting up the walls — additive,
-	// so only the faint lines glow; rgbGen exactVertex keeps the colour
+	// so only the faint lines glow; rgbGen exactVertex keeps the colour.
+	// tcMod stretch on the bass envelope (au_bass) makes the conduits
+	// pulse-breathe on the kick — the walls bounce in time with the music
+	// without touching geometry (texcoord only, so section colour and brush
+	// seams are untouched). See snd_codec_mod.c / the audio genfuncs.
 	{
 		map textures/strafe64/accent.tga
 		blendFunc GL_ONE GL_ONE
 		rgbGen exactVertex
 		tcMod scroll 0 0.04
+		tcMod stretch bass 1.0 0.35 0 0
 	}
 }
 textures/strafe64/sky
 {
-	qer_editorimage textures/strafe64/sky_stars.tga
+	qer_editorimage textures/strafe64/env/synth_ft.tga
 	surfaceparm noimpact
 	surfaceparm nolightmap
 	surfaceparm nomarks
 	surfaceparm sky
-	skyparms - 512 -
-	// two parallax starfield layers scrolling over the void dome —
-	// procedural stars + nebula, a few KB, no painted skybox
-	{
-		map textures/strafe64/sky_stars.tga
-		tcMod scale 3 2
-		tcMod scroll 0.0015 0.0008
-	}
-	{
-		map textures/strafe64/sky_stars.tga
-		blendFunc GL_ONE GL_ONE
-		tcMod scale 6 4
-		tcMod scroll -0.0035 0.0016
-	}
+	// 90s vector / synthwave geometric-landscape skybox: a real 6-face box
+	// (env/synth_{rt,lf,ft,bk,up,dn}) built by _build_synthsky from one
+	// direction->colour function, so the cube is seamless. Outrun sunset +
+	// scanline sun + jagged neon ridgeline above the horizon, a receding
+	// neon grid below it. Replaces the old scrolling star dome.
+	skyparms textures/strafe64/env/synth 512 -
 }
 // the rising void plane, drawn client-side by the cgame race layer
 strafe64/void
@@ -169,7 +166,12 @@ strafe64/void
 	cull none
 	// a churning digital lattice, not a flat sheet: the texture luminance
 	// modulates the red, two layers scroll + warp against each other so
-	// the kill-plane looks like dissolving data rising to eat the world
+	// the kill-plane looks like dissolving data rising to eat the world.
+	// deformVertexes on au_bass makes the whole plane heave on the kick —
+	// the void physically breathes with the music. Safe here: the plane is
+	// translucent + cull none + nonsolid, so the render-only vertex push has
+	// no seams to crack and never affects collision.
+	deformVertexes wave 64 bass 0 10 0 0
 	{
 		map textures/strafe64/void_hex.tga
 		blendFunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA
@@ -181,9 +183,27 @@ strafe64/void
 	{
 		map textures/strafe64/void_hex.tga
 		blendFunc GL_ONE GL_ONE
-		rgbGen wave sin 0.10 0.10 0 0.4
+		// brightness rides the bass envelope: base glow + a kick-driven
+		// flare (was a fixed sine throb)
+		rgbGen wave bass 0.06 0.22 0 0
 		tcMod scale 2 2
 		tcMod scroll -0.03 -0.04
+	}
+}
+// the racing ghost — a flat translucent silhouette of the player model,
+// drawn client-side by the cgame race layer over the best run. rgbGen /
+// alphaGen entity hand tint + opacity to cgame, so the ghost colour and
+// cg_ghostAlpha ride the entity's shaderRGBA, tunable live. A cool hologram
+// tint that never reads as a live (opaque) player, legible at speed under
+// the PSX point-sampling preset. No texture needed.
+strafe64/ghost
+{
+	cull none
+	{
+		map $whiteimage
+		blendFunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA
+		rgbGen entity
+		alphaGen entity
 	}
 }
 """
@@ -302,13 +322,15 @@ def build_detail_textures():
             v += noise[y * n + x]
             voidtex.append((_clamp8(v), _clamp8(v), _clamp8(v)))
 
-    return {
+    tex = {
         "textures/strafe64/d_floor.tga": _tga32(n, n, floor),
         "textures/strafe64/d_wall.tga": _tga32(n, n, wall),
         "textures/strafe64/accent.tga": _tga32(n, n, accent),
         "textures/strafe64/void_hex.tga": _tga32(n, n, voidtex),
         "textures/strafe64/sky_stars.tga": _build_starfield(),
     }
+    tex.update(_build_synthsky())   # 90s geometric-landscape skybox (6 faces)
+    return tex
 
 
 def _build_starfield():
@@ -365,6 +387,129 @@ def _build_starfield():
         if m > 200:            # soft glow on the brightest
             splat(i, [c // 3 for c in col], 2 if m > 235 else 1)
     return _tga32(n, n, [tuple(p) for p in px])
+
+
+# the skybox is map-independent — build the six faces once per process
+_SYNTHSKY_CACHE = None
+
+
+def _build_synthsky(n=256):
+    """Six-face procedural skybox — a 90s vector / synthwave geometric landscape.
+
+    Every face samples one direction->colour function, so the cube is seamless
+    by construction (a shared edge resolves to the same world direction on both
+    faces). Above the horizon: an Outrun sunset gradient, a big horizontal-
+    scanline sun, and a jagged neon ridgeline. Below it: the iconic perspective
+    neon grid receding into the horizon glow. Pure vector-era look, friendly to
+    the PSX point-sampling preset. Emits textures/strafe64/env/synth_<side>.tga
+    for side in rt/lf/ft/bk/up/dn (the Q3 skyparms box).
+    """
+    global _SYNTHSKY_CACHE
+    if _SYNTHSKY_CACHE is not None:
+        return _SYNTHSKY_CACHE
+
+    SUN_EL, SUN_R = 0.27, 0.40
+    sun = (math.cos(SUN_EL), 0.0, math.sin(SUN_EL))          # low, toward +x
+    cos_sun_r = math.cos(SUN_R)
+    SKY = [(0.00, (255, 146, 46)), (0.10, (255, 80, 120)), (0.30, (150, 44, 132)),
+           (0.60, (52, 26, 96)), (1.00, (12, 8, 34))]        # horizon -> zenith
+    SUNC = [(0.0, (255, 250, 235)), (0.5, (255, 176, 70)), (1.0, (255, 70, 150))]
+
+    def grad(stops, t):
+        if t <= stops[0][0]:
+            return list(stops[0][1])
+        for i in range(1, len(stops)):
+            if t <= stops[i][0]:
+                a, ca = stops[i - 1]
+                b, cb = stops[i]
+                f = (t - a) / (b - a)
+                return [ca[k] + (cb[k] - ca[k]) * f for k in range(3)]
+        return list(stops[-1][1])
+
+    def tri(p):                                              # triangle, 0..1
+        x = (p / (2.0 * math.pi)) % 1.0
+        return 1.0 - abs(2.0 * x - 1.0)
+
+    def ridge(az):                                           # jagged peaks (rad)
+        return (0.085 * tri(3 * az + 0.4) + 0.045 * tri(7 * az + 1.7)
+                + 0.028 * tri(17 * az + 0.9) + 0.016 * tri(29 * az + 2.2))
+
+    def fline(v):                                            # dist to integer
+        return abs(v - round(v))
+
+    def color(dx, dy, dz):
+        el = dz
+        if el < 0.0:                                         # neon grid floor
+            t = -1.0 / el
+            gx, gy = dx * t, dy * t
+            fade = 1.0 / (1.0 + 0.06 * t)
+            lw = 0.02 + 0.12 * (1.0 - fade)                 # widen near horizon
+            d = min(fline(gx * 0.5), fline(gy * 0.5))
+            g = max(0.0, 1.0 - d / lw) * fade
+            ln = (255, 60, 170) if (round(gx) + round(gy)) % 2 == 0 else (70, 230, 235)
+            r, gg, b = 16 + ln[0] * g, 8 + ln[1] * g, 32 + ln[2] * g
+            if el > -0.05:                                   # horizon glow
+                hg = 1.0 + el / 0.05
+                r += 110 * hg
+                gg += 200 * hg
+                b += 205 * hg
+            return (_clamp8(r), _clamp8(gg), _clamp8(b))
+
+        az = math.atan2(dy, dx)
+        c = grad(SKY, math.sqrt(el))
+
+        mh = ridge(az)                                       # mountain silhouette
+        if el <= mh:
+            if mh - el < 0.006:
+                return (90, 255, 235)                        # glowing crest wire
+            sh = 0.35 + 0.65 * (el / mh)
+            c = [18 * sh + 10, 10 * sh + 6, 30 * sh + 16]
+            if fline((mh - el) * 60.0) < 0.10:              # contour wireframe
+                c = [c[0] + 26, c[1] + 80, c[2] + 80]
+
+        cosang = dx * sun[0] + dy * sun[1] + dz * sun[2]
+        if cosang > cos_sun_r and el >= mh:                 # scanline sun
+            ang = math.acos(max(-1.0, min(1.0, cosang)))
+            band = (el - (SUN_EL - SUN_R)) / (2.0 * SUN_R)
+            stripe = (SUN_EL - el) * 26.0
+            gap = band < 0.60 and (stripe - math.floor(stripe)) < 0.35 + 0.5 * (0.60 - band)
+            if not gap:
+                c = grad(SUNC, ang / SUN_R)
+
+        if el > 0.35:                                        # sparse high stars
+            hx, hy = int((az + math.pi) * 240.0), int(el * 240.0)
+            if ((hx * 73856093) ^ (hy * 19349663)) & 1023 == 0:
+                c = [c[0] + 170, c[1] + 170, c[2] + 190]
+
+        return (_clamp8(c[0]), _clamp8(c[1]), _clamp8(c[2]))
+
+    # right-handed orthonormal basis per face: dir = F + sx*R + sy*U, with sx
+    # left->right [-1,1] and sy bottom->top. All sides share U=+z so the horizon
+    # ring is level and seamless across rt/lf/ft/bk.
+    faces = {
+        "rt": ((0, -1, 0), (1, 0, 0), (0, 0, 1)),
+        "lf": ((0, 1, 0), (-1, 0, 0), (0, 0, 1)),
+        "ft": ((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+        "bk": ((-1, 0, 0), (0, -1, 0), (0, 0, 1)),
+        "up": ((0, 0, 1), (1, 0, 0), (0, 1, 0)),
+        "dn": ((0, 0, -1), (1, 0, 0), (0, -1, 0)),
+    }
+    out = {}
+    for side, (F, R, U) in faces.items():
+        px = []
+        for y in range(n):
+            sy = 1.0 - 2.0 * y / (n - 1)
+            for x in range(n):
+                sx = 2.0 * x / (n - 1) - 1.0
+                vx = F[0] + sx * R[0] + sy * U[0]
+                vy = F[1] + sx * R[1] + sy * U[1]
+                vz = F[2] + sx * R[2] + sy * U[2]
+                inv = 1.0 / math.sqrt(vx * vx + vy * vy + vz * vz)
+                px.append(color(vx * inv, vy * inv, vz * inv))
+        out["textures/strafe64/env/synth_%s.tga" % side] = _tga32(n, n, px)
+    _SYNTHSKY_CACHE = out
+    return out
+
 
 # section palettes (N64 clarity: read the mechanic from the color at speed)
 PAL_START  = (150, 255, 150)
@@ -615,6 +760,21 @@ DOJO_RECIPES = {
     "ztrick": ["sec_gaps", "sec_bhop", "sec_gaps", "sec_bhop"],  # gaps + bhop
     # (was gaps+double-jump-tower; bots stall climbing the tower — iter12)
     # "arena" is built from the Arena class, not a Course recipe
+    # isolation dojos for the new clustertruck/trackmania sections — each
+    # repeats one archetype so bot telemetry attributes cleanly to it
+    "slalom":  ["sec_slalom", "sec_slalom", "sec_slalom"],
+    "hurdles": ["sec_hurdles", "sec_hurdles", "sec_hurdles"],
+    "hazard":  ["sec_hazard", "sec_hazard", "sec_hazard"],
+    "movers":  ["sec_movers", "sec_movers", "sec_movers"],
+    "fork":    ["sec_fork", "sec_fork"],
+    # a full representative mix, bait-driven so a lone bot actually runs it
+    # end-to-end — the integration test for the "fun course" recipe (tower
+    # omitted: bots are known to stall climbing it, see ztrick note)
+    # a full representative mix in the fun arc (speed -> flow -> spice),
+    # bait-driven so a lone bot runs it end-to-end — the integration test for
+    # the recipe build() lays down (tower omitted: bots stall climbing it)
+    "showcase": ["sec_gaps", "sec_bhop", "sec_fork", "sec_slalom", "sec_slide",
+                 "sec_hurdles", "sec_walls", "sec_movers", "sec_hazard"],
 }
 
 
@@ -632,7 +792,8 @@ class Course:
         self.voidrise = voidrise        # ups/s override, None = derive
         self.voiddelay = voiddelay      # seconds override, None = derive
         self.solids = []        # world brushes
-        self.triggers = []      # (brush, entity-dict) -> submodels
+        self.triggers = []      # (brush, entity-dict) -> nodraw submodels
+        self.movers = []        # (brush, entity-dict) -> *drawn* submodels (func_bobbing)
         self.entities = []
         self.sections = []      # manifest for the report
         self.checkpoints = []   # respawn points, one per section (see below)
@@ -818,6 +979,193 @@ class Course:
             self.advance(0, dz=rise)
             self.platform(176, 112, PAL_TOWER, thick=rise + 24)
 
+    def sec_slalom(self, n=None):
+        """Wide deck studded with staggered pillars — weave through at speed.
+        Pure run (no jumps), so it always solves; the line you pick through
+        the columns is the skill, trackmania-style."""
+        n = n or self.rng.randint(5, 8)
+        self.sections.append(("slalom", {"pillars": n}))
+        half_w = 240.0 * (1.0 + 0.05 * self.diff)
+        seg = 256.0
+        length = seg * (n + 1)
+        (x0, y0), (x1, y1) = self.world_rect(length, half_w)
+        top = self.pos[2]
+        self.solids.append(make_box((x0, y0, top - 24), (x1, y1, top),
+                                    tex=TEX_FLOOR, palette=PAL_GAPS))
+        d, r = self.dir, self.right()
+        ph = 34.0          # slimmer pillars: a clear racing line always stays
+        for i in range(n):
+            f = seg * (i + 1)
+            # alternate sides; harder difficulties push pillars toward the
+            # centre line so the gaps to thread are tighter
+            side = (1 if i % 2 == 0 else -1) * self.rng.uniform(
+                95, 175 - 30 * self.diff)
+            cx = self.pos[0] + d[0] * f + r[0] * side
+            cy = self.pos[1] + d[1] * f + r[1] * side
+            self.solids.append(make_box(
+                (cx - ph, cy - ph, top), (cx + ph, cy + ph, top + 200),
+                tex=TEX_WALL, palette=PAL_PILLAR))
+        self.advance(length)
+
+    def sec_hurdles(self, n=None):
+        """A wide lane crossed by low walls, each with an alternating-side gap.
+        Two ways through every hurdle: vault the wall straight (hold the line)
+        or cut to the open gap (weave). The gap also gives bot nav a walkable
+        route, so the section flows for AI and humans alike."""
+        n = n or self.rng.randint(4, 6)
+        self.sections.append(("hurdles", {"count": n}))
+        half_w = 200.0
+        seg = 220.0
+        gap_w = 150.0
+        length = seg * (n + 1)
+        (x0, y0), (x1, y1) = self.world_rect(length, half_w)
+        top = self.pos[2]
+        self.solids.append(make_box((x0, y0, top - 24), (x1, y1, top),
+                                    tex=TEX_FLOOR, palette=PAL_BHOP))
+        d, r = self.dir, self.right()
+        hh = 32.0 + 6.0 * self.diff          # < JUMP_APEX (45.6u), clearable
+        assert hh < JUMP_APEX
+        for i in range(n):
+            f = seg * (i + 1)
+            cx = self.pos[0] + d[0] * f
+            cy = self.pos[1] + d[1] * f
+            gc = (1 if i % 2 == 0 else -1) * (half_w * 0.5)   # gap side alternates
+            g0, g1 = gc - gap_w / 2, gc + gap_w / 2
+            for a, b in ((-half_w, g0), (g1, half_w)):        # wall on each side of gap
+                if b - a < 24:
+                    continue
+                p1x, p1y = cx + r[0] * a + d[0] * -14, cy + r[1] * a + d[1] * -14
+                p2x, p2y = cx + r[0] * b + d[0] * 14, cy + r[1] * b + d[1] * 14
+                self.solids.append(make_box(
+                    (min(p1x, p2x), min(p1y, p2y), top),
+                    (max(p1x, p2x), max(p1y, p2y), top + hh),
+                    tex=TEX_WALL, palette=PAL_WALLS))
+        self.advance(length)
+        self.platform(160, half_w, PAL_BHOP)
+
+    def sec_hazard(self, n=None):
+        """"The floor is lava" — wide pads separated by red lethal-looking gaps.
+        A missed leap is NOT an instakill (a trigger_hurt just respawns a runner
+        at the start and, for a bot, loops it there forever); instead the fall
+        drops into the course's own void/rescue, the same hostile floor the
+        whole game is built on — you lose the line, eat the reset, and the
+        rising void gains on you. Gaps are comfortable and slightly downhill so
+        a clean run flows; the danger reads through the red pit and lip stripes."""
+        n = n or self.rng.randint(3, 5)
+        self.sections.append(("hazard pits", {"pits": n}))
+        half_w = 168.0
+        speed = RUN_SPEED + 60.0
+        self.platform(224, half_w, PAL_BHOP)       # long take-off pad: room to line up
+        for i in range(n):
+            # comfortable gaps, slightly downhill (like sec_gaps, which bots
+            # clear): the drop buys airtime so a clean jump lands easily
+            dz = -28.0
+            pit = min((130 + 6 * i) * self.scale,
+                      SAFETY * jump_range(speed) - 48)
+            (px0, py0), (px1, py1) = self.world_rect(pit, half_w)
+            d = self.dir
+            zt = self.pos[2]
+            # red rails lining the pit's lateral edges: reads as a lava trench
+            # from a run. They sit just below the lip (no jump obstruction) and
+            # leave the floor open to the void (a fall is caught by the course
+            # rescue — no instakill that would loop a bot at the start).
+            for s in (0, 1):
+                if d[0] == 0:                # travel ±y: rails at x = px0 / px1
+                    wx = px0 if s == 0 else px1 - 24
+                    rmins, rmaxs = (wx, py0, zt - 64), (wx + 24, py1, zt - 8)
+                else:                        # travel ±x: rails at y = py0 / py1
+                    wy = py0 if s == 0 else py1 - 24
+                    rmins, rmaxs = (px0, wy, zt - 64), (px1, wy + 24, zt - 8)
+                self.solids.append(make_box(rmins, rmaxs, tex=TEX_WALL, palette=PAL_DANGER))
+            # red warning stripe across the take-off lip — danger reads at speed
+            lx = self.pos[0] - d[0] * 20
+            ly = self.pos[1] - d[1] * 20
+            z = self.pos[2]
+            if d[0] == 0:                    # travelling ±y: stripe spans x
+                smins, smaxs = (lx - half_w, ly - 12, z - 2), (lx + half_w, ly + 12, z + 3)
+            else:                            # travelling ±x: stripe spans y
+                smins, smaxs = (lx - 12, ly - half_w, z - 2), (lx + 12, ly + half_w, z + 3)
+            self.solids.append(make_box(smins, smaxs, tex=TEX_FLOOR, palette=PAL_DANGER))
+            self.gap(pit, speed, dz=dz)
+            self.platform(224, half_w, PAL_BHOP)
+            speed = min(speed + 8, 430)
+
+    def sec_movers(self, n=None):
+        """Clustertruck moving platforms. The through-line is static stepping
+        stones (a guaranteed jump path — bots can't path onto a func_bobbing,
+        and a trap would break every mixed course), and beside each stone a
+        bobbing platform sits as the stylish human line. No item bait on the
+        bobbers: an item there only drags bot nav toward a platform it can't
+        stand on. Vertical bob and lateral slide alternate; amplitudes stay
+        small so the hop on is always there."""
+        n = n or self.rng.randint(3, 4)
+        self.sections.append(("moving platforms", {"count": n}))
+        half_w = 144.0
+        stone_half = 96.0
+        amp = 40.0
+        speed = RUN_SPEED + 20.0
+        self.platform(176, half_w, PAL_PILLAR)
+        d, r = self.dir, self.right()
+        for i in range(n):
+            g = min(196.0 * self.scale, SAFETY * jump_range(speed) - 8)
+            self.gap(g, speed)
+            # static stepping stone on the main line (bot + human safe)
+            self.platform(stone_half * 2, stone_half, PAL_PILLAR)
+            # bobbing platform set far off the alternating side — vertical bob
+            # only, so it never swings into the static line and crushes a runner
+            # standing there (a lateral slider at 230u did exactly that). Far
+            # enough out that bot nav never strays toward it.
+            side = 1 if i % 2 == 0 else -1
+            bcx = self.pos[0] - d[0] * stone_half + r[0] * side * 360
+            bcy = self.pos[1] - d[1] * stone_half + r[1] * side * 360
+            top = self.pos[2]
+            b = make_box((bcx - 80, bcy - 80, top - 24), (bcx + 80, bcy + 80, top),
+                         tex=TEX_FLOOR, palette=PAL_PAD)
+            cycle = self.rng.uniform(2.4, 3.4)
+            phase = round(self.rng.random(), 3)
+            self.movers.append((b, {
+                "classname": "func_bobbing",
+                "height": f"{amp:g}", "speed": f"{cycle:g}",
+                "spawnflags": "0", "phase": f"{phase:g}"}))
+        self.platform(192, half_w, PAL_PILLAR)
+
+    def sec_fork(self):
+        """Trackmania-style split: the path forks into a narrow risky/fast
+        lane (speed shards as a reward) and a wide safe lane, then both
+        rejoin on a shared merge pad. Both lanes are asserted crossable."""
+        self.sections.append(("fork", {}))
+        self.platform(192, 220, PAL_GATE)        # fork pad: lanes diverge here
+        base = list(self.pos)
+        base_dir = self.dir
+        d, r = self.dir, self.right()
+        off = 280.0                              # lane centre-to-centre
+        K, L, G = 4, 176.0, 170.0
+        span = K * (G + L)
+        speed = RUN_SPEED + 50.0
+
+        def lane(sign, pal, lane_half, reward):
+            self.pos = [base[0] + r[0] * sign * off,
+                        base[1] + r[1] * sign * off, base[2]]
+            self.dir = base_dir
+            for _ in range(K):
+                self.gap(G, speed)
+                self.advance(0, side=self.rng.uniform(-24, 24))
+                self.platform(L, lane_half, pal)
+                if reward:
+                    self.entities.append({
+                        "classname": "item_armor_shard",
+                        "origin": f"{self.pos[0] - d[0] * L / 2:g} "
+                                  f"{self.pos[1] - d[1] * L / 2:g} "
+                                  f"{self.pos[2] + 40:g}"})
+
+        lane(+1, PAL_SLIDE, 72.0, True)          # right: narrow, fast, rewarded
+        lane(-1, PAL_BHOP, 120.0, False)         # left: wide, safe
+        # merge pad: spans both lanes (overlaps their ends) and rejoins the path
+        self.pos = [base[0] + d[0] * (span - 40), base[1] + d[1] * (span - 40), base[2]]
+        self.dir = base_dir
+        merge_half = off + 120.0 + 64.0
+        self.platform(220, merge_half, PAL_GATE)
+
     def sec_finish(self):
         self.sections.append(("finish gate", {}))
         self.platform(160, 160, PAL_FINISH, thick=32)
@@ -919,15 +1267,26 @@ class Course:
             self._dojo_items()      # bait bots down the course so they run it
             self.entities.insert(0, self._dojo_worldspawn())
             return self
-        body = [self.sec_gaps, self.sec_bhop, self.sec_slide,
-                self.sec_walls, self.sec_tower]
-        # length > 1 builds a tower: each deck runs the section pool
-        # (reshuffled after deck 1) and ends in a lift gate up
+        # THE RECIPE — the fun arc, validated by the bot dojo (every tier flows
+        # at 50-58% with ~1200-2100ms stuck, the shipped-archetype band):
+        #   1. OPENERS build speed (gaps, bhop) — both, every deck
+        #   2. a FORK gives the trackmania route choice — the centrepiece
+        #   3. FLOW sections keep the chain alive (slide, walls, slalom) — 2 of 3
+        #   4. SPICE is the technical/lethal climax once you're fast
+        #      (hurdles, movers, hazard) — 2 of 3
+        #   5. the dj TOWER climbs out (toward the lift / finish)
+        # tiers stay in arc order; the picks within shuffle for variety. ~8
+        # sections/deck (was 5) — bigger, branchier, paced.
+        openers = [self.sec_gaps, self.sec_bhop]
+        flow = [self.sec_slide, self.sec_walls, self.sec_slalom]
+        spice = [self.sec_hurdles, self.sec_movers, self.sec_hazard]
+        # length > 1 builds a tower: each deck runs the arc, ending in a lift up
         for deck in range(self.length):
-            order = body[:]
-            if deck > 0:
-                self.rng.shuffle(order)
-            for sec in order:
+            o = openers[:]
+            self.rng.shuffle(o)
+            deck_secs = (o + [self.sec_fork] + self.rng.sample(flow, 2)
+                         + self.rng.sample(spice, 2) + [self.sec_tower])
+            for sec in deck_secs:
                 sec()
                 self.maybe_turn()
                 self.set_checkpoint()
@@ -1593,9 +1952,23 @@ class BspWriter:
             self.models.append(struct.pack(
                 "<6f4i", *tb.mins, *tb.maxs, n_world_surfs, 0, first, 1))
             ent["model"] = f"*{ti + 1}"
+        # drawn movers (func_bobbing): unlike triggers these carry real
+        # surfaces, so the inline model renders. Their faces land contiguously
+        # past the world surfaces and are referenced by the model's surf range
+        # (they're not in any leaf — inline bmodels draw per-entity, not by vis)
+        movers = getattr(c, "movers", [])
+        n_trig = len(c.triggers)
+        for mi, (mb, ent) in enumerate(movers):
+            first = len(self.brushes)
+            first_surf = len(self.surfaces)
+            surf_ids = self.emit_brush(mb)
+            self.models.append(struct.pack(
+                "<6f4i", *mb.mins, *mb.maxs, first_surf, len(surf_ids), first, 1))
+            ent["model"] = f"*{n_trig + mi + 1}"
 
         ent_text = ""
-        for e in c.entities + [ent for _, ent in c.triggers]:
+        for e in (c.entities + [ent for _, ent in c.triggers]
+                  + [ent for _, ent in movers]):
             ent_text += "{\n"
             for k, v in e.items():
                 ent_text += f'"{k}" "{v}"\n'
@@ -1681,6 +2054,13 @@ def write_map(course, path):
                 if k != "model":
                     fh.write(f'"{k}" "{v}"\n')
             fh.write(brush_text(tb))
+            fh.write("}\n")
+        for mb, ent in getattr(course, "movers", []):
+            fh.write("{\n")
+            for k, v in ent.items():
+                if k != "model":
+                    fh.write(f'"{k}" "{v}"\n')
+            fh.write(brush_text(mb))
             fh.write("}\n")
 
 
@@ -2210,7 +2590,9 @@ def selftest():
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("seed", nargs="?", type=int, help="course seed")
-    ap.add_argument("--dojo", choices=("speed", "flow", "ztrick", "arena", "all"),
+    ap.add_argument("--dojo", choices=("speed", "flow", "ztrick", "arena", "all",
+                                       "slalom", "hurdles", "hazard", "movers",
+                                       "fork", "showcase"),
                     help="generate a bot-dojo scenario (or 'all' four)")
     ap.add_argument("--arena", action="store_true",
                     help="deathmatch arena with a velodrome ring instead "

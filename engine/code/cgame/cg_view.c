@@ -356,6 +356,17 @@ static void CG_OffsetFirstPersonView( void ) {
 		}
 	}
 
+	// STRAFE 64: short snappy view punch when a melee hit connects — the
+	// impact "bite" that makes hacking feel like it lands. Decays over 150ms.
+	if ( cg.weaponKickTime ) {
+		ratio = ( cg.time - cg.weaponKickTime ) / 150.0f;
+		if ( ratio >= 0 && ratio < 1.0f ) {
+			float	k = 1.0f - ratio;		// linear settle
+			angles[PITCH] += k * cg.weaponKickPitch;
+			angles[ROLL]  += k * cg.weaponKickRoll;
+		}
+	}
+
 	// add pitch based on fall kick
 #if 0
 	ratio = ( cg.time - cg.landTime) / FALL_TIME;
@@ -873,7 +884,7 @@ typedef struct {
 static ghostRun_t	ghostBest;		// best saved run for this map
 static ghostRun_t	ghostRec;		// run being recorded
 static qboolean		ghostRacing;
-static int			ghostRaceStartMs;	// server-time the current run started
+static int			ghostRaceStartMs;	// REAL (trap_Milliseconds) clock the run started — see CG_RaceFrame
 static int			ghostLastStat;
 
 static void CG_GhostFilename( char *buf, int bufSize ) {
@@ -964,21 +975,56 @@ int CG_GhostBestMs( void ) {
 
 /*
 ====================
+CG_GhostColor
+
+The ghost's cool hologram tint, modulated to a byte shaderRGBA. Alpha is
+driven by cg_ghostAlpha so opacity is a live, archived cvar. The dedicated
+strafe64/ghost shader (rgbGen/alphaGen entity) reads these; if a map lacks
+the strafe64 pk3 the shader degrades but the tint is harmless.
+====================
+*/
+#define GHOST_TINT_R	60
+#define GHOST_TINT_G	220
+#define GHOST_TINT_B	255
+
+static void CG_GhostColor( byte *rgba ) {
+	float a = cg_ghostAlpha.value;
+
+	if ( a < 0.05f ) {
+		a = 0.05f;
+	} else if ( a > 1.0f ) {
+		a = 1.0f;
+	}
+	rgba[0] = GHOST_TINT_R;
+	rgba[1] = GHOST_TINT_G;
+	rgba[2] = GHOST_TINT_B;
+	rgba[3] = (byte)( a * 255 );
+}
+
+/*
+====================
 CG_AddGhostModel
 
-The ghost is the local player model rendered through the invisibility
-warp shader, gliding along the best run.
+The ghost is the local player model rendered through the dedicated
+translucent ghost shader (a cool hologram tint at cg_ghostAlpha opacity),
+gliding along the best run. Falls back to the invisibility warp if the
+strafe64 ghost shader is unavailable.
 ====================
 */
 static void CG_AddGhostModel( const vec3_t origin, float yaw ) {
 	refEntity_t		legs, torso, head;
 	vec3_t			angles;
 	clientInfo_t	*ci;
+	qhandle_t		shader;
+	byte			rgba[4];
 
 	ci = &cgs.clientinfo[cg.snap->ps.clientNum];
 	if ( !ci->infoValid || !ci->legsModel || !ci->torsoModel || !ci->headModel ) {
 		return;
 	}
+
+	shader = cgs.media.ghostShader ? cgs.media.ghostShader : cgs.media.invisShader;
+	CG_GhostColor( rgba );
 
 	memset( &legs, 0, sizeof( legs ) );
 	memset( &torso, 0, sizeof( torso ) );
@@ -990,27 +1036,122 @@ static void CG_AddGhostModel( const vec3_t origin, float yaw ) {
 	AxisCopy( legs.axis, head.axis );
 
 	legs.hModel = ci->legsModel;
-	legs.customShader = cgs.media.invisShader;
+	legs.customShader = shader;
 	legs.renderfx = RF_NOSHADOW;
+	Com_Memcpy( legs.shaderRGBA, rgba, 4 );
 	legs.frame = legs.oldframe = ci->animations[LEGS_RUN].firstFrame;
 	VectorCopy( origin, legs.origin );
 	VectorCopy( origin, legs.lightingOrigin );
 	trap_R_AddRefEntityToScene( &legs );
 
 	torso.hModel = ci->torsoModel;
-	torso.customShader = cgs.media.invisShader;
+	torso.customShader = shader;
 	torso.renderfx = RF_NOSHADOW;
+	Com_Memcpy( torso.shaderRGBA, rgba, 4 );
 	torso.frame = torso.oldframe = ci->animations[TORSO_STAND].firstFrame;
 	CG_PositionRotatedEntityOnTag( &torso, &legs, ci->legsModel, "tag_torso" );
 	VectorCopy( origin, torso.lightingOrigin );
 	trap_R_AddRefEntityToScene( &torso );
 
 	head.hModel = ci->headModel;
-	head.customShader = cgs.media.invisShader;
+	head.customShader = shader;
 	head.renderfx = RF_NOSHADOW;
+	Com_Memcpy( head.shaderRGBA, rgba, 4 );
 	CG_PositionRotatedEntityOnTag( &head, &torso, ci->torsoModel, "tag_head" );
 	VectorCopy( origin, head.lightingOrigin );
 	trap_R_AddRefEntityToScene( &head );
+}
+
+/*
+====================
+CG_GhostTrail
+
+A fading motion trail behind the ghost so it reads as speed: a billboarded
+ribbon stitched through the recorded best-run samples just behind the
+ghost's current replay position. Tinted to the ghost hologram colour,
+width scaled by the ghost's speed, alpha fading the further back a segment
+is. Drawn with the always-present white shader (additive), so it needs no
+map asset and never clobbers the flow/glitch HUD layer.
+====================
+*/
+#define GHOST_TRAIL_SEGS	12		// how many past samples to ribbon
+#define GHOST_TRAIL_WIDTH	2.0f	// base half-width (u)
+
+static void CG_GhostTrail( int idx, float frac ) {
+	vec3_t	cur, seg, right, dir, toEye;
+	int		i, first, n;
+	float	speed, width, baseAlpha;
+
+	if ( !cg_ghost.integer || !ghostBest.valid || ghostBest.numSamples < 3 ) {
+		return;
+	}
+
+	// the ghost's interpolated position this frame is the head of the trail
+	VectorSubtract( ghostBest.origins[idx + 1], ghostBest.origins[idx], seg );
+	speed = VectorLength( seg ) * GHOST_HZ;		// u/s between 20Hz samples
+	VectorMA( ghostBest.origins[idx], frac, seg, cur );
+
+	width = GHOST_TRAIL_WIDTH + speed * 0.004f;	// faster run → fatter ribbon
+	if ( width > 12.0f ) {
+		width = 12.0f;
+	}
+	baseAlpha = cg_ghostAlpha.value * 0.6f;
+
+	first = idx - GHOST_TRAIL_SEGS;
+	if ( first < 0 ) {
+		first = 0;
+	}
+	n = idx - first;
+	if ( n < 1 ) {
+		return;
+	}
+
+	for ( i = first ; i < idx ; i++ ) {
+		polyVert_t	verts[4];
+		vec3_t		a, b;
+		float		age0, age1, al0, al1;
+		int			j;
+
+		VectorCopy( ghostBest.origins[i], a );
+		VectorCopy( ghostBest.origins[i + 1], b );
+
+		// billboard the segment: width axis = seg × (eye→seg)
+		VectorSubtract( b, a, dir );
+		if ( VectorNormalize( dir ) < 0.1f ) {
+			continue;
+		}
+		VectorSubtract( a, cg.refdef.vieworg, toEye );
+		CrossProduct( dir, toEye, right );
+		if ( VectorNormalize( right ) < 0.1f ) {
+			continue;
+		}
+		VectorScale( right, width, right );
+
+		// fade with how far back the segment is from the ghost head
+		age0 = ( i - first ) / (float)( n );
+		age1 = ( i + 1 - first ) / (float)( n );
+		al0 = baseAlpha * age0;
+		al1 = baseAlpha * age1;
+
+		VectorAdd( a, right, verts[0].xyz );
+		VectorSubtract( a, right, verts[1].xyz );
+		VectorSubtract( b, right, verts[2].xyz );
+		VectorAdd( b, right, verts[3].xyz );
+
+		for ( j = 0 ; j < 4 ; j++ ) {
+			float al = ( j < 2 ) ? al0 : al1;
+			verts[j].modulate[0] = (byte)( GHOST_TINT_R * al );
+			verts[j].modulate[1] = (byte)( GHOST_TINT_G * al );
+			verts[j].modulate[2] = (byte)( GHOST_TINT_B * al );
+			verts[j].modulate[3] = 255;
+		}
+		verts[0].st[0] = 0; verts[0].st[1] = 0;
+		verts[1].st[0] = 1; verts[1].st[1] = 0;
+		verts[2].st[0] = 1; verts[2].st[1] = 1;
+		verts[3].st[0] = 0; verts[3].st[1] = 1;
+
+		trap_R_AddPolyToScene( cgs.media.whiteShader, 4, verts );
+	}
 }
 
 /*
@@ -1021,10 +1162,16 @@ Where the void is right now; valid only when cgs.voidActive.
 ====================
 */
 float CG_VoidZ( void ) {
-	if ( cg.time <= cgs.voidStartTime ) {
+	// REAL-time (trap_Milliseconds), not cg.time: the drawn plane must track the
+	// server's real-time kill plane (G_RunVoid) so it doesn't desync under
+	// g_timeBind slow-mo. cgs.voidStartTime is a real-ms rise stamp (the server
+	// puts trap_Milliseconds() in CS_VOIDINFO); the two agree on a listen server.
+	int now = trap_Milliseconds();
+
+	if ( now <= cgs.voidStartTime ) {
 		return cgs.voidBase;
 	}
-	return cgs.voidBase + cgs.voidRise * ( cg.time - cgs.voidStartTime ) / 1000.0f;
+	return cgs.voidBase + cgs.voidRise * ( now - cgs.voidStartTime ) / 1000.0f;
 }
 
 static void CG_AddVoidPlane( void ) {
@@ -1093,17 +1240,25 @@ void CG_RaceFrame( void ) {
 		ghostRacing = qfalse;
 	}
 
+	// Ghost record/replay AND the saved finish time run off the REAL clock
+	// (trap_Milliseconds), not cg.time. cg.time is the timescale-SCALED server
+	// clock, so under g_timeBind slow-mo a run would log a bogus (cheated)
+	// finish time and the replay would drift out of sync with the recording.
+	// STAT_RACE_START is still only an edge/restamp SIGNAL (its value is the
+	// server's deciseconds stamp); the actual timing is this local real clock,
+	// consistent with the server's real-time race payout and the "void stays
+	// real" rule. trap_Milliseconds matches the server's on a listen server.
 	if ( stat && stat != ghostLastStat ) {
 		// (re)stamped on the start pad: the run begins now
 		ghostRacing = qtrue;
-		ghostRaceStartMs = cgs.levelStartTime + ( stat - 1 ) * 100;
+		ghostRaceStartMs = trap_Milliseconds();
 		ghostRec.numSamples = 0;
 		ghostRec.valid = qfalse;
 	} else if ( !stat && ghostRacing ) {
 		// run over: finish if alive, abandoned if dead
 		ghostRacing = qfalse;
 		if ( cg.snap->ps.stats[STAT_HEALTH] > 0 && ghostRec.numSamples >= 2 ) {
-			int finishMs = cg.time - ghostRaceStartMs;
+			int finishMs = trap_Milliseconds() - ghostRaceStartMs;
 
 			if ( !ghostBest.valid || finishMs < ghostBest.finishMs ) {
 				memcpy( ghostBest.origins, ghostRec.origins,
@@ -1123,7 +1278,7 @@ void CG_RaceFrame( void ) {
 		return;
 	}
 
-	t = cg.time - ghostRaceStartMs;
+	t = trap_Milliseconds() - ghostRaceStartMs;
 	if ( t < 0 ) {
 		t = 0;
 	}
@@ -1151,6 +1306,7 @@ void CG_RaceFrame( void ) {
 		VectorSubtract( ghostBest.origins[idx + 1], ghostBest.origins[idx], pos );
 		VectorMA( ghostBest.origins[idx], frac, pos, pos );
 		yaw = LerpAngle( ghostBest.yaws[idx], ghostBest.yaws[idx + 1], frac );
+		CG_GhostTrail( idx, frac );
 		CG_AddGhostModel( pos, yaw );
 	}
 }

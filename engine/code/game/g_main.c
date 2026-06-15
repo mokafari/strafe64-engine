@@ -56,12 +56,15 @@ vmCvar_t	g_grapple;
 vmCvar_t	g_vectorgun;
 vmCvar_t	g_voidRise;
 vmCvar_t	g_timeBind;			// SUPERHOT-style: scale world clock by movement intent
-vmCvar_t	g_timeBindMin;		// floor timescale when fully still
+vmCvar_t	g_timeBindMin;		// floor timescale when fully still (0.05 = near-freeze)
 vmCvar_t	g_timeBindMax;		// ceiling timescale at full intent
 vmCvar_t	g_timeBindRef;		// horizontal speed (u/s) that counts as full intent
 vmCvar_t	g_timeBindCurve;	// exponent shaping intent->timescale (>1 stays slow longer)
-vmCvar_t	g_timeBindSmooth;	// approach rate toward target (higher = snappier)
-vmCvar_t	g_timeBindFire;		// intent floor while firing (0 = shooting doesn't advance time)
+vmCvar_t	g_timeBindSmooth;	// ease-DOWN rate into slow-mo (higher = snappier)
+vmCvar_t	g_timeBindRise;		// ramp-UP rate out of slow-mo when you move — kept
+								// faster than Smooth so a step snaps time to life
+vmCvar_t	g_timeBindFire;		// intent floor while attacking — the sword swing surges
+								// time forward so a melee strike stays crisp in near-freeze
 vmCvar_t	g_timeBindLog;		// 1 = logarithmic (Matrix) slow-mo curve, 0 = linear
 vmCvar_t	g_strafeAccel;		// live air-strafe tuning -> pm_strafeAccelerate
 vmCvar_t	g_airWishClamp;		// -> pm_wishSpeedClamp (the skill cap; keep ~30)
@@ -161,13 +164,14 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_grapple, "g_grapple", "1", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_vectorgun, "g_vectorgun", "0", CVAR_SERVERINFO | CVAR_ARCHIVE | CVAR_LATCH, 0, qfalse  },
 	{ &g_voidRise, "g_voidRise", "1", CVAR_ARCHIVE | CVAR_LATCH, 0, qfalse  },
-	{ &g_timeBind, "g_timeBind", "0", CVAR_ARCHIVE, 0, qfalse  },
-	{ &g_timeBindMin, "g_timeBindMin", "0.25", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_timeBind, "g_timeBind", "1", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_timeBindMin, "g_timeBindMin", "0.05", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_timeBindMax, "g_timeBindMax", "1.0", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_timeBindRef, "g_timeBindRef", "700", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_timeBindCurve, "g_timeBindCurve", "1.5", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_timeBindSmooth, "g_timeBindSmooth", "8", CVAR_ARCHIVE, 0, qfalse  },
-	{ &g_timeBindFire, "g_timeBindFire", "0.5", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_timeBindRise, "g_timeBindRise", "30", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_timeBindFire, "g_timeBindFire", "0.8", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_timeBindLog, "g_timeBindLog", "1", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_strafeAccel, "pm_strafeAccelerate", "70", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_airWishClamp, "pm_wishSpeedClamp", "30", CVAR_ARCHIVE, 0, qfalse  },
@@ -1866,12 +1870,15 @@ void G_RunVoid( void ) {
 	gentity_t	*ent;
 	float		voidZ;
 
-	if ( !level.voidActive || level.time < level.voidStartTime ) {
+	// REAL-time clock (trap_Milliseconds), not level.time: the void must keep
+	// rising in real seconds even when g_timeBind dilates the sim, so stopping
+	// is never safe. voidStartTime is a real-ms rise stamp (see SP_worldspawn).
+	if ( !level.voidActive || trap_Milliseconds() < level.voidStartTime ) {
 		return;
 	}
 
 	voidZ = level.voidBase
-		+ level.voidRise * ( level.time - level.voidStartTime ) / 1000.0f;
+		+ level.voidRise * ( trap_Milliseconds() - level.voidStartTime ) / 1000.0f;
 
 	for ( i = 0 ; i < level.maxclients ; i++ ) {
 		ent = &g_entities[i];

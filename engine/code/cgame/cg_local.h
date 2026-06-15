@@ -673,6 +673,22 @@ typedef struct {
 	float		xyspeed;
 	int     nextOrbitTime;
 
+	// STRAFE 64: first-person sword swing animation state (local player only)
+	int			swordSwingTime;		// cg.time the current swing started
+	int			swordSwingStep;		// combo index, drives swing direction / finisher
+
+	// STRAFE 64: blade-edge motion trail — world-space history of the blade's
+	// guard and tip, sampled from the actual view-weapon transform each frame
+	vec3_t		swordTipPath[12];
+	vec3_t		swordBasePath[12];
+	int			swordTrailLastTime;	// cg.time of the last sample (one per frame)
+	int			swordTrailNum;		// valid samples in the ring
+
+	// STRAFE 64: short view punch when a melee hit connects (impact feel)
+	int			weaponKickTime;
+	float		weaponKickPitch;
+	float		weaponKickRoll;
+
 	//qboolean cameraMode;		// if rendering from a loaded camera
 
 
@@ -803,6 +819,7 @@ typedef struct {
 	qhandle_t	redQuadShader;
 	qhandle_t	quadWeaponShader;
 	qhandle_t	invisShader;
+	qhandle_t	ghostShader;	// translucent racing ghost (strafe64/ghost, optional)
 	qhandle_t	voidShader;		// rising void plane (strafe64/void, optional)
 	qhandle_t	regenShader;
 	qhandle_t	battleSuitShader;
@@ -901,6 +918,9 @@ typedef struct {
 	sfxHandle_t	winnerSound;
 	sfxHandle_t	loserSound;
 #endif
+	sfxHandle_t	swordHitSound;		// STRAFE 64: meaty blade-on-flesh impact
+	sfxHandle_t	swordHeavySound;	// STRAFE 64: heavier finisher swing whoosh
+	qhandle_t	swordSlashShader;	// STRAFE 64: additive slash-arc ribbon
 	sfxHandle_t	gibSound;
 	sfxHandle_t	gibBounce1Sound;
 	sfxHandle_t	gibBounce2Sound;
@@ -1197,6 +1217,7 @@ extern	vmCvar_t		cg_glitchAmount;
 extern	vmCvar_t		cg_speedLines;
 extern	vmCvar_t		cg_strafeHelper;
 extern	vmCvar_t		cg_ghost;
+extern	vmCvar_t		cg_ghostAlpha;
 extern	vmCvar_t		cg_zoomFov;
 extern	vmCvar_t		cg_thirdPersonRange;
 extern	vmCvar_t		cg_thirdPersonAngle;
@@ -1492,6 +1513,7 @@ void CG_LightningBoltBeam( vec3_t start, vec3_t end );
 void CG_ScorePlum( int client, vec3_t org, int score );
 
 void CG_GibPlayer( vec3_t playerOrigin );
+void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, int cutType );
 void CG_BigExplode( vec3_t playerOrigin );
 
 void CG_Bleed( vec3_t origin, int entityNum );

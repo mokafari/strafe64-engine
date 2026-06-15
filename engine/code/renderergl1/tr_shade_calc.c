@@ -54,9 +54,16 @@ static float *TableForFunc( genFunc_t func )
 **
 ** Evaluates a given waveForm_t, referencing backEnd.refdef.time directly
 */
-static float EvalWaveForm( const waveForm_t *wf ) 
+static float EvalWaveForm( const waveForm_t *wf )
 {
 	float	*table;
+
+	// audio-reactive funcs ride the live music envelope instead of a table:
+	// value = base + amplitude * band. phase/frequency are meaningless here.
+	if ( IS_GF_AUDIO( wf->func ) )
+	{
+		return wf->base + wf->amplitude * tr.audioBands[ wf->func - GF_AUDIO0 ];
+	}
 
 	table = TableForFunc( wf->func );
 
@@ -124,7 +131,9 @@ void RB_CalcDeformVertexes( deformStage_t *ds )
 	float	*normal = ( float * ) tess.normal;
 	float	*table;
 
-	if ( ds->deformationWave.frequency == 0 )
+	// audio funcs have no per-vertex spread (they aren't time/phase driven),
+	// so take the uniform single-evaluation path regardless of frequency.
+	if ( ds->deformationWave.frequency == 0 || IS_GF_AUDIO( ds->deformationWave.func ) )
 	{
 		scale = EvalWaveForm( &ds->deformationWave );
 
@@ -232,16 +241,12 @@ A deformation that can move an entire surface along a wave path
 void RB_CalcMoveVertexes( deformStage_t *ds ) {
 	int			i;
 	float		*xyz;
-	float		*table;
 	float		scale;
 	vec3_t		offset;
 
-	table = TableForFunc( ds->deformationWave.func );
-
-	scale = WAVEVALUE( table, ds->deformationWave.base, 
-		ds->deformationWave.amplitude,
-		ds->deformationWave.phase,
-		ds->deformationWave.frequency );
+	// EvalWaveForm covers both the table waveforms (phase 0, no spread, this is
+	// the same value) and the audio-reactive funcs.
+	scale = EvalWaveForm( &ds->deformationWave );
 
 	VectorScale( ds->moveVector, scale, offset );
 

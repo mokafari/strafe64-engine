@@ -203,6 +203,22 @@ gitem_t	bg_itemlist[] =
 /* sounds */ ""
 	},
 
+/*QUAKED weapon_sword (.3 .3 1) (-16 -16 -16) (16 16 16) suspended
+*/
+	{
+		"weapon_sword",
+		"sound/misc/w_pkup.wav",
+        { "models/weapons2/sword/sword.md3",		// CC0 katana (see tools/strafegen/assets/sword)
+		NULL, NULL, NULL},
+/* icon */		"icons/iconw_gauntlet",
+/* pickup */	"Cleaver",
+		0,
+		IT_WEAPON,
+		WP_SWORD,
+/* precache */ "",
+/* sounds */ ""
+	},
+
 /*QUAKED weapon_shotgun (.3 .3 1) (-16 -16 -16) (16 16 16) suspended
 */
 	{

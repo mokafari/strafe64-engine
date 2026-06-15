@@ -826,20 +826,31 @@ SUPERHOT-style world-clock dilation. Maps the player's movement "intent"
 or crawling, realtime at full chain. Driven once per frame by the local human.
 
 Intent = max( normalized horizontal speed, normalized movement input ), with an
-optional floor while firing so combat keeps time flowing. The result is smoothed
-toward the target so timescale never snaps jarringly.
+optional floor while firing so combat keeps time flowing. The result is eased
+toward the target on REAL frametime (trap_Milliseconds), so the ramp in/out takes
+the same wall-clock time at any current timescale — slow-mo snaps in and releases
+cleanly instead of crawling back up.
 
-KNOWN LIMITATION (prototype): this scales the WHOLE sim, so the void/dissolving
-world slows with everything else — which violates the design rule that the void
-must stay on real time so stopping is never safe. Decoupling the void (advance it
-by 1/timescale, or move to per-entity time) is the planned follow-up; this pass is
-purely about dialing in how the slowdown *feels*.
+UNIFORM model (by design): this scales the WHOLE sim — player + bots + world all
+slow together; the player drives the clock with movement intent, so they never
+feel sluggish (push the stick and time returns). Two things are deliberately
+EXEMPT and stay on real time: the rising VOID (G_RunVoid / CG_VoidZ) and the
+race/ghost CLOCK, so stopping is never safe and slow-mo can't cheat the timer.
+To keep movement FEEL consistent across timescales (Q3 air-accel is framerate-
+dependent and PM_Pmove chops by frame dt), we force pmove_fixed 1 for the duration
+that g_timeBind is active, restoring the prior value when it's turned off. All of
+this is gated behind g_timeBind (default 0): default play and the headless dojo
+are untouched. (Per-entity time — only the human dilates, SUPERHOT-style — was
+explored and set aside; see ROADMAP "Bots work under slow-mo".)
 ==============
 */
 static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 	static float	cur = -1.0f;		// last applied timescale (one human assumed)
 	static qboolean	active = qfalse;	// did we take over the timescale cvar?
-	float			hspeed, speedFrac, inputMag, intent, target, t;
+	static int		lastReal = 0;		// trap_Milliseconds at the previous update
+	static int		savedPmoveFixed = 0;	// pmove_fixed to restore when slow-mo ends
+	int				now, realMsec;
+	float			hspeed, speedFrac, inputMag, intent, target, t, rate;
 	float			tmin, tmax, ref, curve;
 
 	// bots never drive the clock — keeps headless playtest runs untouched
@@ -851,10 +862,26 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 		// hand the clock back exactly once when disabled
 		if ( active ) {
 			trap_Cvar_Set( "timescale", "1" );
+			trap_Cvar_Set( "pmove_fixed", va( "%i", savedPmoveFixed ) );
 			active = qfalse;
 			cur = -1.0f;
 		}
+		lastReal = 0;
 		return;
+	}
+
+	// First frame slow-mo takes over: force pmove_fixed on for the session.
+	// Without it, PM_Pmove chops the move into chunks sized by the (timescale-
+	// scaled) frame dt, so air-accel — which is famously framerate-dependent in
+	// Q3 — changes as you dilate time: the player's own strafe/air control would
+	// feel DIFFERENT in slow-mo than at speed, and bots ping/wedge instead of
+	// tracking their line. pmove_fixed pins integration to fixed pmove_msec
+	// substeps, so movement physics is identical at every timescale — the core of
+	// making slow-mo feel consistent and crisp. Gated to g_timeBind: default play
+	// and the headless dojo (g_timeBind 0) keep their tuned, unchanged movement.
+	if ( !active ) {
+		savedPmoveFixed = pmove_fixed.integer;
+		trap_Cvar_Set( "pmove_fixed", "1" );
 	}
 
 	tmin  = g_timeBindMin.value;
@@ -894,11 +921,31 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 		target = tmin + ( tmax - tmin ) * pow( intent, curve );
 	}
 
-	// smooth toward target so the world eases in/out instead of snapping
+	// smooth toward target so the world eases in/out instead of snapping.
+	// Step the ease on REAL time (trap_Milliseconds), NOT the passed-in msec:
+	// msec is the timescale-SCALED frame delta, so deep in slow-mo it shrinks
+	// and the ramp BACK up to realtime crawls — the mushy exit that reads as
+	// not-crisp. Real frametime makes the ramp take the same wall-clock time
+	// in and out at any current timescale, so slow-mo snaps in and releases
+	// cleanly. (Game-frames tick at sv_fps real-rate, so realMsec ~ 1000/sv_fps.)
+	now = trap_Milliseconds();
+	realMsec = lastReal ? ( now - lastReal ) : 0;
+	lastReal = now;
+	if ( realMsec < 0 || realMsec > 250 ) {
+		realMsec = 0;		// first frame / hitch: don't lurch the clock
+	}
 	if ( cur < 0.0f ) {
 		cur = target;
 	} else {
-		t = g_timeBindSmooth.value * ( msec * 0.001f );
+		// ASYMMETRIC ramp: snap UP fast when you start moving (g_timeBindRise),
+		// ease DOWN gently into the freeze (g_timeBindSmooth). A symmetric ramp
+		// made a step "happen in slow time" before the clock caught up — time
+		// felt stuck near the floor as you stepped off. Rising fast makes a step
+		// bring the world instantly to life; falling slow keeps the dreamy settle
+		// back into near-freeze. (Time only pumps up quick, never down, so no
+		// jitter.)
+		rate = ( target > cur ) ? g_timeBindRise.value : g_timeBindSmooth.value;
+		t = rate * ( realMsec * 0.001f );
 		if ( t > 1.0f ) t = 1.0f;
 		if ( t < 0.0f ) t = 0.0f;
 		cur += ( target - cur ) * t;

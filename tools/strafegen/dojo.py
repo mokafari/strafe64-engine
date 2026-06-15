@@ -48,6 +48,19 @@ ARCHETYPES = {
                "extra": ["bot_combatBhop", "0"]},
     "arena":  {"map": "dojo_arena",  "void": 0, "bots": 12,
                "extra": ["g_vectorgun", "1"]},   # rail; combat-bhop on by default
+    # clustertruck/trackmania sections (movement isolation, combat off)
+    "slalom":  {"map": "dojo_slalom",  "void": 0, "bots": 5,
+                "extra": ["bot_combatBhop", "0"]},
+    "hurdles": {"map": "dojo_hurdles", "void": 0, "bots": 5,
+                "extra": ["bot_combatBhop", "0"]},
+    "movers":  {"map": "dojo_movers",  "void": 0, "bots": 5,
+                "extra": ["bot_combatBhop", "0"]},
+    "fork":    {"map": "dojo_fork",    "void": 0, "bots": 5,
+                "extra": ["bot_combatBhop", "0"]},
+    "hazard":  {"map": "dojo_hazard",  "void": 0, "bots": 5,
+                "extra": ["bot_combatBhop", "0"]},
+    "showcase": {"map": "dojo_showcase", "void": 0, "bots": 5,
+                 "extra": ["bot_combatBhop", "0"]},
 }
 
 # The TARGET DOSSIER — what "good" is, as bands. These are design targets to
@@ -69,6 +82,14 @@ DEFAULT_DOSSIER = {
     "ztrick": {"flowpct": [40, None], "maxspd": [350, None],
                "stuckms": [None, 1500]},   # ztrick reliably <1300, kept tight
     "arena":  {"frags_per_min": [0.5, None], "midair_pct": [15, None]},
+    # provisional bands for the new sections (set from the tuning baseline;
+    # traversal-quality regression guards, comparable to flow/ztrick)
+    "slalom":  {"flowpct": [25, None], "maxspd": [350, None], "stuckms": [None, 4000]},
+    "hurdles": {"flowpct": [40, None], "maxspd": [350, None], "stuckms": [None, 2500]},
+    "movers":  {"flowpct": [40, None], "maxspd": [350, None], "stuckms": [None, 3000]},
+    "fork":    {"flowpct": [45, None], "maxspd": [350, None], "stuckms": [None, 2500]},
+    "hazard":  {"flowpct": [30, None], "maxspd": [350, None], "stuckms": [None, 3000]},
+    "showcase": {"flowpct": [28, None], "maxspd": [350, None], "stuckms": [None, 3500]},
 }
 
 

@@ -360,8 +360,14 @@ typedef enum {
 	WP_CHAINGUN,
 #endif
 
+	WP_SWORD,			// STRAFE 64: fluid melee blade with dismemberment
+
 	WP_NUM_WEAPONS
 } weapon_t;
+
+// STRAFE 64: window (ms) within which consecutive sword swings chain into a
+// combo. Shared by the server (damage/arc ramp) and client (view-model swing).
+#define	SWORD_COMBO_WINDOW	600
 
 
 // reward sounds (stored in ps->persistant[PERS_PLAYEREVENTS])
@@ -487,7 +493,10 @@ typedef enum {
 	EV_TAUNT_FOLLOWME,
 	EV_TAUNT_GETFLAG,
 	EV_TAUNT_GUARDBASE,
-	EV_TAUNT_PATROL
+	EV_TAUNT_PATROL,
+
+	EV_DISMEMBER,			// STRAFE 64: sword sever — origin2 = cut direction, eventParm = cut type
+	EV_SWORD_HIT			// STRAFE 64: blade connected (fired on attacker) — eventParm = finisher flag
 
 } entity_event_t;
 
@@ -640,7 +649,8 @@ typedef enum {
 	MOD_KAMIKAZE,
 	MOD_JUICED,
 #endif
-	MOD_GRAPPLE
+	MOD_GRAPPLE,
+	MOD_SWORD				// STRAFE 64: blade kill — triggers dismemberment
 } meansOfDeath_t;
 
 

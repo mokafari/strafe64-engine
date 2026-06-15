@@ -322,8 +322,36 @@ Any mirrored or portaled views have already been drawn, so prepare
 to actually render the visible surfaces for this view
 =================
 */
+/*
+=================
+RB_UpdateAudioBands
+
+Pull the live music band envelopes published by the module analyser (see
+snd_codec_mod.c) into tr.audioBands, so audio-reactive genfuncs can sample
+them this frame. The au_* cvars live in the shared cvar table; the sound
+system writes them and we read them — no protocol change needed.
+=================
+*/
+static void RB_UpdateAudioBands( void ) {
+	static cvar_t	*au_bass, *au_mid, *au_high, *au_level;
+
+	if ( !au_bass ) {
+		au_bass  = ri.Cvar_Get( "au_bass",  "0", CVAR_NORESTART );
+		au_mid   = ri.Cvar_Get( "au_mid",   "0", CVAR_NORESTART );
+		au_high  = ri.Cvar_Get( "au_high",  "0", CVAR_NORESTART );
+		au_level = ri.Cvar_Get( "au_level", "0", CVAR_NORESTART );
+	}
+
+	tr.audioBands[0] = au_bass->value;
+	tr.audioBands[1] = au_mid->value;
+	tr.audioBands[2] = au_high->value;
+	tr.audioBands[3] = au_level->value;
+}
+
 void RB_BeginDrawingView (void) {
 	int clearBits = 0;
+
+	RB_UpdateAudioBands();
 
 	// sync with gl if needed
 	if ( r_finish->integer == 1 && !glState.finishCalled ) {

@@ -341,7 +341,12 @@ void race_start_touch( gentity_t *self, gentity_t *other, trace_t *trace ) {
 	if ( !other->client || other->health <= 0 ) {
 		return;
 	}
-	other->client->raceStartTime = level.time;
+	// raceStartTime is a REAL (trap_Milliseconds) stamp, not level.time: the
+	// race clock must stay on real time so dipping into g_timeBind slow-mo
+	// can't shrink your lap time (cheat the speedrun). STAT_RACE_START stays a
+	// game-time deciseconds stamp — it serves only as the client's restamp
+	// edge signal now, the cgame ghost times the run off its own real clock.
+	other->client->raceStartTime = trap_Milliseconds();
 	other->client->ps.stats[STAT_RACE_START] =
 		( level.time - level.startTime ) / 100 + 1;
 }
@@ -369,7 +374,7 @@ void race_finish_touch( gentity_t *self, gentity_t *other, trace_t *trace ) {
 		return;		// not racing (or already finished)
 	}
 
-	ms = level.time - client->raceStartTime;
+	ms = trap_Milliseconds() - client->raceStartTime;	// real-time lap (see race_start_touch)
 	best = ( !client->raceBestTime || ms < client->raceBestTime );
 	if ( best ) {
 		client->raceBestTime = ms;

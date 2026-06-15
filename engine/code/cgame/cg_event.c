@@ -1222,6 +1222,28 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		CG_GibPlayer( cent->lerpOrigin );
 		break;
 
+	case EV_DISMEMBER:
+		DEBUGNAME("EV_DISMEMBER");
+		// blade sever: cut direction rides in origin2, cut type in eventParm
+		if ( !(es->eFlags & EF_KAMIKAZE) ) {
+			trap_S_StartSound( NULL, es->number, CHAN_BODY, cgs.media.gibSound );
+		}
+		CG_DismemberPlayer( cent->lerpOrigin, es->origin2, es->eventParm );
+		break;
+
+	case EV_SWORD_HIT:
+		DEBUGNAME("EV_SWORD_HIT");
+		// blade connected: meaty impact "chunk" + a short view punch for the
+		// attacker so hacking lands with weight. eventParm != 0 = finisher.
+		trap_S_StartSound( NULL, es->number, CHAN_AUTO, cgs.media.swordHitSound );
+		if ( es->number == cg.snap->ps.clientNum ) {
+			float	mag = es->eventParm ? 1.8f : 1.0f;
+			cg.weaponKickTime = cg.time;
+			cg.weaponKickPitch = 2.6f * mag;					// brief downward bite
+			cg.weaponKickRoll = ( ( cg.swordSwingStep & 1 ) ? -1.0f : 1.0f ) * 1.8f * mag;
+		}
+		break;
+
 	case EV_STOPLOOPINGSOUND:
 		DEBUGNAME("EV_STOPLOOPINGSOUND");
 		trap_S_StopLoopingSound( es->number );

@@ -608,7 +608,13 @@ void SP_worldspawn( void ) {
 			level.voidActive = qtrue;
 			level.voidBase = voidBase;
 			level.voidRise = voidRise;
-			level.voidStartTime = level.startTime + 1000 * voidDelay;
+			// voidStartTime is a REAL (trap_Milliseconds) stamp for the moment
+			// the void begins rising — NOT level.time. The void clock must stay
+			// real so g_timeBind slow-mo can't slow the kill plane and make
+			// stopping safe. Server (G_RunVoid) and client (CG_VoidZ) both read
+			// it against trap_Milliseconds(), which agree on a listen server.
+			// (worldspawn runs at G_InitGame, so this samples ~map-start.)
+			level.voidStartTime = trap_Milliseconds() + (int)( 1000 * voidDelay );
 			trap_SetConfigstring( CS_VOIDINFO, va( "%f %f %i",
 				voidBase, voidRise, level.voidStartTime ) );
 		} else {

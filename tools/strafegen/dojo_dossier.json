@@ -46,5 +46,35 @@
       15,
       null
     ]
+  },
+  "slalom": {
+    "flowpct": [25, null],
+    "maxspd": [350, null],
+    "stuckms": [null, 4000]
+  },
+  "hurdles": {
+    "flowpct": [40, null],
+    "maxspd": [350, null],
+    "stuckms": [null, 2500]
+  },
+  "movers": {
+    "flowpct": [40, null],
+    "maxspd": [350, null],
+    "stuckms": [null, 3000]
+  },
+  "fork": {
+    "flowpct": [45, null],
+    "maxspd": [350, null],
+    "stuckms": [null, 2500]
+  },
+  "hazard": {
+    "flowpct": [30, null],
+    "maxspd": [350, null],
+    "stuckms": [null, 3000]
+  },
+  "showcase": {
+    "flowpct": [28, null],
+    "maxspd": [350, null],
+    "stuckms": [null, 3500]
   }
 }

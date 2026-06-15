@@ -146,6 +146,7 @@ vmCvar_t	cg_glitchAmount;
 vmCvar_t	cg_speedLines;
 vmCvar_t	cg_strafeHelper;
 vmCvar_t	cg_ghost;
+vmCvar_t	cg_ghostAlpha;
 vmCvar_t	cg_zoomFov;
 vmCvar_t	cg_thirdPerson;
 vmCvar_t	cg_thirdPersonRange;
@@ -229,6 +230,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_speedLines, "cg_speedLines", "1", CVAR_ARCHIVE },
 	{ &cg_strafeHelper, "cg_strafeHelper", "1", CVAR_ARCHIVE },
 	{ &cg_ghost, "cg_ghost", "1", CVAR_ARCHIVE },
+	{ &cg_ghostAlpha, "cg_ghostAlpha", "0.55", CVAR_ARCHIVE },
 	{ &cg_viewsize, "cg_viewsize", "100", CVAR_ARCHIVE },
 	{ &cg_shadows, "cg_shadows", "1", CVAR_ARCHIVE  },
 	{ &cg_gibs, "cg_gibs", "1", CVAR_ARCHIVE  },
@@ -900,6 +902,7 @@ static void CG_RegisterGraphics( void ) {
 	cgs.media.battleSuitShader = trap_R_RegisterShader("powerups/battleSuit" );
 	cgs.media.battleWeaponShader = trap_R_RegisterShader("powerups/battleWeapon" );
 	cgs.media.invisShader = trap_R_RegisterShader("powerups/invisibility" );
+	cgs.media.ghostShader = trap_R_RegisterShader("strafe64/ghost" );	// optional, from the strafe64 pk3
 	cgs.media.voidShader = trap_R_RegisterShader("strafe64/void" );	// optional, from the strafe64 pk3
 	cgs.media.regenShader = trap_R_RegisterShader("powerups/regen" );
 	cgs.media.hastePuffShader = trap_R_RegisterShader("hasteSmokePuff" );

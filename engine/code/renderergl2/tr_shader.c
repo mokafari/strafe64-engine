@@ -306,6 +306,24 @@ static genFunc_t NameToGenFunc( const char *funcname )
 	{
 		return GF_NOISE;
 	}
+	// audio-reactive sources: friendly names + audio0..3 aliases. These make
+	// the genfunc track the live music band instead of a time waveform.
+	else if ( !Q_stricmp( funcname, "bass" )  || !Q_stricmp( funcname, "audio0" ) )
+	{
+		return GF_AUDIO0;
+	}
+	else if ( !Q_stricmp( funcname, "mid" )   || !Q_stricmp( funcname, "audio1" ) )
+	{
+		return GF_AUDIO1;
+	}
+	else if ( !Q_stricmp( funcname, "high" )  || !Q_stricmp( funcname, "audio2" ) )
+	{
+		return GF_AUDIO2;
+	}
+	else if ( !Q_stricmp( funcname, "level" ) || !Q_stricmp( funcname, "audio3" ) )
+	{
+		return GF_AUDIO3;
+	}
 
 	ri.Printf( PRINT_WARNING, "WARNING: invalid genfunc name '%s' in shader '%s'\n", funcname, shader.name );
 	return GF_SIN;

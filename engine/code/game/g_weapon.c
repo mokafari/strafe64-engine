@@ -126,6 +126,129 @@ qboolean CheckGauntletAttack( gentity_t *ent ) {
 /*
 ======================================================================
 
+SWORD
+
+A fluid melee blade. Each swing is a horizontal arc sweep (several traces
+fanned across the view) so a slash can catch multiple foes and feels like a
+real cut rather than a point poke. Damage scales with the player's horizontal
+speed — the same "speed = lethality" rule as the vectorgun — so blade work
+rewards staying in the movement chain. A lethal blow triggers dismemberment.
+
+======================================================================
+*/
+#define	SWORD_RANGE			80		// reach in units — longer than the Slipstream poke
+#define	SWORD_ARC			28.0f	// half-angle of the swing sweep, degrees
+#define	SWORD_NUM_TRACES	5		// traces fanned across the arc
+#define	SWORD_DMG_MIN		45		// damage at a standstill
+#define	SWORD_DMG_MAX		120		// damage at full chain speed
+#define	SWORD_SPEED_CAP		960.0f	// horizontal speed that pegs max damage
+
+void Weapon_Sword( gentity_t *ent ) {
+	int			i, t;
+	int			damage;
+	float		speed, frac, arc, combomul;
+	int			ntraces, step;
+	qboolean	finisher;
+	vec3_t		angles, dir, end;
+	trace_t		tr;
+	gentity_t	*traceEnt, *tent;
+	int			hit[ SWORD_NUM_TRACES * 2 ];	// entities already damaged this swing
+	int			numHit;
+
+	// --- combo: chained swings within the window ramp damage; every 3rd is a
+	// wide, heavy finisher. The combo decays if you stop swinging. ---
+	if ( level.time - ent->client->swordComboTime > SWORD_COMBO_WINDOW ) {
+		ent->client->swordComboStep = 0;
+	} else {
+		ent->client->swordComboStep++;
+	}
+	ent->client->swordComboTime = level.time;
+	step = ent->client->swordComboStep % 3;
+	finisher = ( step == 2 );
+
+	combomul = 1.0f + 0.15f * step;			// +0,15,30% across the 3-hit chain
+	arc = SWORD_ARC;
+	ntraces = SWORD_NUM_TRACES;
+	if ( finisher ) {
+		combomul += 0.25f;					// heavy closer
+		arc = SWORD_ARC * 1.6f;				// sweeping wide cut
+		ntraces = SWORD_NUM_TRACES * 2 - 1;	// denser fan so the wide arc connects
+	}
+
+	// speed-scaled damage: standing still barely scratches, a full-speed
+	// pass-by cleaves
+	speed = sqrt( ent->client->ps.velocity[0] * ent->client->ps.velocity[0]
+		+ ent->client->ps.velocity[1] * ent->client->ps.velocity[1] );
+	if ( speed > SWORD_SPEED_CAP ) {
+		speed = SWORD_SPEED_CAP;
+	}
+	frac = speed / SWORD_SPEED_CAP;
+	damage = (int)( ( SWORD_DMG_MIN + frac * ( SWORD_DMG_MAX - SWORD_DMG_MIN ) ) * combomul );
+	damage *= s_quadFactor;
+
+	numHit = 0;
+
+	// sweep the arc, one trace per step, sharing the same muzzle origin
+	for ( t = 0 ; t < ntraces ; t++ ) {
+		VectorCopy( ent->client->ps.viewangles, angles );
+		// fan yaw from -arc to +arc
+		if ( ntraces > 1 ) {
+			angles[YAW] += -arc + ( 2.0f * arc * t ) / ( ntraces - 1 );
+		}
+		AngleVectors( angles, dir, NULL, NULL );
+		VectorMA( muzzle, SWORD_RANGE, dir, end );
+
+		trap_Trace( &tr, muzzle, NULL, NULL, end, ent->s.number, MASK_SHOT );
+		if ( tr.surfaceFlags & SURF_NOIMPACT ) {
+			continue;
+		}
+		if ( ent->client->noclip ) {
+			continue;
+		}
+		if ( tr.entityNum == ENTITYNUM_NONE || tr.entityNum == ENTITYNUM_WORLD ) {
+			continue;
+		}
+
+		traceEnt = &g_entities[ tr.entityNum ];
+		if ( !traceEnt->takedamage ) {
+			continue;
+		}
+
+		// only hit each entity once per swing
+		for ( i = 0 ; i < numHit ; i++ ) {
+			if ( hit[i] == tr.entityNum ) {
+				break;
+			}
+		}
+		if ( i < numHit ) {
+			continue;
+		}
+		hit[ numHit++ ] = tr.entityNum;
+
+		// blood spurt at the contact point (reuses the missile-hit flesh fx)
+		if ( traceEnt->client ) {
+			tent = G_TempEntity( tr.endpos, EV_MISSILE_HIT );
+			tent->s.otherEntityNum = traceEnt->s.number;
+			tent->s.eventParm = DirToByte( tr.plane.normal );
+			tent->s.weapon = ent->s.weapon;
+		}
+
+		// drive the knockback along the swing so victims are flung off the blade
+		G_Damage( traceEnt, ent, ent, forward, tr.endpos,
+			damage, 0, MOD_SWORD );
+	}
+
+	// blade connected: tell the attacker so the client lands an impact "chunk"
+	// + view punch (heavier on a finisher). This is what makes hacking bite.
+	if ( numHit > 0 ) {
+		G_AddEvent( ent, EV_SWORD_HIT, finisher ? 1 : 0 );
+	}
+}
+
+
+/*
+======================================================================
+
 MACHINEGUN
 
 ======================================================================
@@ -860,6 +983,9 @@ void FireWeapon( gentity_t *ent ) {
 	switch( ent->s.weapon ) {
 	case WP_GAUNTLET:
 		Weapon_Gauntlet( ent );
+		break;
+	case WP_SWORD:
+		Weapon_Sword( ent );
 		break;
 	case WP_LIGHTNING:
 		Weapon_LightningFire( ent );

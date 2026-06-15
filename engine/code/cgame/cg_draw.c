@@ -2906,17 +2906,26 @@ wishspeed cap (pm_wishSpeedClamp = 30). While A/D-only strafing in the air
 you only add velocity along wishdir up to the 30 cap, so you gain speed only
 while (velocity . wishdir) < 30 — i.e. while the angle between your velocity
 and your aim exceeds acos(30/|v|). That threshold climbs toward 90 deg as you
-speed up, and the optimum (where |v| grows fastest, |v'| = sqrt(|v|^2 + 30^2))
-is exactly 90 deg.
+speed up.
+
+The OPTIMUM is not 90 deg. Per pmove tick PM_Accelerate adds at most
+  A = (pm_strafeAccelerate/timeScale) * (pmove_msec/1000) * wishspeed
+along wishdir, then clamps so (v.wishdir) never passes the 30 cap. Maximising
+|v'| over the angle puts the peak exactly at the tick boundary, where
+(v.wishdir) = wishspeed - A, i.e. cos(phi_opt) = (30 - A)/|v|. That sits a few
+degrees inside the dead-zone edge (always > acos(30/|v|)) and creeps toward —
+but never reaches — 90 deg as you speed up. The fixed-90 model only holds in
+the limit of infinite accel; this tracks the real per-tick optimum instead.
 
 A horizontal strip under the crosshair:
   - center      = your velocity heading (wishdir aligned with motion, 0 gain)
-  - +/-90 ticks = the perfect-strafe targets (fixed, bright green)
+  - +/- ticks   = the perfect-strafe targets at +/-phi_opt (bright green),
+    which shift with speed / framerate / timescale to follow the real optimum
   - red dead-zone = angles where (v.wishdir) >= 30 so you gain nothing; it
     WIDENS as you speed up — the skill ceiling made visible
   - green band  = where you actually accelerate
   - needle      = your current velocity<->wishdir angle; green when gaining
-    (brightest at 90), red when bleeding speed inside the dead-zone
+    (brightest at phi_opt), red when bleeding speed inside the dead-zone
 
 Shown airborne while holding a pure strafe — the state where the cap is the
 game. Eases in so it never pops.
@@ -2931,7 +2940,9 @@ static void CG_DrawStrafeMeter( void ) {
 	float			fmove, smove, wl;
 	float			wishdir[2], vdir[2];
 	float			speed, dot, phi, thetaMin, crossz, prox;
+	float			tickAccel, cosOpt, phiOpt, ts;
 	float			cx, half, y0, barH, x;
+	char			tsbuf[32];
 	vec4_t			col;
 	qboolean		active;
 
@@ -2974,11 +2985,25 @@ static void CG_DrawStrafeMeter( void ) {
 	// signed angle velocity -> wishdir, degrees [-180,180]
 	dot = vdir[0]*wishdir[0] + vdir[1]*wishdir[1];
 	if ( dot > 1.0f ) { dot = 1.0f; } else if ( dot < -1.0f ) { dot = -1.0f; }
+	// crossz > 0 means wishdir is CCW of velocity (the player's left); we want
+	// the needle on the side the player is actually pushing toward, so a
+	// rightward wishdir reads as +phi (right of the strip). Hence the flip.
 	crossz = vdir[0]*wishdir[1] - vdir[1]*wishdir[0];
 	phi = (float)acos( dot ) * 180.0f / M_PI;
-	if ( crossz < 0 ) { phi = -phi; }
+	if ( crossz > 0 ) { phi = -phi; }
 
 	thetaMin = (float)acos( 30.0f / speed ) * 180.0f / M_PI;	// gain threshold
+
+	// true per-tick optimum: PM_Accelerate adds at most tickAccel along wishdir
+	// (accel/timeScale * frametime * wishspeed) before the 30 cap clips it, and
+	// |v'| peaks where (v.wishdir) lands exactly on wishspeed - tickAccel.
+	trap_Cvar_VariableStringBuffer( "timescale", tsbuf, sizeof( tsbuf ) );
+	ts = atof( tsbuf );
+	if ( ts <= 0.01f ) { ts = 1.0f; }
+	tickAccel = ( pm_strafeAccelerate / ts ) * ( pmove_msec.integer * 0.001f ) * 30.0f;
+	cosOpt = ( 30.0f - tickAccel ) / speed;
+	if ( cosOpt > 1.0f ) { cosOpt = 1.0f; } else if ( cosOpt < -1.0f ) { cosOpt = -1.0f; }
+	phiOpt = (float)acos( cosOpt ) * 180.0f / M_PI;	// in (thetaMin, 180], near 90 at speed
 
 	cx = 320.0f; half = 130.0f; y0 = 366.0f; barH = 7.0f;
 #define SX(P) ( cx + ( (P) / 180.0f ) * half )
@@ -2999,10 +3024,10 @@ static void CG_DrawStrafeMeter( void ) {
 	col[0]=1.00f; col[1]=0.12f; col[2]=0.16f; col[3]=0.22f*vis;
 	CG_FillRect( SX(-thetaMin), y0, SX(thetaMin)-SX(-thetaMin), barH, col );
 
-	// +/-90 optimal ticks
+	// +/-phiOpt optimal ticks — the real per-tick peak, not a fixed 90
 	col[0]=0.40f; col[1]=1.00f; col[2]=0.50f; col[3]=0.85f*vis;
-	CG_FillRect( SX(-90.0f)-1.0f, y0-3.0f, 2.0f, barH+6.0f, col );
-	CG_FillRect( SX( 90.0f)-1.0f, y0-3.0f, 2.0f, barH+6.0f, col );
+	CG_FillRect( SX(-phiOpt)-1.0f, y0-3.0f, 2.0f, barH+6.0f, col );
+	CG_FillRect( SX( phiOpt)-1.0f, y0-3.0f, 2.0f, barH+6.0f, col );
 
 	// velocity reference (center)
 	col[0]=0.55f; col[1]=0.42f; col[2]=0.20f; col[3]=0.5f*vis;
@@ -3012,7 +3037,8 @@ static void CG_DrawStrafeMeter( void ) {
 	x = SX( phi );
 	if ( x < cx-half ) { x = cx-half; } else if ( x > cx+half ) { x = cx+half; }
 	if ( fabs( phi ) > thetaMin ) {
-		prox = 1.0f - (float)fabs( fabs(phi) - 90.0f ) / 90.0f;	// 1 at 90 deg
+		prox = 1.0f - (float)fabs( fabs(phi) - phiOpt ) / 90.0f;	// 1 at phi_opt
+		if ( prox < 0.0f ) { prox = 0.0f; }
 		col[0]=0.40f; col[1]=1.00f; col[2]=0.50f; col[3]=(0.55f+0.45f*prox)*vis;
 	} else {
 		col[0]=1.00f; col[1]=0.12f; col[2]=0.16f; col[3]=0.95f*vis;

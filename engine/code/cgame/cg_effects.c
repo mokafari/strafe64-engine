@@ -639,6 +639,73 @@ void CG_GibPlayer( vec3_t playerOrigin ) {
 }
 
 /*
+===================
+CG_DismemberPlayer
+
+STRAFE 64: a clean blade sever. Unlike CG_GibPlayer's omnidirectional confetti,
+severed limbs are flung along the cut direction so the carnage follows the
+swing. cutType escalates the cut: 0 lops a single limb, 1 decapitates, 2
+bisects the body. dir is a (roughly horizontal) unit cut vector.
+===================
+*/
+#define	SEV_FWD		320		// how hard limbs ride the cut direction
+#define	SEV_JUMP	220
+#define	SEV_RAND	130
+
+static void CG_LaunchSeveredLimb( vec3_t origin, vec3_t cut, qhandle_t model ) {
+	vec3_t	velocity;
+
+	velocity[0] = cut[0] * SEV_FWD + crandom() * SEV_RAND;
+	velocity[1] = cut[1] * SEV_FWD + crandom() * SEV_RAND;
+	velocity[2] = SEV_JUMP + crandom() * SEV_RAND;
+	CG_LaunchGib( origin, velocity, model );
+}
+
+void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, int cutType ) {
+	vec3_t	origin, cut, headOrigin;
+
+	if ( !cg_blood.integer ) {
+		return;
+	}
+
+	// flatten and normalize the cut direction (fall back to forward)
+	VectorCopy( dir, cut );
+	cut[2] = 0;
+	if ( VectorNormalize( cut ) == 0 ) {
+		VectorSet( cut, 1, 0, 0 );
+	}
+
+	VectorCopy( playerOrigin, origin );
+	VectorCopy( playerOrigin, headOrigin );
+	headOrigin[2] += 36;		// head/skull rides higher off the torso
+
+	// arterial spray at the wound, biased up the body
+	CG_Bleed( headOrigin, ENTITYNUM_NONE );
+	CG_Bleed( origin, ENTITYNUM_NONE );
+
+	// always throw at least one severed limb
+	CG_LaunchSeveredLimb( origin, cut, ( rand() & 1 ) ? cgs.media.gibArm : cgs.media.gibLeg );
+
+	if ( !cg_gibs.integer ) {
+		return;
+	}
+
+	if ( cutType >= 1 ) {
+		// decapitation: the head spins off down the cut
+		CG_LaunchSeveredLimb( headOrigin, cut, cgs.media.gibSkull );
+		CG_LaunchSeveredLimb( origin, cut, cgs.media.gibForearm );
+	}
+
+	if ( cutType >= 2 ) {
+		// full bisection: torso comes apart
+		CG_LaunchSeveredLimb( origin, cut, cgs.media.gibChest );
+		CG_LaunchSeveredLimb( origin, cut, cgs.media.gibAbdomen );
+		CG_LaunchSeveredLimb( origin, cut, cgs.media.gibLeg );
+		CG_LaunchSeveredLimb( origin, cut, cgs.media.gibIntestine );
+	}
+}
+
+/*
 ==================
 CG_LaunchExplode
 ==================

@@ -94,42 +94,123 @@ archetype.
 Direct asks from the live playtest of the new `~/strafe64-engine` tree. All
 human-validated (`\map surf_64` / any race map, then `g_timeBind 1`).
 
-- [ ] **Ghost opacity / look.** The ghost is the local player model drawn with
-      `cgs.media.invisShader` ("powerups/invisibility") on all three parts —
-      `cgame/cg_view.c:993,1001,1009` (`CG_AddGhostModel`). That's Q3's
-      refractive invis warp: no alpha control and reads as distortion, not a
-      clean racing ghost. Fix: register a dedicated translucent ghost shader
-      (amber/cyan tint per the NERV/MAGI + PSX identity, a `blendFunc` or
-      additive stage) and/or set `legs/torso/head.renderfx |= RF_FORCE_ENT_ALPHA`
-      with `shaderRGBA[3]` so opacity is a tunable cvar (e.g. `cg_ghostAlpha`).
-      Goal: visibly a ghost, never confusable with a live player, readable at
-      speed under the point-sampled PSX preset.
-- [ ] **Ghost effects + tracers.** Add a motion trail so the ghost reads as
-      speed. `CG_RaceFrame` (`cg_view.c:1142`) already lerps between recorded
-      samples (`ghostBest.origins[idx..idx+1]`) — draw a fading poly/beam trail
-      between successive samples (railtrail-style) tinted to the ghost shader,
-      length scaled by ghost speed. Optionally a faint speedline/afterimage on
-      the local player too. NOTE: coordinate with the concurrent flow/glitch/
-      speedline layer that owns parts of `cg_draw.c`/`cg_view.c`
-      (see [[strafe64-flow-combo]]) to avoid clobbering it.
-- [ ] **Ghosts work under slow-mo.** Record + replay are indexed by `cg.time`
-      (`cg_view.c:1106` finishMs, `:1126` `t`, `:1143` `idx`), which is the
-      timescale-SCALED server clock. With `g_timeBind 1` the ghost dilates with
-      the player AND recorded finish times become timescale-dependent — so a
-      run done in slow-mo logs a bogus (longer) time and the replay drifts out
-      of sync. Fix: drive ghost record/replay **and the race clock** off a
-      REAL-time clock decoupled from `timescale`, consistent with the
-      "void stays real" rule. Need an unscaled ms source in cgame (accumulate
-      real frametime, or a real-time trap) for `ghostRaceStartMs`/`t`.
-- [ ] **Bots work under slow-mo.** `G_UpdateTimeBind` (`g_active.c:839`) sets
-      the **global** `timescale`, so every bot's server frame is scaled — bots
-      are exempted from *driving* the clock (`SVF_BOT` early return, `:846`) but
-      still think/aim/navigate slowed, which breaks them when a human dips into
-      slow-mo. The file's own KNOWN LIMITATION note (`:832-836`) already flags
-      the fix: move off the global cvar to **per-entity time** (advance bots —
-      and the void — by real time / `1/timescale`) so only the human dilates.
-      This is the one refactor that fixes bots, the void, and the ghost clock
-      together. Bigger change — scope it before P0 nav work resumes.
+- [x] **Ghost opacity / look.** DONE (2026-06-15, ghost-visual-polish). New
+      dedicated `strafe64/ghost` shader (strafegen `SHADER_SCRIPT`, bundled in
+      every generated map pk3 like `strafe64/void`): a flat `$whiteimage`
+      silhouette, `blendFunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA` +
+      `rgbGen`/`alphaGen entity` so the entity's `shaderRGBA` drives tint AND
+      opacity live. `CG_AddGhostModel` (`cg_view.c`) now sets all three parts to
+      `cgs.media.ghostShader` (falls back to `invisShader` if a map lacks the
+      strafe64 pk3) with a cool cyan hologram tint (60,220,255) and alpha from
+      the new **`cg_ghostAlpha`** cvar (default 0.55, `CVAR_ARCHIVE`). This
+      renderer has no `RF_FORCE_ENT_ALPHA`, so the `alphaGen entity` shader is
+      the path to tunable opacity. Reads clearly as a translucent ghost vs the
+      red void, never as a live (opaque) player. The 4 surf seeds were
+      regenerated + redeployed to `baseoa/` as pk3s so the shader loads.
+      HUMAN: `\map surf_64`, race a lap, watch the replay; tune `cg_ghostAlpha`.
+- [x] **Ghost effects + tracers.** DONE (2026-06-15, ghost-visual-polish). New
+      `CG_GhostTrail` (`cg_view.c`), called from `CG_RaceFrame` just before
+      `CG_AddGhostModel`: a billboarded ribbon stitched through the last
+      `GHOST_TRAIL_SEGS` (12) recorded `ghostBest.origins` behind the ghost's
+      interpolated replay position. Each segment is a quad billboarded by
+      `seg × (eye→seg)`, half-width = base 2u + ghost-speed·0.004 (capped 12u so
+      a fast run reads fatter), alpha fading the further back the segment is,
+      tinted to the cyan ghost colour. Drawn additively via the always-present
+      `cgs.media.whiteShader` (no map asset, gated on `cg_ghost`). Self-contained
+      in `cg_view.c` / `CG_RaceFrame` — adds polys to the scene only, does NOT
+      touch the concurrent flow/glitch layer in `cg_draw.c`. Speedline/afterimage
+      on the LOCAL player deferred (would need to coordinate with that layer).
+      HUMAN: `\map surf_64`, watch the trail behind the replay ghost at speed.
+- [x] **Ghosts work under slow-mo.** DONE (2026-06-15, realtime-race-clock).
+      The unscaled ms source was already there on both sides: **`trap_Milliseconds()`**
+      (Sys_Milliseconds, ignores `timescale`). Ghost record/replay + the saved
+      finish now run off it instead of `cg.time` (`CG_RaceFrame`,
+      `cg_view.c`: `ghostRaceStartMs = trap_Milliseconds()`, `t`/`finishMs`
+      likewise) — record and replay share one real clock so they can't drift,
+      and a slow-mo run logs a HONEST wall-clock time. The **server race clock**
+      matches: `race_start_touch` stamps `raceStartTime = trap_Milliseconds()`
+      and `race_finish_touch` pays out on `trap_Milliseconds() - raceStartTime`
+      (`g_trigger.c`), so slow-mo can't shrink your lap time / cheat the payout;
+      `g_playtest.c` telemetry `racems` updated to match. `STAT_RACE_START` stays
+      a game-time deciseconds stamp serving ONLY as the client's restamp-edge
+      signal now. On a listen server (how STRAFE 64 runs) client & server
+      `trap_Milliseconds` agree. NO-REG: SPEED/ARENA green, FLOW/ZTRICK at the
+      inherited band-edge baseline (bots don't finish races → race clock is a
+      no-op for them). FOLLOW-UP (small, deferred — lives in the concurrently
+      edited `cg_draw.c` flow/glitch hot-zone): the LIVE on-screen HUD timer
+      (`cg_draw.c` ~3594, `cg.time - (levelStartTime + (stat-1)*100)`) still
+      reads scaled time, so it only diverges from the real saved time DURING
+      active slow-mo. Make it read the same `ghostRaceStartMs` real stamp when
+      coordinating with that session.
+- [x] **Bots work under slow-mo — RESOLVED for the chosen UNIFORM model
+      (2026-06-15, slowmo-crisp).** Gustav's call: keep the uniform "everything
+      slows together" slow-mo (NOT per-entity time / SUPERHOT), just make it
+      crisp and stop bots glitching. Investigation (headless `slowmo_probe.py`,
+      forcing `timescale` on a bot server — `G_UpdateTimeBind` early-returns for
+      bots so a forced timescale sticks) OVERTURNED the old premise. Key engine
+      fact: the server steps game-frames at `sv_fps` in REAL time at any timescale
+      (`sv_main.c`: `timeResidual += scaledMsec` and `frameMsec=(1000/sv_fps)*ts`
+      cancel), each advancing fewer game-ms. So bot AI cadence is game-time-
+      consistent — avgspd/maxspd/flow are ~invariant across ts 1.0/0.5/0.3. Bots
+      do NOT freeze/break. What looked like breakage was two things, now fixed:
+      (a) a TELEMETRY ARTIFACT — `stuckMs` used a fixed per-frame displacement
+      threshold (`move<2.0`) that silently became "speed<133" at ts 0.3; now
+      dt-normalised (`g_playtest.c`, byte-identical at ts 1.0). (b) Q3's
+      framerate-dependent AIR-ACCEL — `PM_Pmove` chops moves by frame dt, which
+      shrinks with timescale, so strafe/air physics changed as you dilated (the
+      player's OWN control felt different in slow-mo, and bots ping/wedged). Fix:
+      force **`pmove_fixed 1`** while `g_timeBind` is active (`G_UpdateTimeBind`
+      saves/restores it on enable/disable) → fixed `pmove_msec` substeps →
+      movement physics identical at every timescale. Plus the transition ramp now
+      eases on REAL time (below) so slow-mo snaps in / releases cleanly. All gated
+      behind `g_timeBind` (default 0) → default play + dojo UNCHANGED (verified
+      no-reg). RESIDUAL (acceptable, documented): at extreme dilation (ts 0.3)
+      bots still make less NET horizontal progress (stuckFRAC ~70% even with
+      pmove_fixed) — they move but wedge more; full path parity is the per-entity
+      refactor Gustav opted out of, and ts 0.3 only happens when nearly stationary
+      anyway. `slowmo_probe.py` kept as the slow-mo verification harness.
+
+      **SCOPED (2026-06-15, after the realtime-race-clock pass).** The ghost
+      clock is now solved independently (above) with `trap_Milliseconds()`, so
+      the remaining real-time work splits into two pieces of very different risk:
+
+      1. **Void → real time — DONE (2026-06-15, realtime-void).** The kill plane
+         now rises on `trap_Milliseconds()`, so stopping is never safe under
+         slow-mo. No configstring FORMAT change was needed — the existing
+         `CS_VOIDINFO` third field (`%i`) was just REINTERPRETED from a game-time
+         `voidStartTime` to a real-ms rise stamp, set on both ends together.
+         Server: `SP_worldspawn` (`g_spawn.c`) stamps
+         `level.voidStartTime = trap_Milliseconds() + 1000*voidDelay`; `G_RunVoid`
+         (`g_main.c`) + `PT_VoidZ` telemetry (`g_playtest.c`) compute `voidZ`
+         against `trap_Milliseconds()`. Client: `CG_VoidZ` (`cg_view.c`) reads
+         `trap_Milliseconds()` vs `cgs.voidStartTime`; the two void-distance HUD
+         reads in `cg_draw.c` (~3070/~3630) call `CG_VoidZ()` so they inherited
+         the fix with no edit to that concurrent file. Both clocks are the same
+         process clock, so the absolute offset cancels (grace = `voidDelay` real
+         seconds from map spawn) and on a listen server client==server. NO-REG:
+         at `timescale 1` (dojo) real and game time advance together → void
+         timing unchanged; SPEED/ARENA green, FLOW/ZTRICK at the inherited
+         band-edge. Dedicated server has no client so the visual basis is moot
+         there (kill plane is server-authoritative + correct).
+
+      2. **Bots → real time (per-entity) — SUPERSEDED by the uniform-model
+         resolution above.** Gustav chose uniform slow-mo, so the invasive
+         per-entity-time refactor (advance bots/world by real time, only the human
+         dilates — the SUPERHOT model) is NOT needed and was NOT built. It remains
+         the path ONLY if the design later pivots to "world keeps moving while the
+         human bullet-times" — at which point it's a deliberate, human-playtested
+         effort (per-bot real-time residual + catch-up sub-frames), not a drive-by.
+         For the current game, bots being slowed WITH the world is the intent;
+         pmove_fixed + the real-time ramp make that read clean.
+
+      3. **Transition ramp on real time — DONE (2026-06-15, slowmo-crisp).** The
+         `G_UpdateTimeBind` ease toward the target timescale stepped on the passed
+         `msec`, which is the timescale-SCALED frame delta — so deep in slow-mo the
+         ramp BACK to realtime crawled (mushy exit, the main "not crisp" tell). Now
+         it eases on real frametime (`trap_Milliseconds()` delta, hitch-guarded),
+         so the in/out ramp takes the same wall-clock time at any current timescale
+         — slow-mo engages and releases cleanly. `g_timeBindSmooth` (default 8) now
+         means the same thing regardless of how slow you are.
 
 ## P0 — unblock the dojo substrate (bots must actually play)
 - [~] **bot-nav on movement courses** — two levers tried:
@@ -224,6 +305,83 @@ human-validated (`\map surf_64` / any race map, then `g_timeBind 1`).
 - [ ] More dojo archetypes as the design grows.
 
 ## Done log
+- 2026-06-15 ★ DIRECTION: SWORD/MELEE BULLET-TIME + NEAR-FREEZE (user: slow-mo
+  "feels just about amazing... this playstyle with the sword is the real game,
+  melee and sword driven... almost stop time if we don't move"). The slow-mo
+  reconcile landed so well it reframed the game around melee bullet-time (pairs
+  with the concurrent WP_SWORD Cleaver). Tuning shipped: g_timeBindMin 0.25→0.05
+  (still = near-freeze, survey the frozen room), g_timeBindFire 0.5→0.8 (a swing
+  surges time forward so the strike stays crisp despite the deep floor — frozen
+  → decisive cut → re-freeze), g_timeBind default 0→1 (it's the core feel now).
+  All in g_main.c defaults + documented in strafe64.cfg (new "the sword game"
+  block). DOJO UNCHANGED (g_timeBind default 1 is dojo-safe: bots early-return in
+  G_UpdateTimeBind so the headless battery never engages slow-mo — verified
+  SPEED/ARENA IN_DOSSIER, FLOW/ZTRICK same band-edge). Build green. FEEL =
+  human playtest. OPEN: g_speedDamage bottoms stationary hits at 0.85x — may
+  want melee exempt for a stand-and-slash game (g_combat.c, concurrent session).
+  Recorded in the strafe64-sword-slowmo-direction memory.
+- 2026-06-15 SLOW-MO CRISP/RECONCILE (★ Ghost & slow-mo polish item 4; user req
+  "reconcile it, make it crisp clean smooth"; chosen model = UNIFORM, fix = bot
+  glitching). Built `slowmo_probe.py` (forces timescale on a headless bot server —
+  G_UpdateTimeBind early-returns for bots so it sticks) to MEASURE before fixing.
+  Finding overturned the premise: the engine steps game-frames at sv_fps in REAL
+  time at any timescale, so bot AI is game-time-consistent — avgspd/maxspd/flow
+  ~invariant ts 1.0→0.3; bots don't freeze. The "glitch" was (a) a telemetry
+  artifact: stuckMs used a fixed per-frame displacement threshold that became
+  "speed<133" at ts 0.3 → dt-normalised in g_playtest.c (byte-identical at ts 1.0,
+  no dojo shift); (b) Q3 framerate-dependent air-accel: PM_Pmove chops by frame dt
+  which shrinks under slow-mo, so the PLAYER's air control changed with timescale
+  and bots wedged → force pmove_fixed 1 while g_timeBind is active (saved/restored
+  in G_UpdateTimeBind) for timescale-independent physics. (c) the timescale ramp
+  eased on SCALED time → mushy exit; now eases on real frametime (trap_Milliseconds)
+  so slow-mo snaps in/out cleanly. ALL gated behind g_timeBind (default 0) →
+  default play + dojo UNCHANGED (verified: SPEED/ARENA IN_DOSSIER, FLOW/ZTRICK same
+  band-edge baseline). Residual (documented, acceptable): at ts 0.3 bots still make
+  less net progress (stuckFRAC ~70%) — full path parity = the per-entity refactor
+  Gustav opted out of. FEEL = human playtest (g_timeBind 1, dip in/out at speed).
+- 2026-06-15 REAL-TIME VOID (★ Ghost & slow-mo polish — the "void stays real" rule,
+  item-4 piece 1). The kill plane rose on `level.time`/`cg.time` (scaled), so g_timeBind
+  slow-mo slowed it and stopping bought safety — violating the core design rule. Moved
+  the whole void clock to `trap_Milliseconds()`: `SP_worldspawn` stamps voidStartTime as
+  a real-ms rise reference (`trap_Milliseconds()+1000*voidDelay`), `G_RunVoid` (g_main.c),
+  `PT_VoidZ` (g_playtest.c) and `CG_VoidZ` (cg_view.c) all compute against real time.
+  ZERO configstring-format change — the existing CS_VOIDINFO `%i` field was reinterpreted
+  on both ends together (same process clock → offset cancels; listen-server client==server).
+  Build GREEN. NO-REG: at timescale 1 (dojo) void timing is unchanged; SPEED/ARENA
+  IN_DOSSIER, FLOW/ZTRICK at the inherited band-edge baseline. Remaining slow-mo item:
+  bots → per-entity real time (HIGH-risk refactor, human-gated, scoped in item 4 piece 2).
+- 2026-06-15 REAL-TIME RACE + GHOST CLOCK (★ Ghost & slow-mo polish item 3). The
+  race/ghost timing ran off `cg.time`/`level.time` — the timescale-SCALED clock — so
+  a `g_timeBind` slow-mo run would shrink its recorded lap time (cheat the speedrun)
+  and the ghost replay would drift from its own recording. Both sides already expose
+  `trap_Milliseconds()` (Sys_Milliseconds, ignores timescale): CGAME ghost now stamps
+  `ghostRaceStartMs = trap_Milliseconds()` and indexes record+replay+finishMs off it
+  (`cg_view.c`); SERVER stamps `raceStartTime = trap_Milliseconds()` and pays out on
+  `trap_Milliseconds()-raceStartTime` (`g_trigger.c`); `g_playtest.c` racems telemetry
+  matched. `STAT_RACE_START` kept as the client restamp-edge signal only. Build GREEN.
+  NO-REGRESSION: qagame change but bots don't finish races so the race clock is a no-op
+  for them — SPEED/ARENA IN_DOSSIER, FLOW/ZTRICK at the SAME inherited band-edge baseline
+  as the pre-change run (nothing green regressed). Deferred (scoped in item 4): the void
+  → real-time (LOW risk, next) and bots → real-time (HIGH-risk per-entity refactor,
+  human-gated). Live HUD timer in cg_draw.c left scaled (concurrent-edit hot-zone; only
+  matters during active slow-mo) — follow-up noted.
+- 2026-06-15 GHOST VISUAL POLISH (★ Ghost & slow-mo polish items 1+2, human req).
+  (1) Dedicated `strafe64/ghost` shader (strafegen SHADER_SCRIPT → bundled in every
+  map pk3 like `strafe64/void`): `$whiteimage` silhouette, alpha-blend + `rgbGen`/
+  `alphaGen entity`, so the entity shaderRGBA drives tint+opacity. `CG_AddGhostModel`
+  now uses it with a cyan hologram tint + the new `cg_ghostAlpha` cvar (0.55, ARCHIVE);
+  invisShader fallback if the pk3 is absent. (2) `CG_GhostTrail` — a fading billboarded
+  ribbon through the last 12 `ghostBest` samples behind the replay ghost, width scaled
+  by ghost speed, tinted, additive via whiteShader; called from `CG_RaceFrame`, gated on
+  `cg_ghost`. cgame-only + strafegen (4 surf seed pk3s regenerated/redeployed to baseoa
+  so the shader loads). Build GREEN (only pre-existing cg_draw.c warnings from the
+  concurrent flow/glitch session — that file is NOT mine). NO-REGRESSION: zero qagame/game
+  source touched, and the dedicated dojo loads `qagame` only (vm_game 0) → structurally
+  zero bot impact. dojo FLOW/ZTRICK read PARTIAL on the stuckms band edge, but that is the
+  tree's CURRENT inherited baseline (HEAD advanced to fb94320 under concurrent edits),
+  reproduced across reruns and independent of this change. FEEL/visuals = human playtest
+  (`\map surf_64`, race a lap, `cg_ghostAlpha`). Remaining in section: items 3+4 (ghost +
+  bots under slow-mo — the per-entity-time refactor).
 - 2026-06-15 COMBAT AT SPEED (user req "flow + combat at same time"). After two
   failed approaches (air-strafe arcs regressed movement; orbit-bhop circle-danced
   slow — both reverted), the WIN: `bot_combatBhop` (default ON; movement dojos force

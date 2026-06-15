@@ -307,6 +307,9 @@ struct gclient_s {
 	int			boughtWeapons;		// STAT_WEAPONS bits bought in the shop; re-granted on respawn (purchases persist)
 	int			boughtAirJump;		// shop-bought +1 air jump; re-granted as PMF_AIRJUMP_BONUS on respawn
 
+	int			swordComboStep;		// sword melee combo counter; advances while swings chain within the window
+	int			swordComboTime;		// level.time of the last sword swing (combo window timer)
+
 	qboolean	fireHeld;			// used for hook
 	gentity_t	*hook;				// grapple hook if out
 
@@ -743,6 +746,7 @@ extern	vmCvar_t	g_timeBindMax;
 extern	vmCvar_t	g_timeBindRef;
 extern	vmCvar_t	g_timeBindCurve;
 extern	vmCvar_t	g_timeBindSmooth;
+extern	vmCvar_t	g_timeBindRise;
 extern	vmCvar_t	g_timeBindFire;
 extern	vmCvar_t	g_timeBindLog;
 extern	vmCvar_t	g_strafeAccel;		// live air-strafe tuning cvars

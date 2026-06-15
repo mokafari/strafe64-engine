@@ -261,6 +261,52 @@ void GibEntity( gentity_t *self, int killer ) {
 
 /*
 ==================
+DismemberEntity
+
+STRAFE 64: a clean blade sever rather than the gauntlet's gib confetti.
+Severed limbs are launched along the swing direction (attacker -> victim) so
+they fly off the cut. How deeply the blow overkilled selects the cut type:
+a glancing lethal hit lops a single limb, a hard hit decapitates, a full-speed
+cleave bisects the body. The corpse is removed just like a gib.
+==================
+*/
+void DismemberEntity( gentity_t *self, gentity_t *attacker ) {
+	gentity_t	*tent;
+	vec3_t		dir;
+	int			cutType;
+
+	// cut direction: horizontal, following the swing through the body
+	if ( attacker && attacker != self && attacker->client ) {
+		VectorSubtract( self->r.currentOrigin, attacker->r.currentOrigin, dir );
+		dir[2] = 0;
+		if ( VectorNormalize( dir ) == 0 ) {
+			VectorSet( dir, 1, 0, 0 );
+		}
+	} else {
+		VectorSet( dir, 1, 0, 0 );
+	}
+
+	// depth of cut from how hard the killing blow overkilled
+	if ( self->health <= GIB_HEALTH * 3 ) {
+		cutType = 2;		// full bisection
+	} else if ( self->health <= GIB_HEALTH ) {
+		cutType = 1;		// decapitation + limb
+	} else {
+		cutType = 0;		// single limb sever
+	}
+
+	tent = G_TempEntity( self->r.currentOrigin, EV_DISMEMBER );
+	VectorCopy( dir, tent->s.origin2 );
+	tent->s.eventParm = cutType;
+	tent->s.otherEntityNum = self->s.number;
+
+	self->takedamage = qfalse;
+	self->s.eType = ET_INVISIBLE;
+	self->r.contents = 0;
+}
+
+/*
+==================
 body_die
 ==================
 */
@@ -309,7 +355,8 @@ char	*modNames[] = {
 	"MOD_KAMIKAZE",
 	"MOD_JUICED",
 #endif
-	"MOD_GRAPPLE"
+	"MOD_GRAPPLE",
+	"MOD_SWORD"
 };
 
 #ifdef MISSIONPACK
@@ -631,7 +678,10 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 	// never gib in a nodrop
 	contents = trap_PointContents( self->r.currentOrigin, -1 );
 
-	if ( (self->health <= GIB_HEALTH && !(contents & CONTENTS_NODROP) && g_blood.integer) || meansOfDeath == MOD_SUICIDE) {
+	if ( meansOfDeath == MOD_SWORD && !(contents & CONTENTS_NODROP) && g_blood.integer ) {
+		// blade kill: clean directional dismemberment instead of gib confetti
+		DismemberEntity( self, attacker );
+	} else if ( (self->health <= GIB_HEALTH && !(contents & CONTENTS_NODROP) && g_blood.integer) || meansOfDeath == MOD_SUICIDE) {
 		// gib death
 		GibEntity( self, killer );
 	} else {

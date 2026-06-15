@@ -1,5 +1,10 @@
 # strafegen — procedural movement runs for Quake III Arena
 
+> **Driving the engine from an LLM?** See [ENGINE_API.md](ENGINE_API.md) —
+> `engine_api.py` / `engine_mcp.py` let Claude hook directly into a running
+> engine to read/set cvars, tune the movement model live, change maps, take
+> screenshots, read telemetry, and rebuild the mod.
+
 Seed-based course generator in the STRAFE 64 mold. It writes **playable
 IBSP v46 `.bsp` files directly** — no q3map compile pass, no Radiant —
 so a fresh course is one command away:
@@ -86,8 +91,59 @@ generation time (80% safety margin on the physics bound):
 | lift gate | — | length > 1 chains decks: the gate teleports a full 1024u deck up |
 | finish gate | — | teleports back to start; the void below does too |
 
+### Bigger, branchier decks (Clustertruck × Trackmania)
+
+Every deck now follows a deliberate **speed → flow → spice** arc instead of
+five shuffled sections (~8 sections/deck, longer and wider):
+
+1. **Openers** build speed — `gaps`, `bhop` (both, every deck)
+2. a **fork** gives the trackmania route choice — the centrepiece
+3. **Flow** keeps the chain alive — 2 of {`slide`, `walls`, `slalom`}
+4. **Spice** is the technical climax once you're fast — 2 of
+   {`hurdles`, `movers`, `hazard`}
+5. the dj **tower** climbs out toward the lift / finish
+
+| Section | Idea | Geometry rule |
+|---|---|---|
+| fork | trackmania racing line | path splits into a narrow rewarded **risky** lane (speed shards) and a wide **safe** lane, both asserted crossable, rejoining on a shared merge pad |
+| slalom | weave at speed | wide floor studded with slim staggered pillars; a clear central line always remains (bot nav + a fast through-line), pillars crowd inward on harder difficulties |
+| hurdles | vault or weave | low cross-lane walls (32–44u, under the jump apex) each with an **alternating-side gap** — hold the line and vault, or cut to the open side |
+| moving platforms | clustertruck movers | static stepping stones on the line, with `func_bobbing` pads bobbing alongside as the stylish human shortcut (a mover can't be bot-pathed, so it's never on the critical path) |
+| hazard pits | "the floor is lava" | wide pads over red lethal-looking gaps; a miss drops into the course's own void/rescue (lost line + the rising void gaining), not an instakill |
+
+The movers are real drawn inline bmodels (the writer emits visible
+submodels, not just nodraw triggers), so they render and you ride them.
+
 If you retune the mod, update the mirrored constants at the top of
 `strafegen.py` — the asserts will then re-derive what is reachable.
+
+### Bot-validated (the dojo)
+
+Every section above is a first-class **bot dojo** archetype
+(`./dojo.py --archetypes fork,slalom,hurdles,movers,hazard,showcase`) and
+each clears its traversal band — 5-bot, combat-off, comparable to the
+shipped `speed`/`flow`/`ztrick` baselines:
+
+| dojo | flow | max ups | stuck | verdict |
+|---|---|---|---|---|
+| hazard | 61% | 537 | 1.4 s | IN_DOSSIER |
+| slalom | 57% | 623 | 1.2 s | IN_DOSSIER |
+| fork | 56% | 514 | 1.3 s | IN_DOSSIER |
+| hurdles | 51% | 525 | 1.4 s | IN_DOSSIER |
+| movers | 41% | 517 | 2.3 s | IN_DOSSIER |
+| showcase (full arc) | 30% | 432 | 3.1 s | the whole recipe, end-to-end |
+
+Tuning notes from the playtest loop:
+- **Always run the dojo at its 5-bot default, not 1 bot.** A lone bot idles
+  (and the `g_hotFloor` rule then burns it) and churns on jittered gap
+  platforms, inflating *stuck* ~10× — a measurement artifact, not a course
+  fault.
+- Hurdles/movers were unreachable for bots at first (full-width walls; you
+  can't path onto a `func_bobbing`). The gap-per-hurdle and static-stepping-
+  stone fixes made them flow for AI *and* added a real human route choice.
+- A lethal `trigger_hurt` made hazard loop bots at the spawn forever (death →
+  respawn at start); deferring the miss to the course's void/rescue fixed it
+  and fits the game's "the floor is the void" pillar.
 
 ## The race layer
 

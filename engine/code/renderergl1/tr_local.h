@@ -125,9 +125,21 @@ typedef enum {
 	GF_SAWTOOTH, 
 	GF_INVERSE_SAWTOOTH, 
 
-	GF_NOISE
+	GF_NOISE,
+
+	// audio-reactive "waveforms": instead of sampling a function table over
+	// time, these return the live music band envelope (au_bass/mid/high/level,
+	// see snd_codec_mod.c). Usable anywhere a genfunc name is — deformVertexes,
+	// rgbGen/alphaGen wave, tcMod stretch. phase/frequency are ignored.
+	GF_AUDIO0,	// bass
+	GF_AUDIO1,	// mid
+	GF_AUDIO2,	// high
+	GF_AUDIO3	// overall level
 
 } genFunc_t;
+
+#define NUM_AUDIO_BANDS	4
+#define IS_GF_AUDIO( f )	( (f) >= GF_AUDIO0 && (f) <= GF_AUDIO3 )
 
 
 typedef enum {
@@ -970,6 +982,10 @@ typedef struct {
 	float					sawToothTable[FUNCTABLE_SIZE];
 	float					inverseSawToothTable[FUNCTABLE_SIZE];
 	float					fogTable[FOG_TABLE_SIZE];
+
+	// live music band envelopes, refreshed per frame from the au_* cvars that
+	// the module analyser publishes. Indexed by (func - GF_AUDIO0).
+	float					audioBands[NUM_AUDIO_BANDS];
 } trGlobals_t;
 
 extern backEndState_t	backEnd;

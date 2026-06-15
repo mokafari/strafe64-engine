@@ -2175,6 +2175,13 @@ static void PM_Weapon( void ) {
 			return;
 		}
 		PM_StartTorsoAnim( TORSO_ATTACK2 );
+	} else if ( pm->ps->weapon == WP_SWORD ) {
+		// alternate the two slash anims so a held attack reads as a fluid combo
+		if ( ( pm->ps->torsoAnim & ~ANIM_TOGGLEBIT ) == TORSO_ATTACK ) {
+			PM_StartTorsoAnim( TORSO_ATTACK2 );
+		} else {
+			PM_StartTorsoAnim( TORSO_ATTACK );
+		}
 	} else {
 		PM_StartTorsoAnim( TORSO_ATTACK );
 	}
@@ -2196,10 +2203,33 @@ static void PM_Weapon( void ) {
 	// fire weapon
 	PM_AddEvent( EV_FIRE_WEAPON );
 
+	// STRAFE 64: the sword lunges forward on each swing so melee feeds the
+	// movement chain instead of stalling it. Capped so it engages but can't
+	// be milked as a speed exploit.
+	if ( pm->ps->weapon == WP_SWORD ) {
+		vec3_t	flatforward;
+		float	speed;
+
+		flatforward[0] = pml.forward[0];
+		flatforward[1] = pml.forward[1];
+		flatforward[2] = 0;
+		VectorNormalize( flatforward );
+
+		speed = sqrt( pm->ps->velocity[0] * pm->ps->velocity[0]
+			+ pm->ps->velocity[1] * pm->ps->velocity[1] );
+		if ( speed < 1000 ) {
+			// step into each cut — flow between targets instead of rooting
+			VectorMA( pm->ps->velocity, 120, flatforward, pm->ps->velocity );
+		}
+	}
+
 	switch( pm->ps->weapon ) {
 	default:
 	case WP_GAUNTLET:
 		addTime = 400;
+		break;
+	case WP_SWORD:
+		addTime = 185;		// fast cadence for a frantic hack-and-slash flurry
 		break;
 	case WP_LIGHTNING:
 		addTime = 50;

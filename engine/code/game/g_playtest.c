@@ -17,6 +17,7 @@ This file is part of Quake III Arena source code (GPL). See g_main.c.
 #include "g_local.h"
 
 #define PT_RUNSPEED		320.0f		// g_speed: the "in flow" threshold
+#define PT_STUCK_UPS	40.0f		// below this horizontal u/s = "stuck" (dt-normalised)
 
 typedef struct {
 	qboolean	active;
@@ -63,11 +64,12 @@ static void PT_Write( const char *line ) {
 }
 
 static float PT_VoidZ( void ) {
-	if ( !level.voidActive || level.time < level.voidStartTime ) {
+	// real-ms clock, matching G_RunVoid (voidStartTime is a real-time stamp)
+	if ( !level.voidActive || trap_Milliseconds() < level.voidStartTime ) {
 		return -1.0e9f;		// no void / not started yet
 	}
 	return level.voidBase
-		+ level.voidRise * ( level.time - level.voidStartTime ) / 1000.0f;
+		+ level.voidRise * ( trap_Milliseconds() - level.voidStartTime ) / 1000.0f;
 }
 
 static void PT_Init( int cn, gentity_t *ent ) {
@@ -180,10 +182,20 @@ void G_PlaytestSample( void ) {
 			}
 		}
 
+		// "stuck" = barely moving this frame. The threshold must scale with the
+		// frame's game-ms (dms), or it silently changes meaning under g_timeBind
+		// slow-mo: the server steps game-frames at sv_fps REAL rate but each one
+		// advances only (1000/sv_fps)*timescale game-ms, so per-frame displacement
+		// shrinks with timescale. A fixed `move < 2.0` then flags moving bots as
+		// stuck (at ts 0.3 it became "speed < 133" instead of "< 40"), which made
+		// slow-mo look like a bot glitch when bot game-logic is actually timescale-
+		// invariant. Normalising by dms keeps it a true "< ~40 u/s" test at any
+		// timescale and is byte-identical at ts 1.0 (dms 50 -> 2.0u), so the dojo
+		// baselines are unchanged.
 		VectorSubtract( ent->r.currentOrigin, p->lastOrigin, d );
 		d[2] = 0;
 		move = VectorLength( d );
-		if ( move < 2.0f ) {
+		if ( dms > 0 && move < PT_STUCK_UPS * dms / 1000.0f ) {
 			p->stuckMs += dms;
 		}
 		VectorCopy( ent->r.currentOrigin, p->lastOrigin );
@@ -255,7 +267,7 @@ void G_PlaytestDeath( gentity_t *ent, const char *mod ) {
 	Com_sprintf( extra, sizeof( extra ),
 		",\"mod\":\"%s\",\"deathz\":%i,\"voiddist\":%i,\"racems\":%i,\"deathx\":%i,\"deathy\":%i",
 		mod, (int)ent->r.currentOrigin[2], (int)vdist,
-		ent->client->raceStartTime ? ( level.time - ent->client->raceStartTime ) : -1,
+		ent->client->raceStartTime ? ( trap_Milliseconds() - ent->client->raceStartTime ) : -1,
 		(int)ent->r.currentOrigin[0], (int)ent->r.currentOrigin[1] );
 	PT_Summary( cn, "death", extra );
 	pt[cn].active = qfalse;

@@ -1186,6 +1186,10 @@ void ClientSpawn(gentity_t *ent) {
 	client->ps.ammo[WP_GAUNTLET] = -1;
 	client->ps.ammo[WP_GRAPPLING_HOOK] = -1;
 
+	// STRAFE 64: the blade is baseline melee — always carried, infinite swings
+	client->ps.stats[STAT_WEAPONS] |= ( 1 << WP_SWORD );
+	client->ps.ammo[WP_SWORD] = -1;
+
 	// movement mod: everyone spawns with the grappling hook
 	if ( g_grapple.integer ) {
 		client->ps.stats[STAT_WEAPONS] |= ( 1 << WP_GRAPPLING_HOOK );

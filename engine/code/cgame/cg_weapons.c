@@ -678,6 +678,18 @@ void CG_RegisterWeapon( int weaponNum ) {
 		weaponInfo->flashSound[0] = trap_S_RegisterSound( "sound/weapons/melee/fstatck.wav", qfalse );
 		break;
 
+	case WP_SWORD:		// Cleaver — steel white swing (CC0 katana + RPG-pack swings)
+		MAKERGB( weaponInfo->flashDlightColor, 0.9f, 0.95f, 1.0f );
+		weaponInfo->readySound = trap_S_RegisterSound( "sound/weapons/sword/unsheathe.wav", qfalse );
+		// swing whooshes — CG_FireWeapon picks one per swing by combo step
+		weaponInfo->flashSound[0] = trap_S_RegisterSound( "sound/weapons/sword/swing1.wav", qfalse );
+		weaponInfo->flashSound[1] = trap_S_RegisterSound( "sound/weapons/sword/swing2.wav", qfalse );
+		weaponInfo->flashSound[2] = trap_S_RegisterSound( "sound/weapons/sword/swing3.wav", qfalse );
+		cgs.media.swordHeavySound = trap_S_RegisterSound( "sound/weapons/sword/heavy.wav", qfalse );
+		cgs.media.swordHitSound = trap_S_RegisterSound( "sound/weapons/sword/hit1.wav", qfalse );
+		cgs.media.swordSlashShader = trap_R_RegisterShader( "strafe64/sword_slash" );
+		break;
+
 	case WP_LIGHTNING:	// Arc — electric blue
 		MAKERGB( weaponInfo->flashDlightColor, 0.3f, 0.6f, 1.0f );
 		weaponInfo->readySound = trap_S_RegisterSound( "sound/weapons/melee/fsthum.wav", qfalse );
@@ -1190,6 +1202,8 @@ static void CG_AddWeaponWithPowerups( refEntity_t *gun, int powerups ) {
 }
 
 
+static void CG_SwordSlashTrail( const refEntity_t *gun );	// STRAFE 64
+
 /*
 =============
 CG_AddPlayerWeapon
@@ -1270,6 +1284,13 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	gun.backlerp = parent->backlerp;
 
 	CG_AddWeaponWithPowerups( &gun, cent->currentState.powerups );
+
+	// STRAFE 64: blade-edge slash trail, anchored to the REAL first-person
+	// weapon transform (gun.origin/axis after the tag_weapon attach) so the
+	// arc rides exactly along the blade. View weapon only (ps valid).
+	if ( ps && weaponNum == WP_SWORD ) {
+		CG_SwordSlashTrail( &gun );
+	}
 
 	// add the spinning barrel
 	if ( weapon->barrelModel ) {
@@ -1357,6 +1378,116 @@ CG_AddViewWeapon
 Add the weapon, and flash for the player's view
 ==============
 */
+#define	SWORD_SWING_MS	210		// first-person swing arc duration (≈ the 185ms fire cadence)
+#define	LERPF(a,b,f)	( (a) + ( (b) - (a) ) * (f) )
+
+/*
+==============
+CG_SwordSwingFactor
+
+Expressive swing envelope for sword step `dt` ms into the swing: a short
+anticipation (the blade rears back, f goes slightly negative), then a fast
+strike with a touch of easeOutBack overshoot (f > 1), settling to f = 1.
+Shared so the blade and the slash trail read the same motion.
+==============
+*/
+static float CG_SwordSwingFactor( float p ) {
+	float	r, c1, eb;
+
+	if ( p < 0.18f ) {
+		return -0.16f * sin( ( p / 0.18f ) * ( M_PI * 0.5 ) );	// brief wind up
+	}
+	r = ( p - 0.18f ) / 0.82f;									// 0..1 strike + settle
+	c1 = 2.0f;													// overshoot strength
+	eb = 1.0 + ( c1 + 1.0 ) * pow( r - 1.0, 3 ) + c1 * pow( r - 1.0, 2 );
+	return -0.16f + ( 1.0f + 0.16f ) * eb;						// -0.16 -> ~1.1 -> 1
+}
+
+/*
+==============
+CG_SwordSlashVert / CG_SwordSlashTrail
+
+A blade-edge motion trail: each frame we sample the blade's guard and tip in
+world space FROM THE ACTUAL VIEW-WEAPON TRANSFORM (so it tracks exactly where
+the model is during the swing), push them into a ring, and ribbon between
+consecutive samples. Bright at the newest edge, fading down the tail. Local
+player only; the ribbon is degenerate (invisible) when the blade isn't moving.
+==============
+*/
+#define	SWORD_TRAIL_PTS	12
+
+// blade-edge endpoints in model space: just past the guard, and the tip.
+// (model: grip at origin, blade down +X, cutting edge toward +Z)
+static const vec3_t cg_swordEdgeBase = { 5.0f, 0.0f, 2.0f };
+static const vec3_t cg_swordEdgeTip  = { 24.0f, 0.0f, 3.0f };
+
+static void CG_SwordSlashVert( polyVert_t *v, const vec3_t xyz, float intensity ) {
+	if ( intensity < 0 ) intensity = 0;
+	if ( intensity > 1 ) intensity = 1;
+	VectorCopy( xyz, v->xyz );
+	v->st[0] = 0; v->st[1] = 0;
+	v->modulate[0] = (byte)( 200 * intensity );		// cyan-white energy
+	v->modulate[1] = (byte)( 230 * intensity );
+	v->modulate[2] = (byte)( 255 * intensity );
+	v->modulate[3] = 255;
+}
+
+static void CG_SwordSlashTrail( const refEntity_t *gun ) {
+	vec3_t	base, tip;
+	int		i, n;
+
+	if ( !cgs.media.swordSlashShader ) {
+		return;
+	}
+
+	// only trail around an actual swing — idle bob shouldn't streak
+	if ( cg.time - cg.swordSwingTime > SWORD_SWING_MS + 60 ) {
+		cg.swordTrailNum = 0;
+		return;
+	}
+
+	// blade edge in world space, straight from the rendered weapon transform
+	VectorCopy( gun->origin, base );
+	VectorMA( base, cg_swordEdgeBase[0], gun->axis[0], base );
+	VectorMA( base, cg_swordEdgeBase[1], gun->axis[1], base );
+	VectorMA( base, cg_swordEdgeBase[2], gun->axis[2], base );
+	VectorCopy( gun->origin, tip );
+	VectorMA( tip, cg_swordEdgeTip[0], gun->axis[0], tip );
+	VectorMA( tip, cg_swordEdgeTip[1], gun->axis[1], tip );
+	VectorMA( tip, cg_swordEdgeTip[2], gun->axis[2], tip );
+
+	// record one sample per frame (newest at index 0)
+	if ( cg.time != cg.swordTrailLastTime ) {
+		for ( i = SWORD_TRAIL_PTS - 1 ; i > 0 ; i-- ) {
+			VectorCopy( cg.swordTipPath[i - 1], cg.swordTipPath[i] );
+			VectorCopy( cg.swordBasePath[i - 1], cg.swordBasePath[i] );
+		}
+		VectorCopy( tip, cg.swordTipPath[0] );
+		VectorCopy( base, cg.swordBasePath[0] );
+		cg.swordTrailLastTime = cg.time;
+		if ( cg.swordTrailNum < SWORD_TRAIL_PTS ) {
+			cg.swordTrailNum++;
+		}
+	}
+
+	// ribbon between consecutive samples, fading toward the tail
+	n = cg.swordTrailNum;
+	for ( i = 0 ; i < n - 1 ; i++ ) {
+		polyVert_t	v[4];
+		float		f0 = 1.0f - ( i / (float)SWORD_TRAIL_PTS );
+		float		f1 = 1.0f - ( ( i + 1 ) / (float)SWORD_TRAIL_PTS );
+
+		// gentle fade so the streak stays readable through a fast swing
+		f0 = f0 * ( 0.4f + 0.6f * f0 );
+		f1 = f1 * ( 0.4f + 0.6f * f1 );
+		CG_SwordSlashVert( &v[0], cg.swordBasePath[i],     f0 );
+		CG_SwordSlashVert( &v[1], cg.swordTipPath[i],      f0 );
+		CG_SwordSlashVert( &v[2], cg.swordTipPath[i + 1],  f1 );
+		CG_SwordSlashVert( &v[3], cg.swordBasePath[i + 1], f1 );
+		trap_R_AddPolyToScene( cgs.media.swordSlashShader, 4, v );
+	}
+}
+
 void CG_AddViewWeapon( playerState_t *ps ) {
 	refEntity_t	hand;
 	centity_t	*cent;
@@ -1413,6 +1544,36 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 
 	// set up gun position
 	CG_CalculateWeaponPosition( hand.origin, angles );
+
+	// STRAFE 64: procedural sword swing — anticipation, a snapping strike with
+	// overshoot, then settle, plus the blade travelling through space (not just
+	// rotating). Cross-slashes alternate side; every 3rd swing is an overhead
+	// finisher. A slash-arc ribbon is swept along the same motion.
+	if ( ps->weapon == WP_SWORD ) {
+		int		dt = cg.time - cg.swordSwingTime;
+
+		if ( dt >= 0 && dt < SWORD_SWING_MS ) {
+			float	p = dt / (float)SWORD_SWING_MS;
+			float	f = CG_SwordSwingFactor( p );
+			int		step = cg.swordSwingStep % 3;
+			float	dir = ( cg.swordSwingStep & 1 ) ? -1.0f : 1.0f;
+
+			if ( step == 2 ) {
+				// overhead finisher: big vertical chop + the hilt drives forward
+				angles[PITCH] += LERPF( -44.0f, 40.0f, f );
+				angles[ROLL]  += LERPF(  8.0f * dir, -4.0f * dir, f );
+				VectorMA( hand.origin, LERPF( -3.0f, 5.0f, f ), cg.refdef.viewaxis[0], hand.origin );
+				VectorMA( hand.origin, LERPF(  3.5f, -2.5f, f ), cg.refdef.viewaxis[2], hand.origin );
+			} else {
+				// diagonal cross-slash: rear back to one side, sweep across
+				angles[YAW]   += LERPF(  46.0f * dir, -42.0f * dir, f );
+				angles[PITCH] += LERPF( -24.0f, 30.0f, f );
+				angles[ROLL]  += LERPF( -28.0f * dir, 22.0f * dir, f );
+				VectorMA( hand.origin, LERPF( -3.0f, 5.0f, f ), cg.refdef.viewaxis[0], hand.origin );
+				VectorMA( hand.origin, LERPF(  4.0f * dir, -3.5f * dir, f ), cg.refdef.viewaxis[1], hand.origin );
+			}
+		}
+	}
 
 	VectorMA( hand.origin, cg_gun_x.value, cg.refdef.viewaxis[0], hand.origin );
 	VectorMA( hand.origin, cg_gun_y.value, cg.refdef.viewaxis[1], hand.origin );
@@ -1706,6 +1867,36 @@ void CG_FireWeapon( centity_t *cent ) {
 	// append the flash to the weapon model
 	cent->muzzleFlashTime = cg.time;
 
+	// STRAFE 64: sword swing — drive the first-person arc + combo, and pick the
+	// swing whoosh by combo step (the 3rd swing is a heavier finisher cut).
+	if ( ent->weapon == WP_SWORD ) {
+		qboolean	local = ( ent->number == cg.snap->ps.clientNum );
+		sfxHandle_t	sfx;
+
+		if ( local ) {
+			if ( cg.time - cg.swordSwingTime > SWORD_COMBO_WINDOW ) {
+				cg.swordSwingStep = 0;
+			} else {
+				cg.swordSwingStep++;
+			}
+			cg.swordSwingTime = cg.time;
+		}
+
+		if ( local && ( cg.swordSwingStep % 3 ) == 2 && cgs.media.swordHeavySound ) {
+			sfx = cgs.media.swordHeavySound;		// finisher cut
+		} else {
+			sfx = weap->flashSound[ rand() % 3 ];	// light cross-slash
+		}
+		if ( sfx ) {
+			trap_S_StartSound( NULL, ent->number, CHAN_WEAPON, sfx );
+		}
+		// the sword handles its own swing sound; skip the generic flashSound pick
+		if ( weap->ejectBrassFunc && cg_brassTime.integer > 0 ) {
+			weap->ejectBrassFunc( cent );
+		}
+		return;
+	}
+
 	// lightning gun only does this this on initial press
 	if ( ent->weapon == WP_LIGHTNING ) {
 		if ( cent->pe.lightningFiring ) {
@@ -1969,6 +2160,19 @@ void CG_MissileHitPlayer( int weapon, vec3_t origin, vec3_t dir, int entityNum )
 #endif
 		CG_MissileHitWall( weapon, 0, origin, dir, IMPACTSOUND_FLESH );
 		break;
+	case WP_SWORD: {
+		// STRAFE 64: a slash sprays — extra blood gouts around the wound
+		vec3_t	spray;
+		int		i;
+		for ( i = 0 ; i < 2 ; i++ ) {
+			VectorCopy( origin, spray );
+			spray[0] += crandom() * 6;
+			spray[1] += crandom() * 6;
+			spray[2] += crandom() * 8;
+			CG_Bleed( spray, entityNum );
+		}
+		break;
+	}
 	default:
 		break;
 	}
