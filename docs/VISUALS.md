@@ -7,8 +7,7 @@ MAGI defense screens (amber-on-black, alert-red under pressure) with PSX
 
 ## NERV/MAGI HUD
 
-All in [cg_draw.c](code/cgame/cg_draw.c), mirrored into the ioquake3 build
-tree. A single amber→red ops palette (`nerv_amber` / `nerv_orange` /
+All in [cg_draw.c](../engine/code/cgame/cg_draw.c). A single amber→red ops palette (`nerv_amber` / `nerv_orange` /
 `nerv_red` / `nerv_green` / `nerv_dim`) ties the readouts together, and
 `CG_NervPanel()` draws the dark translucent backing plate with L-shaped
 corner brackets — the targeting-reticle frame of the Eva interface.
@@ -21,14 +20,14 @@ corner brackets — the targeting-reticle frame of the Eva interface.
   red like a NERV klaxon as the kill plane closes in.
 
 The vertex-color section palettes and the near-black PSX sky live in
-[strafegen.py](strafegen/strafegen.py) (`SHADER_SCRIPT`); the rising-void
+[strafegen.py](../tools/strafegen/strafegen.py) (`SHADER_SCRIPT`); the rising-void
 plane is already NERV-red.
 
 ## PSX render path
 
 Phase 1 is a cvar preset; Phase 2 adds a real renderer hook.
 
-- **`strafegen/psx.cfg`** — point-sampled textures (`r_textureMode
+- **[`tools/strafegen/psx.cfg`](../tools/strafegen/psx.cfg)** — point-sampled textures (`r_textureMode
   GL_NEAREST`), 16-bit colour banding, no AA, vertex lighting, and it
   selects the fixed-function GL1 renderer with `r_psx 1`.
 - **`r_psx`** (GL1 renderer, ioquake3) — enables affine
@@ -36,8 +35,8 @@ Phase 1 is a cvar preset; Phase 2 adds a real renderer hook.
   swim/warp. Gated so the renderer is otherwise untouched. Added via a
   `GL_PERSPECTIVE_CORRECTION_HINT` call in `RB_StageIteratorGeneric`
   (`qglHint` was added to the core QGL proc list).
-- **Launch:** `./run-openarena.sh -p` (prefix any client mode) stages and
-  execs the preset. e.g. `./run-openarena.sh -p -b 4 strafe64_1337`.
+- **Launch:** `./scripts/run.sh -p` (prefix any client mode) stages and
+  execs the preset. e.g. `./scripts/run.sh -p -b 4 strafe64_1337`.
 
 Deeper still (not yet done): screen-space vertex jitter and a low-res
 framebuffer upscale for chunky pixels — those want GL2 GLSL / FBO work and
@@ -48,7 +47,7 @@ visual iteration.
 Native `.it / .xm / .s3m / .mod / .mptm` playback via **libopenmpt**, wired
 into ioquake3's codec layer alongside ogg/opus:
 
-- [code/client/snd_codec_mod.c](../ioquake3/code/client/snd_codec_mod.c) —
+- [snd_codec_mod.c](../engine/code/client/snd_codec_mod.c) —
   reads the module, hands it to libopenmpt, streams interleaved stereo at
   44.1 kHz, loops forever at the song's own loop points. The engine
   resamples to the mixer rate, so any module rate works.
@@ -78,5 +77,5 @@ before any public release.
 ```
 music music/your_jungle_tune.it
 ```
-or set a map's worldspawn `music` key to one. `strafegen/make_test_mod.py`
+or set a map's worldspawn `music` key to one. `tools/strafegen/make_test_mod.py`
 generates a tiny valid test module (`baseoa/music/test_tracker.mod`).

@@ -5,9 +5,9 @@ shared player movement code so client prediction and server simulation stay
 identical. Vanilla strafe jumping is untouched — everything below stacks on
 top of it.
 
-All changes live in [bg_pmove.c](code/game/bg_pmove.c) (tunables at the top of
-the file), with externs in [bg_local.h](code/game/bg_local.h) and four new
-`stats[]` slots in [bg_public.h](code/game/bg_public.h).
+All changes live in [bg_pmove.c](../engine/code/game/bg_pmove.c) (tunables at the top of
+the file), with externs in [bg_local.h](../engine/code/game/bg_local.h) and four new
+`stats[]` slots in [bg_public.h](../engine/code/game/bg_public.h).
 
 ## The kit
 
@@ -39,7 +39,7 @@ ramps, and uphill hops.
 **Crouch slide.** Ducking above 250 ups cuts ground friction to 15%. Jumping
 out of a slide kicks horizontal speed ×1.08. Duck no longer doubles fall
 damage, since landing into a slide is the intended play. A wind-rush hiss
-loops while you slide ([g_active.c](code/game/g_active.c), `G_SetClientSound`)
+loops while you slide ([g_active.c](../engine/code/game/g_active.c), `G_SetClientSound`)
 — grounded-gated, so it sustains on real slides and stays silent through
 airborne bhops.
 
@@ -50,9 +50,9 @@ ground refunds them.
 
 ## Combat layer (speed = damage)
 
-Server-side game code ([g_combat.c](code/game/g_combat.c),
-[g_active.c](code/game/g_active.c)), all toggleable via cvars registered in
-[g_main.c](code/game/g_main.c):
+Server-side game code ([g_combat.c](../engine/code/game/g_combat.c),
+[g_active.c](../engine/code/game/g_active.c)), all toggleable via cvars registered in
+[g_main.c](../engine/code/game/g_main.c):
 
 | Cvar | Default | Effect |
 |---|---|---|
@@ -81,7 +81,7 @@ Speed feedback escalates too: crossing each 100 ups above 500 for the first
 time **that life** plays an announcer reward (impressive → excellent →
 holy shit at 1000+) with a centerprint, and the bhop pop ladder rises in
 tone at streaks 5 and 9. The milestone tier and flow latch reset on every
-respawn ([cg_playerstate.c](code/cgame/cg_playerstate.c) `CG_Respawn`), so
+respawn ([cg_playerstate.c](../engine/code/cgame/cg_playerstate.c) `CG_Respawn`), so
 each run celebrates its own peak — fitting the per-run speedrun framing.
 
 **Speed ladder (canonical thresholds).** The systems share one ladder so
@@ -101,17 +101,17 @@ FFA, so verify the gate doesn't disable them in normal play.
 
 ## Feel layer (the camera is kinetic)
 
-- **Landing dip** ([cg_playerstate.c](code/cgame/cg_playerstate.c)): every
+- **Landing dip** ([cg_playerstate.c](../engine/code/cgame/cg_playerstate.c)): every
   ground contact feeds the fall-deflect view machinery a subtle impact-scaled
   dip (~1–3.6 u), so bhop landings have a weighted footfall in sync with the
   streak pop. Capped under the hard-fall range and set before the event pass,
   so a real `EV_FALL` still overrides with its bigger dip.
-- **Air-strafe lean** ([cg_view.c](code/cgame/cg_view.c)): carving through
+- **Air-strafe lean** ([cg_view.c](../engine/code/cgame/cg_view.c)): carving through
   the air banks the camera into the turn, proportional to lateral speed and
   capped at 8°, eased so takeoff and landing roll smoothly to and from level.
   Only airborne — ground movement stays calm. Sits on top of the wallrun
   lean and the subtle always-on `cg_runroll`, all sharing the same direction.
-- **Flow-surge FOV punch** ([cg_view.c](code/cgame/cg_view.c)): a quick +6°
+- **Flow-surge FOV punch** ([cg_view.c](../engine/code/cgame/cg_view.c)): a quick +6°
   kick decaying over 300 ms at the instant you break into flow (≥500 ups),
   so the surge sound lands with a physical snap-wider on top of the
   continuous speed widen. The flow-entry moment now fires across three
@@ -119,56 +119,56 @@ FFA, so verify the gate doesn't disable them in normal play.
 
 ## Feedback layer
 
-- **Speedometer HUD** ([cg_draw.c](code/cgame/cg_draw.c)): current ups (`VEL`),
+- **Speedometer HUD** ([cg_draw.c](../engine/code/cgame/cg_draw.c)): current ups (`VEL`),
   peak this run over the map record to beat (`PK 612/840`), the live damage
   multiplier (`SYNC`, mirrors the server curve), and hop streak as current>peak
   (`HOP 3>9`), centered under the crosshair in the NERV amber→red palette. The
   record is shown only once set, so the target is visible during the run.
   Per-run peak and streak reset each life with the milestones. Toggle with
   `cg_drawSpeed`.
-- **Per-map speed record** ([cg_playerstate.c](code/cgame/cg_playerstate.c)):
+- **Per-map speed record** ([cg_playerstate.c](../engine/code/cgame/cg_playerstate.c)):
   dying ends the run; if this life's peak speed beat *this map's* all-time
   best, a "NEW RECORD  840 UPS" centerprint + announcer fires and the record
   saves to a per-map archived cvar (`cgr_<map>`, registered in
-  [cg_main.c](code/cgame/cg_main.c) at map load) — so a daily-speedrun PB
+  [cg_main.c](../engine/code/cgame/cg_main.c) at map load) — so a daily-speedrun PB
   survives quitting and each map keeps its own (a fast open map can't make a
   tight technical map's record unbeatable). Only on a genuine record above
   flow speed, so it self-limits to rare real PBs and reframes death as a
   run-end scorecard.
-- **Dynamic FOV** ([cg_view.c](code/cgame/cg_view.c)): up to +15° as speed
+- **Dynamic FOV** ([cg_view.c](../engine/code/cgame/cg_view.c)): up to +15° as speed
   builds past run speed. Toggle with `cg_speedFov`.
-- **Speed-tinted hit marker** ([cg_draw.c](code/cgame/cg_draw.c)): a brief
+- **Speed-tinted hit marker** ([cg_draw.c](../engine/code/cgame/cg_draw.c)): a brief
   "+"-bracket confirmation when you damage someone — baseq3 never had a hit
   marker. Amber normally, alert-red when you connect at ≥640 ups (the 1.5×
   lethal multiplier), so speed = damage is legible at the point of aim.
-- **Directional damage indicator** ([cg_draw.c](code/cgame/cg_draw.c)): a
+- **Directional damage indicator** ([cg_draw.c](../engine/code/cgame/cg_draw.c)): a
   red arc on a ring around the crosshair pointing toward whoever just hit
   you, fading over 1 s — baseq3 only flashed the whole screen red. Knowing
   where to turn is knowing where to keep moving. Reuses the networked
   `ps->damageYaw`, so no protocol change.
-- **Speed vignette** ([cg_draw.c](code/cgame/cg_draw.c)): amber side-glows
+- **Speed vignette** ([cg_draw.c](../engine/code/cgame/cg_draw.c)): amber side-glows
   bloom in from the screen edges as the speed-damage multiplier climbs,
   deepening to alert-red at the 2× cap — the ambient, peripheral counterpart
   to the speedometer number. Shares the NERV palette and the `cg_drawSpeed`
   toggle.
-- **Bhop streak pop** ([cg_playerstate.c](code/cgame/cg_playerstate.c)):
+- **Bhop streak pop** ([cg_playerstate.c](../engine/code/cgame/cg_playerstate.c)):
   a tick sound on every chained hop from streak 2 up — the pulse of the run.
-- **Frag-heal flash** ([cg_draw.c](code/cgame/cg_draw.c)): a brief amber
+- **Frag-heal flash** ([cg_draw.c](../engine/code/cgame/cg_draw.c)): a brief amber
   bloom over the scene when a kill heals you, so the `g_killReward` health/
   armor gain reads as a surge of life rather than a silent stat bump.
   Detected client-side from a `PERS_SCORE` increase — no protocol change.
-- **Flow-entry surge** ([cg_playerstate.c](code/cgame/cg_playerstate.c)): a
+- **Flow-entry surge** ([cg_playerstate.c](../engine/code/cgame/cg_playerstate.c)): a
   warp-whoosh the moment you cross into flow speed (≥500 ups) — the single
   threshold where regen, the vignette, and the first milestone all switch on.
   Hysteresis (latch at 500, release below 440) stops it retriggering while
   hovering at the edge.
-- **Speed = accuracy** ([g_weapon.c](code/game/g_weapon.c)): machinegun
+- **Speed = accuracy** ([g_weapon.c](../engine/code/game/g_weapon.c)): machinegun
   spread tightens proportionally above run speed (bullets only — the
   shotgun pattern is recomputed client-side from a seed and would desync).
-- **Midair rockets** ([g_missile.c](code/game/g_missile.c)): direct rocket
+- **Midair rockets** ([g_missile.c](../engine/code/game/g_missile.c)): direct rocket
   hits on airborne players deal 1.5× and flash "MIDAIR!" to the attacker.
 - **More gibs**: overkill threshold raised from -40 to -15 health
-  (`GIB_HEALTH` in [bg_public.h](code/game/bg_public.h)).
+  (`GIB_HEALTH` in [bg_public.h](../engine/code/game/bg_public.h)).
 
 ## The loop
 
@@ -183,15 +183,15 @@ strafe jump → land ducked (slide, no friction) → slide jump (×1.08)
 The mod is now a daily speedrun game, not just a moveset. Four systems,
 all in the same game/cgame pair:
 
-**Race timer** ([g_trigger.c](code/game/g_trigger.c)): strafegen places
+**Race timer** ([g_trigger.c](../engine/code/game/g_trigger.c)): strafegen places
 `trigger_race_start` / `trigger_race_finish` volumes. Defrag-style
 timing — the start pad restamps on every touch, so the clock starts the
 moment you leave it. Finish reports the time (centerprint + `NEW BEST`),
 best-per-session survives death. The stamp is mirrored to the client in
 `STAT_RACE_START` (deciseconds) for the live HUD clock in
-[cg_draw.c](code/cgame/cg_draw.c).
+[cg_draw.c](../engine/code/cgame/cg_draw.c).
 
-**Rising void** ([g_main.c](code/game/g_main.c) `G_RunVoid`): a kill
+**Rising void** ([g_main.c](../engine/code/game/g_main.c) `G_RunVoid`): a kill
 plane climbs from below the course on a pace schedule read from
 worldspawn keys (`voidbase` / `voidrise` / `voiddelay`, written by
 strafegen). Fall behind the pace and the world erases you
@@ -201,7 +201,7 @@ it for practice. The client gets the schedule once via the
 drawn as a translucent animated plane (`strafe64/void` shader) plus a
 flashing `VOID <distance>` HUD warning.
 
-**Ghosts** ([cg_view.c](code/cgame/cg_view.c)): pure cgame, no
+**Ghosts** ([cg_view.c](../engine/code/cgame/cg_view.c)): pure cgame, no
 protocol. Your run is sampled at 20 Hz while the race stat is live;
 beating your best saves `ghosts/<map>.gho` and the next run replays it
 as a translucent player model pacing you. Dying discards the run.
@@ -226,36 +226,36 @@ including MISSIONPACK. The rising void uses one new configstring slot
 ## Tuning
 
 Every gameplay/feedback cvar is gathered, annotated, and set to its canonical
-value in one place: [strafe64.cfg](strafegen/strafe64.cfg). The launcher stages
+value in one place: [strafe64.cfg](../tools/strafegen/strafe64.cfg). The launcher stages
 it into `baseoa`, so `/exec strafe64` in-game resets the full ruleset after
 experimenting. It's the single knob-board for the combat, survival, movement,
 and HUD cvars (the physics constants themselves are not cvars — see below).
 
 The physics constants are in the "movement mod parameters" block at the top of
-[bg_pmove.c:48](code/game/bg_pmove.c:48). They are tuned together — the bhop
+[bg_pmove.c:48](../engine/code/game/bg_pmove.c:48). They are tuned together — the bhop
 window, boost curve, and double-jump window define the rhythm; touching one
 cascades.
 
-Rebuild both `game` and `cgame` (qagame + cgame QVMs or DLLs) after changing
-anything — the file is compiled into both, and they must match or prediction
+Rebuild after changing anything (`./scripts/build.sh`) — the file compiles
+into both the `qagame` and `cgame` dylibs, and they must match or prediction
 will stutter.
 
 ## Running on macOS (Apple Silicon)
 
-The 2005 tree doesn't build on modern macOS, so the playable port lives in
-two sibling directories:
+This tree is self-contained: the ioquake3 engine and this mod build together,
+and the OpenArena 0.8.8 free assets are bundled under `assets/openarena/`
+(see [STATE.md](STATE.md) for the full layout).
 
-- `/Users/gustav/ioquake3` — ioquake3 engine with this movement mod applied
-  to its `bg_*` files; built via `cmake --build build`
-- `/Users/gustav/openarena-0.8.8` — OpenArena 0.8.8, providing free GPL
-  game assets; the modded `qagame.dylib`/`cgame.dylib` are copied into its
-  `baseoa/` directory
+```sh
+./scripts/build.sh      # cmake + ninja, arm64 Release -> engine/build/Release
+./scripts/run.sh        # -f fullscreen, -b [n] [map] bots, -d <map> dedicated
+```
 
-Launch with [run-openarena.sh](run-openarena.sh) (`-f` fullscreen,
-`-b [n] [map]` bot match, `-d <map>` dedicated server). The script forces `vm_game 0`, `vm_cgame 0`, `sv_pure 0`
-so the engine loads the modded native dylibs instead of OpenArena's stock
-QVMs, while OA's own UI QVM keeps serving the menus.
+[run.sh](../scripts/run.sh) deploys the modded `qagame`/`cgame`/`ui` dylibs
+into `baseoa/` (re-signed for Apple Silicon dlopen — never deploy one alone,
+they share networked headers) and forces `vm_game 0`, `vm_cgame 0`,
+`vm_ui 0`, `sv_pure 0` so the engine loads the native dylibs (including the
+STRAFE 64 menu) instead of OpenArena's stock QVMs.
 
-After tuning movement constants: re-apply the diff to the ioq3 tree (or edit
-it directly), rebuild, and re-copy the dylibs from
-`ioquake3/build/Release/baseq3/` into `openarena-0.8.8/baseoa/`.
+After tuning movement constants just rerun `./scripts/build.sh`; `run.sh`
+re-deploys the rebuilt dylibs on the next launch.
