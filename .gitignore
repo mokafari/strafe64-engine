@@ -1,0 +1,7 @@
+# build output (rebuildable)
+engine/build/
+# generated courses / tool artifacts (regenerable)
+tools/strafegen/generated/
+tools/strafegen/__pycache__/
+*.log
+.DS_Store

@@ -1,0 +1,50 @@
+{
+  "speed": {
+    "maxspd": [
+      400,
+      null
+    ],
+    "flowpct": [
+      15,
+      null
+    ]
+  },
+  "flow": {
+    "flowpct": [
+      30,
+      null
+    ],
+    "maxbhop": [
+      3,
+      null
+    ],
+    "stuckms": [
+      null,
+      2000
+    ]
+  },
+  "ztrick": {
+    "flowpct": [
+      40,
+      null
+    ],
+    "maxspd": [
+      350,
+      null
+    ],
+    "stuckms": [
+      null,
+      1500
+    ]
+  },
+  "arena": {
+    "frags_per_min": [
+      0.5,
+      null
+    ],
+    "midair_pct": [
+      15,
+      null
+    ]
+  }
+}
