@@ -90,6 +90,47 @@ surf but don't reliably reach the finish) — that's the remaining refinement.
 Surf *feel* is still human-validated; but the dojo could now include a surf
 archetype.
 
+## ★ Ghost & slow-mo polish (2026-06-15, Gustav — human request)
+Direct asks from the live playtest of the new `~/strafe64-engine` tree. All
+human-validated (`\map surf_64` / any race map, then `g_timeBind 1`).
+
+- [ ] **Ghost opacity / look.** The ghost is the local player model drawn with
+      `cgs.media.invisShader` ("powerups/invisibility") on all three parts —
+      `cgame/cg_view.c:993,1001,1009` (`CG_AddGhostModel`). That's Q3's
+      refractive invis warp: no alpha control and reads as distortion, not a
+      clean racing ghost. Fix: register a dedicated translucent ghost shader
+      (amber/cyan tint per the NERV/MAGI + PSX identity, a `blendFunc` or
+      additive stage) and/or set `legs/torso/head.renderfx |= RF_FORCE_ENT_ALPHA`
+      with `shaderRGBA[3]` so opacity is a tunable cvar (e.g. `cg_ghostAlpha`).
+      Goal: visibly a ghost, never confusable with a live player, readable at
+      speed under the point-sampled PSX preset.
+- [ ] **Ghost effects + tracers.** Add a motion trail so the ghost reads as
+      speed. `CG_RaceFrame` (`cg_view.c:1142`) already lerps between recorded
+      samples (`ghostBest.origins[idx..idx+1]`) — draw a fading poly/beam trail
+      between successive samples (railtrail-style) tinted to the ghost shader,
+      length scaled by ghost speed. Optionally a faint speedline/afterimage on
+      the local player too. NOTE: coordinate with the concurrent flow/glitch/
+      speedline layer that owns parts of `cg_draw.c`/`cg_view.c`
+      (see [[strafe64-flow-combo]]) to avoid clobbering it.
+- [ ] **Ghosts work under slow-mo.** Record + replay are indexed by `cg.time`
+      (`cg_view.c:1106` finishMs, `:1126` `t`, `:1143` `idx`), which is the
+      timescale-SCALED server clock. With `g_timeBind 1` the ghost dilates with
+      the player AND recorded finish times become timescale-dependent — so a
+      run done in slow-mo logs a bogus (longer) time and the replay drifts out
+      of sync. Fix: drive ghost record/replay **and the race clock** off a
+      REAL-time clock decoupled from `timescale`, consistent with the
+      "void stays real" rule. Need an unscaled ms source in cgame (accumulate
+      real frametime, or a real-time trap) for `ghostRaceStartMs`/`t`.
+- [ ] **Bots work under slow-mo.** `G_UpdateTimeBind` (`g_active.c:839`) sets
+      the **global** `timescale`, so every bot's server frame is scaled — bots
+      are exempted from *driving* the clock (`SVF_BOT` early return, `:846`) but
+      still think/aim/navigate slowed, which breaks them when a human dips into
+      slow-mo. The file's own KNOWN LIMITATION note (`:832-836`) already flags
+      the fix: move off the global cvar to **per-entity time** (advance bots —
+      and the void — by real time / `1/timescale`) so only the human dilates.
+      This is the one refactor that fixes bots, the void, and the ghost clock
+      together. Bigger change — scope it before P0 nav work resumes.
+
 ## P0 — unblock the dojo substrate (bots must actually play)
 - [~] **bot-nav on movement courses** — two levers tried:
       • GOAL AWARENESS via item-bait (`_dojo_items`) — **WORKS**. FLOW now
