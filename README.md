@@ -37,8 +37,8 @@ modded `baseq3/{qagame,cgame,ui}.dylib`.
 ## Run
 
 The game runs on the **OpenArena 0.8.8** free asset set (third-party,
-~455 MB — kept outside this tree). Point `run.sh` at it via the `OA` env var
-(defaults to `~/openarena-0.8.8`):
+~455 MB). It's bundled in-tree at `assets/openarena/` (gitignored — not ours
+to version), and `run.sh` uses it by default. Override with the `OA` env var:
 
 ```sh
 ./scripts/run.sh            # windowed, main menu
