@@ -19,9 +19,9 @@
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENGINE="$ROOT/engine/build/Release"
 STRAFEGEN="$ROOT/tools/strafegen"
-# OpenArena free assets — third-party, kept outside the tree. Override with
-# OA=/path/to/openarena ./scripts/run.sh ...
-OA="${OA:-/Users/gustav/openarena-0.8.8}"
+# OpenArena free assets — bundled in-tree under assets/openarena (gitignored).
+# Override with OA=/path/to/openarena ./scripts/run.sh ...
+OA="${OA:-$ROOT/assets/openarena}"
 
 if [ ! -x "$ENGINE/ioquake3.app/Contents/MacOS/ioquake3" ]; then
 	echo "engine not built — run ./scripts/build.sh first" >&2

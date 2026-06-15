@@ -1,5 +1,7 @@
 # build output (rebuildable)
 engine/build/
+# bundled third-party OpenArena assets (~455 MB, not ours to version)
+assets/openarena/
 # generated courses / tool artifacts (regenerable)
 tools/strafegen/generated/
 tools/strafegen/__pycache__/
