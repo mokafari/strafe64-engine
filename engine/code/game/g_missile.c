@@ -267,6 +267,62 @@ static void ProximityMine_Player( gentity_t *mine, gentity_t *player ) {
 G_MissileImpact
 ================
 */
+/*
+================
+G_DeflectMissile
+
+STRAFE 64: a guarding player (EF_BLOCKING) swats a frontal projectile back
+along their view and inherits it — a parried shot is now yours, so it kills
+the original shooter. Returns qtrue if the shot was deflected (only frontal
+projectiles parry; side/back shots fall through to normal impact).
+================
+*/
+static qboolean G_DeflectMissile( gentity_t *ent, gentity_t *blocker ) {
+	vec3_t		forward, dir, origin;
+	float		speed;
+	gentity_t	*tent;
+
+	AngleVectors( blocker->client->ps.viewangles, forward, NULL, NULL );
+
+	// which way is the shot travelling, and how fast
+	BG_EvaluateTrajectoryDelta( &ent->s.pos, level.time, dir );
+	speed = VectorNormalize( dir );
+
+	// only catch shots coming into the front arc (travel roughly opposes facing)
+	if ( DotProduct( dir, forward ) > 0.1f ) {
+		return qfalse;
+	}
+
+	// the impact point becomes the new launch point
+	BG_EvaluateTrajectory( &ent->s.pos, level.time, origin );
+
+	// hand the projectile to the blocker, aimed where they look, a touch faster
+	ent->r.ownerNum = blocker->s.number;
+	ent->parent = blocker;
+	if ( speed < 1500 ) {
+		speed = 1500;
+	}
+	speed *= 1.25f;
+
+	VectorCopy( origin, ent->s.pos.trBase );
+	ent->s.pos.trType = TR_LINEAR;
+	ent->s.pos.trTime = level.time;
+	VectorScale( forward, speed, ent->s.pos.trDelta );
+	SnapVector( ent->s.pos.trDelta );
+	VectorCopy( origin, ent->r.currentOrigin );
+	ent->s.eFlags &= ~( EF_BOUNCE | EF_BOUNCE_HALF );	// a parried shot flies true
+	ent->nextthink = level.time + 10000;				// give it time to travel back
+
+	// feedback: blade-clang spark + the same hit-juice a sword connect gives
+	tent = G_TempEntity( origin, EV_BULLET_HIT_WALL );
+	tent->s.eventParm = DirToByte( forward );
+	tent->s.otherEntityNum = blocker->s.number;
+	G_Sound( blocker, CHAN_AUTO, G_SoundIndex( "sound/weapons/machinegun/ric1.wav" ) );
+	G_AddEvent( blocker, EV_SWORD_HIT, 0 );
+
+	return qtrue;
+}
+
 void G_MissileImpact( gentity_t *ent, trace_t *trace ) {
 	gentity_t		*other;
 	qboolean		hitClient = qfalse;
@@ -275,6 +331,14 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace ) {
 	int				eFlags;
 #endif
 	other = &g_entities[trace->entityNum];
+
+	// STRAFE 64: katana parry — a guarding player deflects a frontal shot
+	// back at whoever fired it instead of taking the hit
+	if ( other->client && ( other->client->ps.eFlags & EF_BLOCKING )
+			&& ent->r.ownerNum != other->s.number
+			&& G_DeflectMissile( ent, other ) ) {
+		return;
+	}
 
 	// check for bounce
 	if ( !other->takedamage &&
@@ -553,6 +617,51 @@ static void G_InheritVelocity( gentity_t *self, vec3_t trDelta, float frac ) {
 	trDelta[0] += self->client->ps.velocity[0] * frac;
 	trDelta[1] += self->client->ps.velocity[1] * frac;
 	SnapVector( trDelta );
+}
+
+/*
+=================
+fire_bullet
+
+STRAFE 64: the former hitscan guns now throw a fast, visible, DEFLECTABLE
+bolt — direct damage on contact, no splash, no explosion (it just expires).
+One generic projectile drives the machinegun, shotgun pellets, railgun slug
+and lightning; each passes its own damage/speed and its own weapon id (for
+rendering and the method-of-death).
+=================
+*/
+gentity_t *fire_bullet( gentity_t *self, vec3_t start, vec3_t dir,
+		int damage, float speed, int mod, int weapon ) {
+	gentity_t	*bolt;
+
+	VectorNormalize( dir );
+
+	bolt = G_Spawn();
+	bolt->classname = "bullet";
+	bolt->nextthink = level.time + 4000;
+	bolt->think = G_FreeEntity;			// no boom — bullets simply expire
+	bolt->s.eType = ET_MISSILE;
+	bolt->r.svFlags = SVF_USE_CURRENT_ORIGIN;
+	bolt->s.weapon = weapon;
+	bolt->r.ownerNum = self->s.number;
+	bolt->parent = self;
+	bolt->damage = damage;
+	bolt->splashDamage = 0;
+	bolt->splashRadius = 0;
+	bolt->methodOfDeath = mod;
+	bolt->splashMethodOfDeath = mod;
+	bolt->clipmask = MASK_SHOT;
+	bolt->target_ent = NULL;
+
+	bolt->s.pos.trType = TR_LINEAR;
+	bolt->s.pos.trTime = level.time - MISSILE_PRESTEP_TIME;
+	VectorCopy( start, bolt->s.pos.trBase );
+	VectorScale( dir, speed, bolt->s.pos.trDelta );
+	SnapVector( bolt->s.pos.trDelta );
+	G_InheritVelocity( self, bolt->s.pos.trDelta, 0.5f );	// bolts ride your strafe
+	VectorCopy( start, bolt->r.currentOrigin );
+
+	return bolt;
 }
 
 gentity_t *fire_plasma (gentity_t *self, vec3_t start, vec3_t dir) {

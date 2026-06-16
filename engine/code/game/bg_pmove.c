@@ -2104,7 +2104,18 @@ static void PM_Weapon( void ) {
 	// check for dead player
 	if ( pm->ps->stats[STAT_HEALTH] <= 0 ) {
 		pm->ps->weapon = WP_NONE;
+		pm->ps->eFlags &= ~EF_BLOCKING;
 		return;
+	}
+
+	// STRAFE 64: katana guard. Holding block (right-click) raises the blade.
+	// While up it deflects frontal projectiles and soaks frontal melee/blast
+	// (resolved server-side); here it just sets the networked state and
+	// suppresses your own swing. Sword-only, and not while a swing is mid-flight.
+	pm->ps->eFlags &= ~EF_BLOCKING;
+	if ( ( pm->cmd.buttons & BUTTON_BLOCK ) && pm->ps->weapon == WP_SWORD
+			&& pm->ps->weaponstate != WEAPON_FIRING && pm->ps->weaponTime <= 0 ) {
+		pm->ps->eFlags |= EF_BLOCKING;
 	}
 
 	// check for item using
@@ -2156,6 +2167,13 @@ static void PM_Weapon( void ) {
 		} else {
 			PM_StartTorsoAnim( TORSO_STAND );
 		}
+		return;
+	}
+
+	// guard up: hold the blade, don't swing
+	if ( pm->ps->eFlags & EF_BLOCKING ) {
+		pm->ps->weaponTime = 0;
+		pm->ps->weaponstate = WEAPON_READY;
 		return;
 	}
 
@@ -2229,7 +2247,7 @@ static void PM_Weapon( void ) {
 		addTime = 400;
 		break;
 	case WP_SWORD:
-		addTime = 185;		// fast cadence for a frantic hack-and-slash flurry
+		addTime = 230;		// brisk hack-and-slash cadence (not machine-gun fast)
 		break;
 	case WP_LIGHTNING:
 		addTime = 50;

@@ -1100,6 +1100,10 @@ void ClientSpawn(gentity_t *ent) {
 	// always clear the kamikaze flag
 	ent->s.eFlags &= ~EF_KAMIKAZE;
 
+	// clear any blade-cut tag carried from a previous life (drives the
+	// client ragdoll split; see DismemberEntity)
+	ent->s.time2 = 0;
+
 	// toggle the teleport bit so the client knows to not lerp
 	// and never clear the voted flag
 	flags = ent->client->ps.eFlags & (EF_TELEPORT_BIT | EF_VOTED | EF_TEAMVOTED);
@@ -1219,6 +1223,9 @@ void ClientSpawn(gentity_t *ent) {
 
 	// health will count down towards max_health
 	ent->health = client->ps.stats[STAT_HEALTH] = client->ps.stats[STAT_MAX_HEALTH] + 25;
+
+	// LATTICE: override with the short pool + clear this pilot's speed-trail
+	G_LatticeClientSpawn( ent );
 
 	G_SetOrigin( ent, spawn_origin );
 	VectorCopy( spawn_origin, client->ps.origin );

@@ -680,7 +680,8 @@ void CG_RegisterWeapon( int weaponNum ) {
 
 	case WP_SWORD:		// Cleaver — steel white swing (CC0 katana + RPG-pack swings)
 		MAKERGB( weaponInfo->flashDlightColor, 0.9f, 0.95f, 1.0f );
-		weaponInfo->readySound = trap_S_RegisterSound( "sound/weapons/sword/unsheathe.wav", qfalse );
+		// NOTE: no readySound — that plays as a continuous idle loop. The sword
+		// is silent at rest; swings (flashSound) and hits are the only audio.
 		// swing whooshes — CG_FireWeapon picks one per swing by combo step
 		weaponInfo->flashSound[0] = trap_S_RegisterSound( "sound/weapons/sword/swing1.wav", qfalse );
 		weaponInfo->flashSound[1] = trap_S_RegisterSound( "sound/weapons/sword/swing2.wav", qfalse );
@@ -1378,7 +1379,7 @@ CG_AddViewWeapon
 Add the weapon, and flash for the player's view
 ==============
 */
-#define	SWORD_SWING_MS	210		// first-person swing arc duration (≈ the 185ms fire cadence)
+#define	SWORD_SWING_MS	250		// first-person swing arc duration (≈ the 230ms fire cadence)
 #define	LERPF(a,b,f)	( (a) + ( (b) - (a) ) * (f) )
 
 /*
@@ -1414,20 +1415,16 @@ consecutive samples. Bright at the newest edge, fading down the tail. Local
 player only; the ribbon is degenerate (invisible) when the blade isn't moving.
 ==============
 */
-#define	SWORD_TRAIL_PTS	12
-
-// blade-edge endpoints in model space: just past the guard, and the tip.
-// (model: grip at origin, blade down +X, cutting edge toward +Z)
-static const vec3_t cg_swordEdgeBase = { 5.0f, 0.0f, 2.0f };
-static const vec3_t cg_swordEdgeTip  = { 24.0f, 0.0f, 3.0f };
+#define	SWORD_TRAIL_PTS	8		// history depth — shorter = tighter slash, less additive saturation
 
 static void CG_SwordSlashVert( polyVert_t *v, const vec3_t xyz, float intensity ) {
+	intensity *= cg_swordTrailAlpha.value;		// live brightness control
 	if ( intensity < 0 ) intensity = 0;
 	if ( intensity > 1 ) intensity = 1;
 	VectorCopy( xyz, v->xyz );
 	v->st[0] = 0; v->st[1] = 0;
-	v->modulate[0] = (byte)( 200 * intensity );		// cyan-white energy
-	v->modulate[1] = (byte)( 230 * intensity );
+	v->modulate[0] = (byte)( 150 * intensity );		// cyan-white energy
+	v->modulate[1] = (byte)( 200 * intensity );
 	v->modulate[2] = (byte)( 255 * intensity );
 	v->modulate[3] = 255;
 }
@@ -1446,15 +1443,23 @@ static void CG_SwordSlashTrail( const refEntity_t *gun ) {
 		return;
 	}
 
-	// blade edge in world space, straight from the rendered weapon transform
+	// blade edge in world space, straight from the rendered weapon transform.
+	// guard and tip offsets (model space) are cvar-tunable for live alignment.
 	VectorCopy( gun->origin, base );
-	VectorMA( base, cg_swordEdgeBase[0], gun->axis[0], base );
-	VectorMA( base, cg_swordEdgeBase[1], gun->axis[1], base );
-	VectorMA( base, cg_swordEdgeBase[2], gun->axis[2], base );
+	VectorMA( base, cg_swordTrailBaseX.value, gun->axis[0], base );
+	VectorMA( base, cg_swordTrailBaseY.value, gun->axis[1], base );
+	VectorMA( base, cg_swordTrailBaseZ.value, gun->axis[2], base );
 	VectorCopy( gun->origin, tip );
-	VectorMA( tip, cg_swordEdgeTip[0], gun->axis[0], tip );
-	VectorMA( tip, cg_swordEdgeTip[1], gun->axis[1], tip );
-	VectorMA( tip, cg_swordEdgeTip[2], gun->axis[2], tip );
+	VectorMA( tip, cg_swordTrailTipX.value, gun->axis[0], tip );
+	VectorMA( tip, cg_swordTrailTipY.value, gun->axis[1], tip );
+	VectorMA( tip, cg_swordTrailTipZ.value, gun->axis[2], tip );
+
+	// break the trail on a discontinuity: a new swing snaps the blade back to
+	// its wind-up pose, so don't streak a quad across the gap (or from stale
+	// samples after a weapon/teleport). Start the next swing's trail fresh.
+	if ( cg.swordTrailNum > 0 && Distance( tip, cg.swordTipPath[0] ) > 40.0f ) {
+		cg.swordTrailNum = 0;
+	}
 
 	// record one sample per frame (newest at index 0)
 	if ( cg.time != cg.swordTrailLastTime ) {
@@ -1573,6 +1578,18 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 				VectorMA( hand.origin, LERPF(  4.0f * dir, -3.5f * dir, f ), cg.refdef.viewaxis[1], hand.origin );
 			}
 		}
+	}
+
+	// STRAFE 64: guard stance — holding block sweeps the blade up across the
+	// view, hilt low and inboard, so a raised katana reads as "deflecting".
+	if ( ps->weapon == WP_SWORD
+			&& ( cg.predictedPlayerState.eFlags & EF_BLOCKING ) ) {
+		angles[PITCH] -= 32.0f;		// tip up
+		angles[YAW]   += 18.0f;
+		angles[ROLL]  -= 38.0f;		// lay the blade across the screen
+		VectorMA( hand.origin,  4.0f, cg.refdef.viewaxis[0], hand.origin );	// forward
+		VectorMA( hand.origin,  3.0f, cg.refdef.viewaxis[2], hand.origin );	// up
+		VectorMA( hand.origin, -2.0f, cg.refdef.viewaxis[1], hand.origin );	// inboard
 	}
 
 	VectorMA( hand.origin, cg_gun_x.value, cg.refdef.viewaxis[0], hand.origin );

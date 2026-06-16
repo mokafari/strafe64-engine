@@ -272,18 +272,27 @@ cleave bisects the body. The corpse is removed just like a gib.
 */
 void DismemberEntity( gentity_t *self, gentity_t *attacker ) {
 	gentity_t	*tent;
-	vec3_t		dir;
+	vec3_t		dir, up;
 	int			cutType;
 
-	// cut direction: horizontal, following the swing through the body
+	// blade orientation defines the cut: the swing direction (forward, with
+	// pitch) and the blade's "up" (the cut-plane normal). The client uses
+	// forward for the slice travel/separation and up to tilt the cut plane
+	// and the slice effect, so a downward diagonal slash cuts on the diagonal.
 	if ( attacker && attacker != self && attacker->client ) {
-		VectorSubtract( self->r.currentOrigin, attacker->r.currentOrigin, dir );
-		dir[2] = 0;
+		AngleVectors( attacker->client->ps.viewangles, dir, NULL, up );
+	} else {
+		// world fallback: horizontal cut from attacker toward victim
+		if ( attacker && attacker != self ) {
+			VectorSubtract( self->r.currentOrigin, attacker->r.currentOrigin, dir );
+			dir[2] = 0;
+		} else {
+			VectorClear( dir );
+		}
 		if ( VectorNormalize( dir ) == 0 ) {
 			VectorSet( dir, 1, 0, 0 );
 		}
-	} else {
-		VectorSet( dir, 1, 0, 0 );
+		VectorSet( up, 0, 0, 1 );
 	}
 
 	// depth of cut from how hard the killing blow overkilled
@@ -296,13 +305,18 @@ void DismemberEntity( gentity_t *self, gentity_t *attacker ) {
 	}
 
 	tent = G_TempEntity( self->r.currentOrigin, EV_DISMEMBER );
-	VectorCopy( dir, tent->s.origin2 );
+	VectorCopy( dir, tent->s.origin2 );		// blade forward (with pitch)
+	VectorCopy( up, tent->s.angles2 );		// cut-plane normal (blade up)
 	tent->s.eventParm = cutType;
 	tent->s.otherEntityNum = self->s.number;
 
-	self->takedamage = qfalse;
-	self->s.eType = ET_INVISIBLE;
-	self->r.contents = 0;
+	// Tag the corpse so the client ragdoll comes apart at the cut. This rides
+	// in the entity state (time2, 1-based so 0 means "not cut") which
+	// BG_PlayerStateToEntityState never overwrites, so it survives both the
+	// death window and the copy into the body queue. The body itself is left
+	// intact -- player_die falls through to the normal-death setup so the
+	// corpse persists and ragdolls instead of vanishing into gib confetti.
+	self->s.time2 = cutType + 1;
 }
 
 /*
@@ -356,7 +370,8 @@ char	*modNames[] = {
 	"MOD_JUICED",
 #endif
 	"MOD_GRAPPLE",
-	"MOD_SWORD"
+	"MOD_SWORD",
+	"MOD_LATTICE"
 };
 
 #ifdef MISSIONPACK
@@ -679,9 +694,14 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 	contents = trap_PointContents( self->r.currentOrigin, -1 );
 
 	if ( meansOfDeath == MOD_SWORD && !(contents & CONTENTS_NODROP) && g_blood.integer ) {
-		// blade kill: clean directional dismemberment instead of gib confetti
+		// blade kill: tag the cut and fire the blood/gib spray, then fall
+		// through to the normal-death setup so the body persists and the
+		// client ragdoll visibly comes apart at the cut (head/halves)
 		DismemberEntity( self, attacker );
-	} else if ( (self->health <= GIB_HEALTH && !(contents & CONTENTS_NODROP) && g_blood.integer) || meansOfDeath == MOD_SUICIDE) {
+	}
+
+	if ( meansOfDeath != MOD_SWORD &&
+		((self->health <= GIB_HEALTH && !(contents & CONTENTS_NODROP) && g_blood.integer) || meansOfDeath == MOD_SUICIDE) ) {
 		// gib death
 		GibEntity( self, killer );
 	} else {
@@ -972,6 +992,22 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		dflags |= DAMAGE_NO_KNOCKBACK;
 	} else {
 		VectorNormalize(dir);
+	}
+
+	// STRAFE 64: a raised katana guard soaks frontal damage. Projectiles are
+	// parried (deflected) earlier in the missile code; this catches the sword,
+	// the gauntlet and explosions that wash over the guard. Reducing damage
+	// here also softens the knockback below, so a blocked blow barely budges you.
+	if ( client && ( client->ps.eFlags & EF_BLOCKING ) && targ != attacker
+			&& dir && !( dflags & DAMAGE_NO_PROTECTION ) ) {
+		vec3_t	vf;
+
+		AngleVectors( client->ps.viewangles, vf, NULL, NULL );
+		// dir is the hit's travel direction; a frontal hit drives into the guard
+		if ( DotProduct( dir, vf ) < 0.2f ) {
+			damage = (int)( damage * 0.2f );		// 80% mitigated head-on
+			G_AddEvent( targ, EV_SWORD_HIT, 0 );	// blade-clang feedback
+		}
 	}
 
 	knockback = damage;

@@ -3061,10 +3061,11 @@ hit. The single value the glitch layer reads, scaled by cg_glitchAmount.
 static float CG_Corruption( void ) {
 	float	c, t, dist;
 
-	// momentum starvation: only a whisper of fray at a standstill — the real
-	// glitch storm is reserved for actual threats (void closing, taking a
-	// hit) below. Standing still shouldn't datamosh the screen.
-	c = ( 1.0f - CG_Flow() ) * 0.15f;
+	// no ambient glitch: the datamosh is a burst effect, not a constant wash.
+	// It fires only on real threats — the void closing in and taking a hit —
+	// below. Standing still (which the slow-mo direction makes the common
+	// case) should leave the screen clean.
+	c = 0.0f;
 
 	// the rising void: ramps in over the last 600 units of altitude
 	if ( cgs.voidActive ) {

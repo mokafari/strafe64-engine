@@ -302,6 +302,7 @@ typedef enum {
 #define	EF_AWARD_ASSIST		0x00020000		// draw a assist sprite
 #define EF_AWARD_DENIED		0x00040000		// denied
 #define EF_TEAMVOTED		0x00080000		// already cast a team vote
+#define EF_BLOCKING			0x00100000		// STRAFE 64: katana guard raised (deflects)
 
 // NOTE: may not have more than 16
 typedef enum {
@@ -650,7 +651,8 @@ typedef enum {
 	MOD_JUICED,
 #endif
 	MOD_GRAPPLE,
-	MOD_SWORD				// STRAFE 64: blade kill — triggers dismemberment
+	MOD_SWORD,				// STRAFE 64: blade kill — triggers dismemberment
+	MOD_LATTICE				// STRAFE 64: caught in a pilot's speed-trail lattice
 } meansOfDeath_t;
 
 

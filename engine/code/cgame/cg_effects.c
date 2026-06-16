@@ -661,47 +661,64 @@ static void CG_LaunchSeveredLimb( vec3_t origin, vec3_t cut, qhandle_t model ) {
 	CG_LaunchGib( origin, velocity, model );
 }
 
-void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, int cutType ) {
-	vec3_t	origin, cut, headOrigin;
+void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, vec3_t cutNormal, int cutType ) {
+	vec3_t	cut, wound, normal, fwd;
+	float	woundZ;
 
 	if ( !cg_blood.integer ) {
 		return;
 	}
 
-	// flatten and normalize the cut direction (fall back to forward)
-	VectorCopy( dir, cut );
+	// blade forward, kept full (with pitch) for the slice plane, and flattened
+	// for the horizontal spray/separation direction
+	VectorCopy( dir, fwd );
+	if ( VectorNormalize( fwd ) == 0 ) {
+		VectorSet( fwd, 1, 0, 0 );
+	}
+	VectorCopy( fwd, cut );
 	cut[2] = 0;
 	if ( VectorNormalize( cut ) == 0 ) {
 		VectorSet( cut, 1, 0, 0 );
 	}
 
-	VectorCopy( playerOrigin, origin );
-	VectorCopy( playerOrigin, headOrigin );
-	headOrigin[2] += 36;		// head/skull rides higher off the torso
+	// cut-plane normal (blade up); fall back to a horizontal cut
+	VectorCopy( cutNormal, normal );
+	if ( VectorNormalize( normal ) == 0 ) {
+		VectorSet( normal, 0, 0, 1 );
+	}
 
-	// arterial spray at the wound, biased up the body
-	CG_Bleed( headOrigin, ENTITYNUM_NONE );
-	CG_Bleed( origin, ENTITYNUM_NONE );
+	// the wound rides at the cut height: the waist for a bisection, the neck
+	// for a decapitation. The body itself comes apart via the client ragdoll
+	// (driven by entityState.time2), so this is the gory spray at the seam,
+	// not the whole skeleton -- launching full limbs here would double the body.
+	woundZ = ( cutType >= 2 ) ? 24.0f : ( cutType == 1 ) ? 40.0f : 28.0f;
+	VectorCopy( playerOrigin, wound );
+	wound[2] += woundZ;
 
-	// always throw at least one severed limb
-	CG_LaunchSeveredLimb( origin, cut, ( rand() & 1 ) ? cgs.media.gibArm : cgs.media.gibLeg );
+	// a bright slice swept through the body along the blade's angle
+	CG_SpawnSwordCut( wound, normal, fwd );
+
+	// arterial spray at the wound
+	CG_Bleed( wound, ENTITYNUM_NONE );
+	CG_Bleed( wound, ENTITYNUM_NONE );
 
 	if ( !cg_gibs.integer ) {
 		return;
 	}
 
+	// viscera flung along the cut
+	CG_LaunchSeveredLimb( wound, cut, cgs.media.gibIntestine );
+	CG_LaunchSeveredLimb( wound, cut, cgs.media.gibForearm );
+
 	if ( cutType >= 1 ) {
-		// decapitation: the head spins off down the cut
-		CG_LaunchSeveredLimb( headOrigin, cut, cgs.media.gibSkull );
-		CG_LaunchSeveredLimb( origin, cut, cgs.media.gibForearm );
+		// decapitation: brain matter sprays off the neck
+		CG_LaunchSeveredLimb( wound, cut, cgs.media.gibBrain );
 	}
 
 	if ( cutType >= 2 ) {
-		// full bisection: torso comes apart
-		CG_LaunchSeveredLimb( origin, cut, cgs.media.gibChest );
-		CG_LaunchSeveredLimb( origin, cut, cgs.media.gibAbdomen );
-		CG_LaunchSeveredLimb( origin, cut, cgs.media.gibLeg );
-		CG_LaunchSeveredLimb( origin, cut, cgs.media.gibIntestine );
+		// full bisection: guts spill from the waist
+		CG_LaunchSeveredLimb( wound, cut, cgs.media.gibAbdomen );
+		CG_LaunchSeveredLimb( wound, cut, cgs.media.gibIntestine );
 	}
 }
 

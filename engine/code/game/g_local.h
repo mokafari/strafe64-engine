@@ -174,6 +174,8 @@ struct gentity_s {
 	float		random;
 
 	gitem_t		*item;			// for bonus items
+
+	qboolean	runtimeSpawned;	// spawned live via the LLM `spawnent` cmd; `clearents` frees these
 };
 
 
@@ -420,6 +422,10 @@ typedef struct {
 	float		voidBase;				// z the void starts at
 	float		voidRise;				// units per second (already scaled by g_voidRise)
 	int			voidStartTime;			// level.time the rise begins
+
+	// LATTICE last-pilot-alive mode (g_lattice)
+	int			latticeMaxPlayers;		// high-water mark of simultaneous live pilots this heat
+	qboolean	latticeEnded;			// heat already resolved (a champion was declared)
 #ifdef MISSIONPACK
 	int			portalSequence;
 #endif
@@ -436,6 +442,9 @@ qboolean	G_SpawnInt( const char *key, const char *defaultString, int *out );
 qboolean	G_SpawnVector( const char *key, const char *defaultString, float *out );
 void		G_SpawnEntitiesFromString( void );
 char *G_NewString( const char *string );
+char *G_AddSpawnVarToken( const char *string );
+void		G_SpawnGEntityFromSpawnVars( void );
+extern qboolean	g_apiRuntimeSpawn;	// set while spawning live ents via `spawnent`
 
 //
 // g_cmds.c
@@ -529,6 +538,7 @@ void TossClientCubes( gentity_t *self );
 //
 void G_RunMissile( gentity_t *ent );
 
+gentity_t *fire_bullet (gentity_t *self, vec3_t start, vec3_t dir, int damage, float speed, int mod, int weapon);
 gentity_t *fire_plasma (gentity_t *self, vec3_t start, vec3_t aimdir);
 gentity_t *fire_grenade (gentity_t *self, vec3_t start, vec3_t aimdir);
 gentity_t *fire_rocket (gentity_t *self, vec3_t start, vec3_t dir);
@@ -619,6 +629,7 @@ void FindIntermissionPoint( void );
 void SetLeader(int team, int client);
 void CheckTeamLeader( int team );
 void G_RunThink (gentity_t *ent);
+void LogExit( const char *string );
 void AddTournamentQueue(gclient_t *client);
 void QDECL G_LogPrintf( const char *fmt, ... ) Q_PRINTF_FUNC(1, 2);
 // bot playtest telemetry (g_playtest.c)
@@ -646,6 +657,15 @@ void ClientCommand( int clientNum );
 void ClientThink( int clientNum );
 void ClientEndFrame( gentity_t *ent );
 void G_RunClient( gentity_t *ent );
+
+//
+// g_lattice.c — LATTICE last-pilot-alive mode
+//
+void		G_LatticeClientSpawn( gentity_t *ent );		// short health + reset this pilot's trail
+void		G_LatticeEmitTrail( gentity_t *ent );		// sample one trail point (ClientEndFrame)
+void		G_RunLattice( void );						// per-frame trail collision -> chip damage
+qboolean	G_LatticeEliminate( gentity_t *ent );		// dead pilot -> spectator; qtrue if eliminated
+qboolean	G_LatticeCheckWin( void );					// declare a champion if one pilot remains
 
 //
 // g_team.c
@@ -762,6 +782,10 @@ extern	vmCvar_t	g_needpass;
 extern	vmCvar_t	g_gravity;
 extern	vmCvar_t	g_speed;
 extern	vmCvar_t	g_mutator;	// STRAFE 64 run mutator: 0 none, 1 low-g, 2 rush, 3 heavy
+extern	vmCvar_t	g_lattice;	// STRAFE 64 LATTICE mode: last-pilot-alive, damaging speed-trails
+extern	vmCvar_t	g_latticeHealth;	// pilot health pool in LATTICE (short by design)
+extern	vmCvar_t	g_latticeDamage;	// chip damage per contact tick with a trail
+extern	vmCvar_t	g_latticeRadius;	// how close to a trail segment counts as contact (u)
 extern	vmCvar_t	g_knockback;
 extern	vmCvar_t	g_quadfactor;
 extern	vmCvar_t	g_forcerespawn;

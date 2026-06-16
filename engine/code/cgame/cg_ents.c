@@ -477,6 +477,38 @@ static void CG_Missile( centity_t *cent ) {
 		return;
 	}
 
+	// STRAFE 64: the former hitscan guns now fly as visible, deflectable bolts.
+	// Render them as glowing sprites sized per weapon (rail slug largest).
+	switch ( cent->currentState.weapon ) {
+	case WP_MACHINEGUN:
+	case WP_SHOTGUN:
+#ifdef MISSIONPACK
+	case WP_CHAINGUN:
+#endif
+		ent.reType = RT_SPRITE;
+		ent.radius = 5;
+		ent.rotation = 0;
+		ent.customShader = cgs.media.plasmaBallShader;
+		trap_R_AddRefEntityToScene( &ent );
+		return;
+	case WP_LIGHTNING:
+		ent.reType = RT_SPRITE;
+		ent.radius = 8;
+		ent.rotation = 0;
+		ent.customShader = cgs.media.plasmaBallShader;
+		trap_R_AddRefEntityToScene( &ent );
+		return;
+	case WP_RAILGUN:
+		ent.reType = RT_SPRITE;
+		ent.radius = 11;
+		ent.rotation = 0;
+		ent.customShader = cgs.media.railCoreShader;
+		trap_R_AddRefEntityToScene( &ent );
+		return;
+	default:
+		break;
+	}
+
 	// flicker between two skins
 	ent.skinNum = cg.clientFrame & 1;
 	ent.hModel = weapon->missileModel;
@@ -1092,5 +1124,11 @@ void CG_AddPacketEntities( void ) {
 		cent = &cg_entities[ cg.snap->entities[ num ].number ];
 		CG_AddCEntity( cent );
 	}
+
+	// LATTICE: sample + draw every pilot's damaging speed-trail
+	CG_LatticeFrame();
+
+	// blade slice flashes from sword dismemberments
+	CG_AddSwordCuts();
 }
 

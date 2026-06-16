@@ -2284,6 +2284,13 @@ void CG_Player( centity_t *cent ) {
 	}
 
 
+	// STRAFE 64: dead bodies are simulated as a Verlet ragdoll that flops and
+	// settles on the geometry, instead of the canned death animation. Returns
+	// qtrue when it has rendered the corpse, so we skip the normal assembly.
+	if ( CG_RagdollAdd( cent, renderfx | RF_LIGHTING_ORIGIN, 0 ) ) {
+		return;
+	}
+
 	memset( &legs, 0, sizeof(legs) );
 	memset( &torso, 0, sizeof(torso) );
 	memset( &head, 0, sizeof(head) );

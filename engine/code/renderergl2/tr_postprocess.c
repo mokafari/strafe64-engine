@@ -483,3 +483,61 @@ void RB_GaussianBlur(FBO_t *srcFbo, FBO_t *dstFbo, float blur)
 		FBO_Blit(tr.textureScratchFbo[0], srcBox, NULL, dstFbo, dstBox, NULL, color, GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA);
 	}
 }
+
+
+/*
+=============
+RB_Bloom
+
+STRAFE 64 neon bloom. The scene is dark with bright vertex-colored neon and a
+luminous sky, so a cheap soft-knee bloom reads beautifully: downsample, square
+the colour for a soft bright-pass (dark midtones collapse toward black, bright
+highlights survive — no dedicated threshold shader needed), separable-blur the
+survivors to a wide glow, then add it back over the scene. Built entirely from
+the existing FBO blit + blur primitives, so it needs no new GLSL program and is
+live-tunable (r_bloom intensity / r_bloomBlur spread, neither latched).
+=============
+*/
+void RB_Bloom(FBO_t *srcFbo, ivec4_t srcBox)
+{
+	vec4_t color;
+	float intensity = r_bloom->value;
+	float blur = r_bloomBlur->value;
+	int i;
+
+	if (!glRefConfig.framebufferObject || intensity <= 0.0f)
+		return;
+
+	if (blur < 0.0f)
+		blur = 0.0f;
+
+	// 1. downsample the (tonemapped) scene into the quarter buffer: [0] = c
+	FBO_FastBlit(srcFbo, srcBox, tr.quarterFbo[0], NULL, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+
+	// 2. bright-pass by raising the colour to the 4th power, done with two
+	//    multiplicative self-blits (dst*src). c^4 is a hard soft-knee: only
+	//    near-white neon / luminous highlights survive, while the medium-bright
+	//    sky and walls collapse toward black so they don't haze. No threshold
+	//    shader needed.
+	//    [1] = c ; [1] *= [0]  ->  c^2
+	FBO_Blit(tr.quarterFbo[0], NULL, NULL, tr.quarterFbo[1], NULL, NULL, NULL, 0);
+	FBO_Blit(tr.quarterFbo[0], NULL, NULL, tr.quarterFbo[1], NULL, NULL, NULL,
+	         GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO);
+	//    [0] = c^2 ; [0] *= [1] ->  c^4
+	FBO_Blit(tr.quarterFbo[1], NULL, NULL, tr.quarterFbo[0], NULL, NULL, NULL, 0);
+	FBO_Blit(tr.quarterFbo[1], NULL, NULL, tr.quarterFbo[0], NULL, NULL, NULL,
+	         GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO);
+
+	// 3. separable gaussian blur, ping-ponging the quarter buffers; highlights
+	//    start in [0], two passes widen and smooth the glow, result back in [0]
+	for (i = 0; i < 2; i++)
+	{
+		RB_HBlur(tr.quarterFbo[0], tr.quarterFbo[1], blur);
+		RB_VBlur(tr.quarterFbo[1], tr.quarterFbo[0], blur);
+	}
+
+	// 4. add the blurred highlights back over the scene
+	VectorSet4(color, intensity, intensity, intensity, 1.0f);
+	FBO_Blit(tr.quarterFbo[0], NULL, NULL, srcFbo, srcBox, NULL, color,
+	         GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE);
+}

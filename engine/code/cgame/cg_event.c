@@ -143,6 +143,9 @@ static void CG_Obituary( entityState_t *ent ) {
 	case MOD_TRIGGER_HURT:
 		message = "was in the wrong place";
 		break;
+	case MOD_LATTICE:
+		message = "got tangled in their own lattice";
+		break;
 	default:
 		message = NULL;
 		break;
@@ -317,6 +320,10 @@ static void CG_Obituary( entityState_t *ent ) {
 		case MOD_TELEFRAG:
 			message = "tried to invade";
 			message2 = "'s personal space";
+			break;
+		case MOD_LATTICE:
+			message = "was caught in";
+			message2 = "'s lattice";
 			break;
 		default:
 			message = "was killed by";
@@ -1224,11 +1231,12 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 
 	case EV_DISMEMBER:
 		DEBUGNAME("EV_DISMEMBER");
-		// blade sever: cut direction rides in origin2, cut type in eventParm
+		// blade sever: blade forward rides in origin2, cut-plane normal in
+		// angles2, cut type in eventParm
 		if ( !(es->eFlags & EF_KAMIKAZE) ) {
 			trap_S_StartSound( NULL, es->number, CHAN_BODY, cgs.media.gibSound );
 		}
-		CG_DismemberPlayer( cent->lerpOrigin, es->origin2, es->eventParm );
+		CG_DismemberPlayer( cent->lerpOrigin, es->origin2, es->angles2, es->eventParm );
 		break;
 
 	case EV_SWORD_HIT:

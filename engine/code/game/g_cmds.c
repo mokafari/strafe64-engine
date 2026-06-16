@@ -1271,6 +1271,164 @@ void Cmd_Where_f( gentity_t *ent ) {
 	trap_SendServerCommand( ent-g_entities, va("print \"%s\n\"", vtos(ent->r.currentOrigin) ) );
 }
 
+/*
+==================
+Cmd_ApiState_f
+
+Dump the live world state as JSONL bracketed by markers, so the LLM control
+layer can frame shots by name/position instead of guessing coordinates: one
+line per connected client (origin/angles/health/bot/team), then a "self" line
+with the issuing client's view origin + facing (the current camera).
+==================
+*/
+void Cmd_ApiState_f( gentity_t *ent ) {
+	int			i, who;
+	gclient_t	*cl;
+	gentity_t	*e;
+	vec3_t		o, a;
+
+	// Print straight to the host console (G_Printf), not via a "print" server
+	// command — the Q3 command tokenizer mangles the \" in JSON. On a listen
+	// server this lands in the captured stdout/stderr; works on dedicated too.
+	who = ent - g_entities;
+	G_Printf( "@@APISTATE_BEGIN@@\n" );
+	for ( i = 0 ; i < level.maxclients ; i++ ) {
+		cl = &level.clients[i];
+		if ( cl->pers.connected != CON_CONNECTED ) {
+			continue;
+		}
+		e = &g_entities[i];
+		VectorCopy( e->r.currentOrigin, o );
+		VectorCopy( cl->ps.viewangles, a );
+		G_Printf( "{\"num\":%i,\"name\":\"%s\",\"bot\":%i,\"team\":%i,"
+			"\"health\":%i,\"spectator\":%i,"
+			"\"origin\":[%.0f,%.0f,%.0f],\"angles\":[%.0f,%.0f,%.0f],"
+			"\"vel\":[%.0f,%.0f,%.0f],\"speed\":%.0f,"
+			"\"air\":%i,\"wj\":%i,\"dj\":%i}\n",
+			i, cl->pers.netname,
+			( e->r.svFlags & SVF_BOT ) ? 1 : 0,
+			cl->sess.sessionTeam, e->health,
+			( cl->sess.sessionTeam == TEAM_SPECTATOR ) ? 1 : 0,
+			o[0], o[1], o[2], a[PITCH], a[YAW], a[ROLL],
+			cl->ps.velocity[0], cl->ps.velocity[1], cl->ps.velocity[2],
+			sqrt( cl->ps.velocity[0] * cl->ps.velocity[0]
+				+ cl->ps.velocity[1] * cl->ps.velocity[1] ),
+			( cl->ps.groundEntityNum == ENTITYNUM_NONE ) ? 1 : 0,
+			cl->ps.stats[STAT_WALLJUMP_COUNT],
+			cl->ps.stats[STAT_AIRJUMP_COUNT] );
+	}
+	VectorCopy( ent->client->ps.origin, o );
+	VectorCopy( ent->client->ps.viewangles, a );
+	G_Printf( "{\"self\":%i,\"following\":%i,"
+		"\"view\":[%.0f,%.0f,%.0f],\"vangles\":[%.0f,%.0f,%.0f]}\n",
+		who,
+		( ent->client->sess.spectatorState == SPECTATOR_FOLLOW )
+			? ent->client->sess.spectatorClient : who,
+		o[0], o[1], o[2], a[PITCH], a[YAW], a[ROLL] );
+	G_Printf( "@@APISTATE_END@@\n" );
+}
+
+/*
+==================
+Cmd_SpawnEnt_f
+
+Spawn any entity into the live world (cheat): spawnent <classname> [key val ...].
+Defaults the origin to ~96u in front of the player's view unless an origin is
+given. Lets the LLM dress / edit a running map — place items, jump pads, models,
+lights, triggers — and audition them in place.
+==================
+*/
+qboolean	g_apiRuntimeSpawn = qfalse;
+
+void Cmd_SpawnEnt_f( gentity_t *ent ) {
+	char		classname[MAX_TOKEN_CHARS], key[MAX_TOKEN_CHARS], val[MAX_TOKEN_CHARS];
+	char		buf[128];
+	vec3_t		fwd, org;
+	int			i, argc = trap_Argc();
+	qboolean	haveOrigin = qfalse;
+
+	if ( !g_cheats.integer ) {
+		trap_SendServerCommand( ent-g_entities, "print \"Cheats are not enabled on this server.\n\"" );
+		return;
+	}
+	if ( argc < 2 ) {
+		trap_SendServerCommand( ent-g_entities,
+			"print \"usage: spawnent <classname> [key value ...]\n\"" );
+		return;
+	}
+	trap_Argv( 1, classname, sizeof( classname ) );
+
+	AngleVectors( ent->client->ps.viewangles, fwd, NULL, NULL );
+	VectorMA( ent->client->ps.origin, 96, fwd, org );
+
+	level.numSpawnVars = 0;
+	level.numSpawnVarChars = 0;
+	level.spawnVars[ level.numSpawnVars ][0] = G_AddSpawnVarToken( "classname" );
+	level.spawnVars[ level.numSpawnVars ][1] = G_AddSpawnVarToken( classname );
+	level.numSpawnVars++;
+
+	// extra key/value pairs from the command line
+	for ( i = 2 ; i + 1 < argc && level.numSpawnVars < MAX_SPAWN_VARS ; i += 2 ) {
+		trap_Argv( i, key, sizeof( key ) );
+		trap_Argv( i + 1, val, sizeof( val ) );
+		if ( !Q_stricmp( key, "origin" ) ) {
+			haveOrigin = qtrue;
+		}
+		level.spawnVars[ level.numSpawnVars ][0] = G_AddSpawnVarToken( key );
+		level.spawnVars[ level.numSpawnVars ][1] = G_AddSpawnVarToken( val );
+		level.numSpawnVars++;
+	}
+	if ( !haveOrigin ) {
+		Com_sprintf( buf, sizeof( buf ), "%i %i %i",
+			(int)org[0], (int)org[1], (int)org[2] );
+		level.spawnVars[ level.numSpawnVars ][0] = G_AddSpawnVarToken( "origin" );
+		level.spawnVars[ level.numSpawnVars ][1] = G_AddSpawnVarToken( buf );
+		level.numSpawnVars++;
+	}
+
+	g_apiRuntimeSpawn = qtrue;
+	G_SpawnGEntityFromSpawnVars();
+	g_apiRuntimeSpawn = qfalse;
+	trap_SendServerCommand( ent-g_entities,
+		va( "print \"spawned %s\n\"", classname ) );
+}
+
+/*
+==================
+Cmd_ClearEnts_f
+
+Remove entities spawned live via `spawnent` (optionally only one classname),
+leaving the map's own entities untouched. Lets the LLM iterate on level dressing.
+==================
+*/
+void Cmd_ClearEnts_f( gentity_t *ent ) {
+	char		filter[MAX_TOKEN_CHARS];
+	int			i, removed = 0;
+	gentity_t	*e;
+
+	if ( !g_cheats.integer ) {
+		trap_SendServerCommand( ent-g_entities, "print \"Cheats are not enabled on this server.\n\"" );
+		return;
+	}
+	filter[0] = '\0';
+	if ( trap_Argc() >= 2 ) {
+		trap_Argv( 1, filter, sizeof( filter ) );
+	}
+	for ( i = MAX_CLIENTS ; i < level.num_entities ; i++ ) {
+		e = &g_entities[i];
+		if ( !e->inuse || !e->runtimeSpawned ) {
+			continue;
+		}
+		if ( filter[0] && ( !e->classname || Q_stricmp( filter, e->classname ) ) ) {
+			continue;
+		}
+		G_FreeEntity( e );
+		removed++;
+	}
+	trap_SendServerCommand( ent-g_entities,
+		va( "print \"cleared %i spawned entit%s\n\"", removed, removed == 1 ? "y" : "ies" ) );
+}
+
 static const char *gameNames[] = {
 	"Free For All",
 	"Tournament",
@@ -1660,8 +1818,8 @@ void Cmd_SetViewpos_f( gentity_t *ent ) {
 		trap_SendServerCommand( ent-g_entities, "print \"Cheats are not enabled on this server.\n\"");
 		return;
 	}
-	if ( trap_Argc() != 5 ) {
-		trap_SendServerCommand( ent-g_entities, "print \"usage: setviewpos x y z yaw\n\"");
+	if ( trap_Argc() != 5 && trap_Argc() != 6 ) {
+		trap_SendServerCommand( ent-g_entities, "print \"usage: setviewpos x y z yaw [pitch]\n\"");
 		return;
 	}
 
@@ -1673,6 +1831,12 @@ void Cmd_SetViewpos_f( gentity_t *ent ) {
 
 	trap_Argv( 4, buffer, sizeof( buffer ) );
 	angles[YAW] = atof( buffer );
+
+	// optional 5th arg: pitch, so a free/noclip camera can aim up and down
+	if ( trap_Argc() == 6 ) {
+		trap_Argv( 5, buffer, sizeof( buffer ) );
+		angles[PITCH] = atof( buffer );
+	}
 
 	TeleportPlayer( ent, origin, angles );
 }
@@ -1908,6 +2072,12 @@ void ClientCommand( int clientNum ) {
 		Cmd_Team_f (ent);
 	else if (Q_stricmp (cmd, "where") == 0)
 		Cmd_Where_f (ent);
+	else if (Q_stricmp (cmd, "apistate") == 0)
+		Cmd_ApiState_f (ent);
+	else if (Q_stricmp (cmd, "spawnent") == 0)
+		Cmd_SpawnEnt_f (ent);
+	else if (Q_stricmp (cmd, "clearents") == 0)
+		Cmd_ClearEnts_f (ent);
 	else if (Q_stricmp (cmd, "callvote") == 0)
 		Cmd_CallVote_f (ent);
 	else if (Q_stricmp (cmd, "vote") == 0)

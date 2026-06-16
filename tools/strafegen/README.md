@@ -75,6 +75,43 @@ sneaky one — `md4.c`'s `UINT4` was `unsigned long` (8 bytes on LP64),
 which silently broke the BSP checksum embedded in `.aas` files and made
 the engine reject them as "out of date".
 
+## Killbox mode (futuristic vertical melee arena)
+
+```sh
+python3 strafegen.py 1337 --killbox --pk3   # -> strafe64kb_1337
+BOTS=6 ./play.sh kb 1337                     # generate + launch + 6 bots
+```
+
+A sealed neon box you fight **up** through — built for the sword / time-bind
+hack-and-slash game, where speed is power and verticality is the map:
+
+- **Z-traversability** — a deck, a neon-lipped **perimeter catwalk**, four
+  magenta **wall-jump columns** that chimney up the corners, and a central
+  **spire** crowned with the quad. Reach height by wall-jump, by the four
+  **jump pads**, or (for bots) the two ramps onto the catwalk.
+- **Momentum portals** — one discrete gate at catwalk height on each wall,
+  exiting the opposite wall **without resetting your velocity** (the dest
+  carries `angles "1000000 0 0"`, so `TeleportPlayer` skips the 400ups
+  respawn-kick). Dive at a wall fast and pop out the far side still flying:
+  the box never dead-ends, so you can hold a line forever. The gates sit only
+  at catwalk height, leaving the lower walls and columns free to wall-jump.
+- **Hack-and-slash loadout** — close-range guns, lots of health for sustained
+  melee, armour on the catwalk, the quad on the spire crown. The deck is never
+  the goal (idling burns, per `g_hotFloor`); the fight lives in the air.
+
+A big box (2816u wide, sized for ~16 players) with **neon-rimmed edges** on
+every ledge, drop, ramp and pillar so the geometry reads at speed (N64
+clarity), plus a deck baseboard and vertical corner strips that frame the
+volume. 16 spawns (deck rings + catwalk), eight jump pads, four corner
+wall-jump columns and four mid-deck cover pillars.
+
+Bot-validated: a 12-bot battery fights with the full arsenal (machinegun /
+shotgun / rocket / lightning / melee frags) and the whole vertical kit fires —
+**wallrun ~59%, double-jump ~81%, bhop chains to ×37**, ~2.5 s stuck. Bots
+ignore the momentum portals' velocity trick (like the velodrome's race
+triggers), so they're a human flow tool; AI still reaches the catwalk by ramp
+and the deck combat by nav.
+
 ## Tuned to the movement mod
 
 Every gap, ledge and hall is derived from the constants in

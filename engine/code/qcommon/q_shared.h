@@ -1231,6 +1231,9 @@ typedef struct playerState_s {
 
 #define	BUTTON_ANY			2048			// any key whatsoever
 
+#define	BUTTON_BLOCK		4096			// STRAFE 64: raise the blade to guard /
+											// deflect (bit 12 -> bind to +button12)
+
 #define	MOVE_RUN			120			// if forwardmove or rightmove are >= MOVE_RUN,
 										// then BUTTON_WALKING should be set
 

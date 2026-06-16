@@ -820,6 +820,7 @@ typedef struct {
 	qhandle_t	quadWeaponShader;
 	qhandle_t	invisShader;
 	qhandle_t	ghostShader;	// translucent racing ghost (strafe64/ghost, optional)
+	qhandle_t	latticeShader;	// LATTICE speed-trail wall (strafe64/lattice, alpha-blended)
 	qhandle_t	voidShader;		// rising void plane (strafe64/void, optional)
 	qhandle_t	regenShader;
 	qhandle_t	battleSuitShader;
@@ -1070,6 +1071,7 @@ typedef struct {
 
 	// parsed from serverinfo
 	gametype_t		gametype;
+	int				lattice;			// LATTICE last-pilot-alive mode active (g_lattice)
 	int				dmflags;
 	int				teamflags;
 	int				fraglimit;
@@ -1200,6 +1202,13 @@ extern	vmCvar_t		cg_gun_frame;
 extern	vmCvar_t		cg_gun_x;
 extern	vmCvar_t		cg_gun_y;
 extern	vmCvar_t		cg_gun_z;
+extern	vmCvar_t		cg_swordTrailBaseX;	// STRAFE 64: slash-trail edge offsets (model space)
+extern	vmCvar_t		cg_swordTrailBaseY;
+extern	vmCvar_t		cg_swordTrailBaseZ;
+extern	vmCvar_t		cg_swordTrailTipX;
+extern	vmCvar_t		cg_swordTrailTipY;
+extern	vmCvar_t		cg_swordTrailTipZ;
+extern	vmCvar_t		cg_swordTrailAlpha;	// slash-trail brightness multiplier (0..1)
 extern	vmCvar_t		cg_drawGun;
 extern	vmCvar_t		cg_viewsize;
 extern	vmCvar_t		cg_tracerChance;
@@ -1218,6 +1227,15 @@ extern	vmCvar_t		cg_speedLines;
 extern	vmCvar_t		cg_strafeHelper;
 extern	vmCvar_t		cg_ghost;
 extern	vmCvar_t		cg_ghostAlpha;
+extern	vmCvar_t		cg_latticeGlitch;
+extern	vmCvar_t		cg_latticeAudio;
+extern	vmCvar_t		au_bass;
+extern	vmCvar_t		au_mid;
+extern	vmCvar_t		au_high;
+extern	vmCvar_t		au_level;
+extern	vmCvar_t		cg_ragdoll;
+extern	vmCvar_t		cg_ragdollDamp;
+extern	vmCvar_t		cg_ragdollIterations;
 extern	vmCvar_t		cg_zoomFov;
 extern	vmCvar_t		cg_thirdPersonRange;
 extern	vmCvar_t		cg_thirdPersonAngle;
@@ -1435,6 +1453,19 @@ void CG_PainEvent( centity_t *cent, int health );
 //
 void CG_SetEntitySoundPosition( centity_t *cent );
 void CG_AddPacketEntities( void );
+
+//
+// cg_lattice.c -- LATTICE speed-trail rendering
+//
+void CG_LatticeFrame( void );
+
+//
+// cg_ragdoll.c -- client-side Verlet ragdoll for dead bodies
+//
+void CG_RagdollReset( void );
+qboolean CG_RagdollAdd( centity_t *cent, int renderfx, float shadowPlane );
+void CG_SpawnSwordCut( vec3_t origin, vec3_t normal, vec3_t fwd );
+void CG_AddSwordCuts( void );
 void CG_Beam( centity_t *cent );
 void CG_AdjustPositionForMover(const vec3_t in, int moverNum, int fromTime, int toTime, vec3_t out, vec3_t angles_in, vec3_t angles_out);
 
@@ -1513,7 +1544,7 @@ void CG_LightningBoltBeam( vec3_t start, vec3_t end );
 void CG_ScorePlum( int client, vec3_t org, int score );
 
 void CG_GibPlayer( vec3_t playerOrigin );
-void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, int cutType );
+void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, vec3_t cutNormal, int cutType );
 void CG_BigExplode( vec3_t playerOrigin );
 
 void CG_Bleed( vec3_t origin, int entityNum );

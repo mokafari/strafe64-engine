@@ -90,6 +90,55 @@ surf but don't reliably reach the finish) — that's the remaining refinement.
 Surf *feel* is still human-validated; but the dojo could now include a surf
 archetype.
 
+## ★ LATTICE — last-pilot-alive mode (2026-06-15, Gustav)
+**>>> v0 SHIPPED + live-tested. A battle-royale heat where the speed-trail is
+the third player.** Three pilots, one arena, a short health pool; every pilot
+lays a damaging vertical light-wall behind them as they carve. Touch a trail
+(yours or a rival's) and it chips you; the rising void collapses the floor from
+below; a heat ends when one pilot is left standing (kills + lattice/void deaths
+all count). Reuses the engine, void, bots, ghost-trail rendering tech.
+
+Implementation (self-contained — new files dodge the concurrently-edited hot
+files): server `engine/code/game/g_lattice.c` (per-client origin ring buffer,
+O(pilots²·points) contact-chip pass in `G_RunLattice`, `MOD_LATTICE` damage,
+death→spectator elimination in `ClientThink_real`, last-pilot win in
+`CheckExitRules` via `G_LatticeCheckWin`); short health + trail reset in
+`ClientSpawn`; trail emission in `ClientEndFrame`; auto-collapsing-floor default
+in `SP_worldspawn` (opt out with `g_voidRise 0`). Client
+`engine/code/cgame/cg_lattice.c` renders each pilot's trail as a colour-coded
+(per-client palette) vertical light-wall, gated on `cgs.lattice` from
+serverinfo. Cvars: `g_lattice` (latched on/off), `g_latticeHealth` (60),
+`g_latticeDamage` (9), `g_latticeRadius` (40). Obituaries wired
+("caught in X's lattice" / "tangled in their own lattice").
+
+VERIFIED live via the engine MCP: mode activates, trails render as walls,
+contact chips, elimination + "last pilot standing" win resolves, per-pilot
+colours read apart. **The three magic numbers (TTK / void-delay / arena size)
+are now HUMAN-tuning territory** — co-tune so combat and collapse finish
+together (design: the collapse flushes a chipped, cornered pilot into the kill).
+**Trail readability FIXED (2026-06-15 playtest):** the wall draws with a dedicated
+alpha-blended shader `strafe64/lattice` (not the additive whiteShader, which washed
+out to invisible on bright floors) + a WARM-first per-pilot palette (cyan-on-blue
+arenas was invisible). Verified: an orange light-wall reads clearly on the bright
+synthwave arena. Local-player trail confirmed rendering.
+
+**TOP BLOCKER for a fun heat — the arena.** `engine_generate_map kind=arena` makes a
+synthwave bowl but it has NO AAS (no bots) and FLOATS over the void (void-on → spawn
+below the risen kill-plane → instant fall-death → stuck eliminated). Falling, not the
+lattice, dominates every map available (oa_dm1 has a pit too). The mode needs a
+**strafegen sealed, flat, pit-free, neutral-floored arena archetype WITH AAS** — that
+is the next real piece. THEN: bracket/heat format (16 → five FFA-3 → final),
+escalating-by-collapse-rate arenas (never visual clutter), dash-strike as the
+committed burst vs the passive chip.
+
+**Test-harness gotchas (cost an hour, worth recording):** `engine_spectate`
+SUICIDES the local player to drop to spectator — that death + a bot = 2 pilots
+→ instantly triggers the last-pilot win and ends your heat. Drop to spectator
+(`team spectator`) BEFORE adding any bot. STRAFE 64 arenas are floating geometry
+over the void, so AAS bots path off the edges and `cratered` (MOD_FALLING) ends
+the heat in seconds; use a sealed map (`oa_dm1`) + `g_voidRise 0` for calm
+visual observation, and bots only move/carve when they have someone to FIGHT.
+
 ## ★ Ghost & slow-mo polish (2026-06-15, Gustav — human request)
 Direct asks from the live playtest of the new `~/strafe64-engine` tree. All
 human-validated (`\map surf_64` / any race map, then `g_timeBind 1`).

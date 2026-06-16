@@ -4,6 +4,7 @@ engine/build/
 assets/openarena/
 # generated courses / tool artifacts (regenerable)
 tools/strafegen/generated/
+tools/strafegen/generated_fog/
 tools/strafegen/__pycache__/
 *.log
 .DS_Store

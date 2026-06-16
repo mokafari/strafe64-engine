@@ -1244,6 +1244,14 @@ void ClientThink_real( gentity_t *ent ) {
 
 	// check for respawning
 	if ( client->ps.stats[STAT_HEALTH] <= 0 ) {
+		// LATTICE: death is elimination, not a respawn. After the death-cam
+		// delay, drop the pilot to a spectator and let the heat play out.
+		if ( g_lattice.integer ) {
+			if ( level.time > client->respawnTime ) {
+				G_LatticeEliminate( ent );
+			}
+			return;
+		}
 		// wait for the attack button to be pressed
 		if ( level.time > client->respawnTime ) {
 			// forcerespawn is to prevent users from waiting out powerups
@@ -1362,6 +1370,9 @@ void ClientEndFrame( gentity_t *ent ) {
 		SpectatorClientEndFrame( ent );
 		return;
 	}
+
+	// LATTICE: lay one speed-trail point behind this pilot
+	G_LatticeEmitTrail( ent );
 
 	// turn off any expired powerups
 	for ( i = 0 ; i < MAX_POWERUPS ; i++ ) {

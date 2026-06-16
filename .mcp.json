@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "strafe64-engine": {
+      "command": "python3",
+      "args": ["tools/strafegen/engine_mcp.py"],
+      "env": {}
+    }
+  }
+}

@@ -80,12 +80,21 @@ LIGHTMAP_BY_VERTEX = -3   # vertex-lit surfaces; no lightmap lump needed
 
 # game/surfaceflags.h
 CONTENTS_SOLID   = 0x00000001
+CONTENTS_FOG     = 0x00000040   # volumetric fog (non-solid; renderer global fog)
 CONTENTS_TRIGGER = 0x40000000
 SURF_SKY         = 0x00000004
 SURF_NOIMPACT    = 0x00000010
 SURF_NODRAW      = 0x00000080
 
+# global atmospheric fog: the play volume is wrapped in one CONTENTS_FOG box so
+# distance fades world geometry toward the synthwave horizon colour (depth =
+# units to opaque). Sky surfaces are excluded so the skybox stays crisp.
+TEX_FOG      = "textures/strafe64/fog"
+FOG_COLOR    = (0.05, 0.04, 0.10)   # dark blue-purple: depth cue, not a recolour
+FOG_DEPTH    = 7000                 # far fade — keeps the near track high-contrast
+
 SZ_SHADER    = 72   # <64s2i
+SZ_FOGS      = 72   # <64s2i : char shader[64]; int brushNum; int visibleSide
 SZ_PLANE     = 16   # <4f
 SZ_NODE      = 36   # <9i
 SZ_LEAF      = 48   # <12i
@@ -155,6 +164,21 @@ textures/strafe64/sky
 	// scanline sun + jagged neon ridgeline above the horizon, a receding
 	// neon grid below it. Replaces the old scrolling star dome.
 	skyparms textures/strafe64/env/synth 512 -
+}
+// global atmospheric fog volume. The whole play area is wrapped in one
+// CONTENTS_FOG brush (see write()), and every non-sky world surface is tagged
+// to this fog, so distance fades the world toward the synthwave horizon colour
+// — depth gives the scene air without hiding the near track. fogParms is
+// ( red green blue ) <distance-to-opaque>.
+textures/strafe64/fog
+{
+	qer_editorimage textures/common/fog
+	surfaceparm fog
+	surfaceparm nolightmap
+	surfaceparm nomarks
+	surfaceparm nonsolid
+	surfaceparm trans
+	fogparms ( 0.05 0.04 0.10 ) 7000
 }
 // the rising void plane, drawn client-side by the cgame race layer
 strafe64/void
@@ -439,20 +463,21 @@ def _build_synthsky(n=256):
 
     def color(dx, dy, dz):
         el = dz
-        if el < 0.0:                                         # neon grid floor
-            t = -1.0 / el
-            gx, gy = dx * t, dy * t
-            fade = 1.0 / (1.0 + 0.06 * t)
-            lw = 0.02 + 0.12 * (1.0 - fade)                 # widen near horizon
-            d = min(fline(gx * 0.5), fline(gy * 0.5))
-            g = max(0.0, 1.0 - d / lw) * fade
-            ln = (255, 60, 170) if (round(gx) + round(gy)) % 2 == 0 else (70, 230, 235)
-            r, gg, b = 16 + ln[0] * g, 8 + ln[1] * g, 32 + ln[2] * g
-            if el > -0.05:                                   # horizon glow
-                hg = 1.0 + el / 0.05
-                r += 110 * hg
-                gg += 200 * hg
-                b += 205 * hg
+        if el < 0.0:                                         # lower hemisphere
+            # DARK ground, not a mirrored neon grid: a bright grid floor below
+            # the horizon mirrors the sky above and reads as a rendering glitch
+            # (and fights the actual level geometry for legibility). Keep it a
+            # deep, near-black gradient so the world reads clearly against it,
+            # with only a thin horizon glow line right at el~0 for the sunset.
+            depth = min(1.0, -el / 0.30)
+            r = 14 - 12 * depth
+            gg = 8 - 7 * depth
+            b = 30 - 22 * depth
+            if el > -0.03:                                   # thin horizon glow
+                hg = 1.0 + el / 0.03
+                r += 120 * hg
+                gg += 70 * hg
+                b += 110 * hg
             return (_clamp8(r), _clamp8(gg), _clamp8(b))
 
         az = math.atan2(dy, dx)
@@ -532,6 +557,12 @@ PAL_PAD    = (255, 255, 150)
 PAL_LEDGE  = (150, 255, 220)
 PAL_GATE   = (255, 245, 120)
 PAL_DANGER = (255, 95, 95)
+# killbox arena: a cold futuristic neon set — dark deck, electric-blue walls,
+# cyan portal frames, magenta wall-jump columns
+PAL_KB_DECK   = (70, 80, 110)      # dark blue-grey deck
+PAL_KB_WALL   = (60, 110, 190)     # electric blue containment
+PAL_KB_NEON   = (90, 230, 255)     # cyan: portals, edges, the spire crown
+PAL_KB_COLUMN = (210, 90, 255)     # magenta wall-jump columns
 
 # music lanes (see ART_DIRECTION.md) — tracker modules in baseoa/music/.
 # A map's worldspawn "music" key is picked deterministically from its seed so
@@ -1732,6 +1763,237 @@ class Arena:
 
 
 # ======================================================================
+# killbox: a futuristic vertical melee arena with momentum portals
+# ======================================================================
+class Killbox:
+    """The hack-and-slash killbox — a sealed neon box you fight UP through.
+
+    A dark deck, a perimeter catwalk reached by ramp or jump-pad, four magenta
+    wall-jump columns chimneying up the corners, and a central spire crowned
+    with the quad. Four wall-centre MOMENTUM PORTALS turn every wall into a
+    runway: they're paired teleporters whose destinations carry
+    `angles "1000000 0 0"`, which makes TeleportPlayer (g_misc.c) skip its
+    velocity reset — so you dive at one wall fast and pop out the far wall still
+    flying, and the box never dead-ends. Built for the sword / time-bind game:
+    speed is power, verticality is the map, the deck is just where you start.
+
+    Bot-playable: ramps and jump pads give AI the catwalk; the columns and
+    portals are the human fast lines (bots ignore the portals, like the
+    velodrome's race triggers).
+    """
+
+    def __init__(self, seed, difficulty):
+        self.rng = random.Random(seed ^ 0x4B11B0)
+        self.seed = seed
+        self.diff = difficulty
+        self.solids = []
+        self.triggers = []
+        self.entities = []
+        self.sections = []
+
+    def place(self, classname, x, y, z, **kw):
+        e = {"classname": classname, "origin": f"{x:g} {y:g} {z:g}"}
+        e.update({k: str(v) for k, v in kw.items()})
+        self.entities.append(e)
+
+    def rim(self, x0, y0, x1, y1, z, pal=PAL_KB_NEON, t=10.0, h=8.0):
+        """Outline a top's perimeter with four thin proud neon strips, so every
+        ledge and drop reads as a bright edge at speed (N64 clarity)."""
+        self.solids.append(make_box((x0, y0, z), (x1, y0 + t, z + h), palette=pal))
+        self.solids.append(make_box((x0, y1 - t, z), (x1, y1, z + h), palette=pal))
+        self.solids.append(make_box((x0, y0, z), (x0 + t, y1, z + h), palette=pal))
+        self.solids.append(make_box((x1 - t, y0, z), (x1, y1, z + h), palette=pal))
+
+    def column(self, cx, cy, half, top, pal=PAL_KB_COLUMN):
+        """A wall-jump column / cover pillar with a glowing neon cap."""
+        self.solids.append(make_box((cx - half, cy - half, 0), (cx + half, cy + half, top),
+                                    tex=TEX_WALL, palette=pal))
+        self.rim(cx - half, cy - half, cx + half, cy + half, top)
+
+    def build(self):
+        rng = self.rng
+        # BIG: sized for 16 players. Everything downstream is relative to W/ci,
+        # so portals and wall-jumps stay correct as it scales.
+        W = 1408.0           # half-extent of the inner box (2816 wide)
+        T = 64.0             # wall thickness
+        H = 1600.0           # tall: the play is vertical
+        CW = float(rng.randrange(352, 433, 16))      # catwalk height (seeded)
+        CWW = 256.0                                   # catwalk depth (inward)
+        col_in = float(rng.randrange(280, 361, 20))  # corner-column inset
+        ci = W               # inner wall face (interior spans [-W, W])
+        self.sections.append(("killbox", {"size": int(2 * W), "height": int(H)}))
+
+        # --- deck + four containment walls, neon baseboard ---------------
+        self.solids.append(make_box((-W, -W, -32), (W, W, 0), palette=PAL_KB_DECK))
+        self.solids.append(make_box((-W - T, W, 0), (W + T, W + T, H),
+                                    tex=TEX_WALL, palette=PAL_KB_WALL))      # N
+        self.solids.append(make_box((-W - T, -W - T, 0), (W + T, -W, H),
+                                    tex=TEX_WALL, palette=PAL_KB_WALL))      # S
+        self.solids.append(make_box((W, -W, 0), (W + T, W, H),
+                                    tex=TEX_WALL, palette=PAL_KB_WALL))      # E
+        self.solids.append(make_box((-W - T, -W, 0), (-W, W, H),
+                                    tex=TEX_WALL, palette=PAL_KB_WALL))      # W
+        self.rim(-W, -W, W, W, 0, t=14.0, h=10.0)    # deck boundary line
+        # vertical neon strips up the four corners — reads the box volume
+        for sx, sy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+            self.solids.append(make_box(
+                (sx * ci - (14 if sx > 0 else 0), sy * ci - (14 if sy > 0 else 0), 0),
+                (sx * ci + (0 if sx > 0 else 14), sy * ci + (0 if sy > 0 else 14), H - 32),
+                palette=PAL_KB_NEON))
+
+        # --- perimeter catwalk (Z tier), every edge neon-rimmed ----------
+        self.sections.append(("catwalk", {"z": int(CW)}))
+        strips = (((-ci, ci - CWW), (ci, ci)),          # N
+                  ((-ci, -ci), (ci, -ci + CWW)),        # S
+                  ((ci - CWW, -ci), (ci, ci)),          # E
+                  ((-ci, -ci), (-ci + CWW, ci)))        # W
+        for (a, b) in strips:
+            self.solids.append(make_box((a[0], a[1], CW - 28), (b[0], b[1], CW),
+                                        palette=PAL_KB_DECK))
+            self.rim(a[0], a[1], b[0], b[1], CW)
+
+        # --- two ramps deck -> catwalk (bot-walkable, ~28 deg) -----------
+        self.sections.append(("ramps", {"count": 2}))
+        RUN = CW * 2.4
+        sy0 = -ci + CWW
+        self.solids.append(make_box((400, sy0, -16), (640, sy0 + RUN, CW),
+                                    palette=PAL_KB_DECK, top_drop={6: CW, 7: CW}))
+        self.rim(400, sy0, 640, sy0 + RUN, CW - 2, h=6.0)
+        ny1 = ci - CWW
+        self.solids.append(make_box((-640, ny1 - RUN, -16), (-400, ny1, CW),
+                                    palette=PAL_KB_DECK, top_drop={4: CW, 5: CW}))
+        self.rim(-640, ny1 - RUN, -400, ny1, CW - 2, h=6.0)
+
+        # --- central spire, tiers edge-lit, quad on the crown ------------
+        self.sections.append(("spire", {"tiers": 3}))
+        self.solids.append(make_box((-320, -320, 0), (320, 320, 288), palette=PAL_KB_WALL))
+        self.rim(-320, -320, 320, 320, 288)
+        self.solids.append(make_box((-224, -224, 288), (224, 224, 560), palette=PAL_KB_WALL))
+        self.rim(-224, -224, 224, 224, 560)
+        self.solids.append(make_box((-128, -128, 560), (128, 128, 700), palette=PAL_KB_NEON))
+        self.place("item_quad", 0, 0, 724)
+
+        # --- wall-jump corner columns + mid-deck cover pillars -----------
+        self.sections.append(("wall-jump columns", {"count": 4}))
+        co = ci - col_in
+        for sx, sy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+            self.column(sx * co, sy * co, 88, 760)
+        self.sections.append(("cover pillars", {"count": 4}))
+        for px, py in ((760, 0), (-760, 0), (0, 760), (0, -760)):
+            self.column(px, py, 80, 480)
+
+        # --- jump pads (8) -> arc onto the catwalk -----------------------
+        self.sections.append(("jump pads", {"count": 8}))
+        pads = [(c * (ci - CWW - 150), s * (ci - CWW - 150))
+                for (c, s) in ((1, 0), (-1, 0), (0, 1), (0, -1),
+                               (0.66, 0.66), (-0.66, 0.66),
+                               (0.66, -0.66), (-0.66, -0.66))]
+        for k, (px, py) in enumerate(pads):
+            self.solids.append(make_box((px - 52, py - 52, 0), (px + 52, py + 52, 10),
+                                        palette=PAL_PAD))
+            self.rim(px - 52, py - 52, px + 52, py + 52, 10, t=8.0, h=8.0)
+            tb = make_box((px - 52, py - 52, 10), (px + 52, py + 52, 84),
+                          tex=TEX_TRIGGER, contents=CONTENTS_TRIGGER, draw=set())
+            self.triggers.append((tb, {"classname": "trigger_push",
+                                       "target": f"kb_pad_{k}"}))
+            self.place("target_position", px * 0.5, py * 0.5, CW + 320,
+                       targetname=f"kb_pad_{k}")
+
+        # --- momentum portals: one centred gate per wall, exit the opposite
+        #     wall keeping your velocity (dest angles[0]>999999 -> no reset) -
+        self.sections.append(("momentum portals", {"count": 4}))
+        band = 256.0
+        inset = 120.0
+        pz0, pz1 = CW - 40.0, CW + 360.0
+        dest_in = ci - 360.0
+        for k, (nx, ny) in enumerate(((0, 1), (0, -1), (1, 0), (-1, 0))):
+            if ny:                                  # north/south wall
+                wy = ny * ci
+                lo, hi = sorted((wy, wy - ny * inset))
+                tb = make_box((-band, lo, pz0), (band, hi, pz1),
+                              tex=TEX_TRIGGER, contents=CONTENTS_TRIGGER, draw=set())
+                dx, dy = 0.0, -ny * dest_in
+                fy0, fy1 = sorted((wy, wy - ny * 12))
+                for z0, z1 in ((pz0 - 16, pz0), (pz1, pz1 + 16)):
+                    self.solids.append(make_box((-band - 16, fy0, z0),
+                                                (band + 16, fy1, z1),
+                                                tex=TEX_WALL, palette=PAL_KB_NEON))
+                for bx in (-band - 16, band):       # side jambs
+                    self.solids.append(make_box((bx, fy0, pz0), (bx + 16, fy1, pz1),
+                                                tex=TEX_WALL, palette=PAL_KB_NEON))
+            else:                                   # east/west wall
+                wx = nx * ci
+                lo, hi = sorted((wx, wx - nx * inset))
+                tb = make_box((lo, -band, pz0), (hi, band, pz1),
+                              tex=TEX_TRIGGER, contents=CONTENTS_TRIGGER, draw=set())
+                dx, dy = -nx * dest_in, 0.0
+                fx0, fx1 = sorted((wx, wx - nx * 12))
+                for z0, z1 in ((pz0 - 16, pz0), (pz1, pz1 + 16)):
+                    self.solids.append(make_box((fx0, -band - 16, z0),
+                                                (fx1, band + 16, z1),
+                                                tex=TEX_WALL, palette=PAL_KB_NEON))
+                for by in (-band - 16, band):
+                    self.solids.append(make_box((fx0, by, pz0), (fx1, by + 16, pz1),
+                                                tex=TEX_WALL, palette=PAL_KB_NEON))
+            dname = f"kb_portal_{k}"
+            self.triggers.append((tb, {"classname": "trigger_teleport", "target": dname}))
+            self.place("misc_teleporter_dest", dx, dy, CW + 120,
+                       targetname=dname, angles="1000000 0 0")
+
+        # --- 16 spawns: an outer + inner deck ring + four on the catwalk.
+        #     the outer ring is offset 22.5 deg so it sits BETWEEN the jump
+        #     pads (spawning on a pad would launch you the instant you appear) --
+        for k in range(8):
+            a = math.pi / 8 + k * math.pi / 4
+            x, y = 880 * math.cos(a), 880 * math.sin(a)
+            yaw = math.degrees(math.atan2(-y, -x)) % 360
+            self.place("info_player_deathmatch", x, y, 40, angle=f"{yaw:.0f}")
+        for k in range(4):
+            a = math.pi / 4 + k * math.pi / 2
+            x, y = 560 * math.cos(a), 560 * math.sin(a)
+            yaw = math.degrees(math.atan2(-y, -x)) % 360
+            self.place("info_player_deathmatch", x, y, 40, angle=f"{yaw:.0f}")
+        for ang, (x, y) in zip((270, 90, 180, 0),
+                               ((0, ci - 110), (0, -(ci - 110)),
+                                (ci - 110, 0), (-(ci - 110), 0))):
+            self.place("info_player_deathmatch", x, y, CW + 40, angle=str(ang))
+        self.place("info_player_intermission", 0, 0, H - 240, angle="270")
+
+        # --- loadout for 16: heavy health for melee, close guns, armour ---
+        self.sections.append(("loadout", {}))
+        for k in range(8):
+            a = math.pi / 8 + k * math.pi / 4
+            self.place("item_health_large", 720 * math.cos(a), 720 * math.sin(a), 40)
+        for k in range(8):
+            a = k * math.pi / 4
+            self.place("item_armor_shard", 480 * math.cos(a), 480 * math.sin(a), 40)
+        self.place("item_health_mega", ci - 110, 0, CW + 40)
+        self.place("item_armor_combat", -(ci - 110), 0, CW + 40)
+        self.place("item_armor_body", 0, ci - 110, CW + 40)
+        # weapons on the axes at mid-radius (clear of spire, pillars, pads and
+        # the ramp bands); each weapon's ammo sits just outboard on the same axis
+        wr, ar = 600.0, 664.0
+        for wcls, acls, (ux, uy) in (
+                ("weapon_shotgun", "ammo_shells", (1, 0)),
+                ("weapon_plasmagun", "ammo_cells", (-1, 0)),
+                ("weapon_lightning", "ammo_lightning", (0, 1)),
+                ("weapon_rocketlauncher", "ammo_rockets", (0, -1))):
+            self.place(wcls, wr * ux, wr * uy, 56)
+            self.place(acls, ar * ux, ar * uy, 40)
+
+        # --- enclosure + worldspawn (ceiling on the wall top, no void) ----
+        m = 64.0
+        self.solids += make_skybox(-W - T - m, -W - T - m, -32 - m,
+                                   W + T + m, W + T + m, H)
+        self.entities.insert(0, {
+            "classname": "worldspawn",
+            "message": f"STRAFE64 killbox {self.seed} (difficulty {self.diff})",
+            "music": pick_music(MUSIC_BREAKCORE, self.seed),
+        })
+        return self
+
+
+# ======================================================================
 # BSP writer
 # ======================================================================
 class _Store:
@@ -1780,6 +2042,9 @@ class BspWriter:
         self.leafbrushes = []
         self.leafsurfaces = []
         self.models = []
+        self.has_fog = False        # set in write() when a fog volume is added
+        self.fog_brush_index = None # brush index of the global fog volume
+        self.fogs = []              # packed dfog_t
 
     def shader_id(self, name, sflags, cflags):
         return self.shaders.add(
@@ -1794,12 +2059,15 @@ class BspWriter:
     def emit_brush(self, brush):
         first_side = len(self.brushsides)
         is_trigger = brush.contents == CONTENTS_TRIGGER
-        cflags = CONTENTS_TRIGGER if is_trigger else CONTENTS_SOLID
+        # triggers and fog volumes are non-solid + non-drawing; only their
+        # content flag and (for fog) their axial bounds matter to the engine
+        is_nonsolid = brush.contents in (CONTENTS_TRIGGER, CONTENTS_FOG)
+        cflags = brush.contents if is_nonsolid else CONTENTS_SOLID
         main_sid = self.shader_id(
-            brush.faces[0].tex, SURF_NODRAW if is_trigger else 0, cflags)
+            brush.faces[0].tex, SURF_NODRAW if is_nonsolid else 0, cflags)
         faces = []
         for f in brush.faces:
-            sflags = SURF_NODRAW if (not f.draw or is_trigger) else 0
+            sflags = SURF_NODRAW if (not f.draw or is_nonsolid) else 0
             if f.tex == TEX_SKY:
                 sflags |= SURF_SKY | SURF_NOIMPACT
             faces.append((f, self.shader_id(f.tex, sflags, cflags),
@@ -1824,7 +2092,7 @@ class BspWriter:
             if pid not in bevel_pids:    # bevels already cover axial faces
                 self.brushsides.append(struct.pack("<2i", pid, sid))
                 num_sides += 1
-            if f.draw and not is_trigger:
+            if f.draw and not is_nonsolid:
                 surf_ids.append(self.emit_face(f, sid))
         self.brushes.append(struct.pack(
             "<3i", first_side, num_sides, main_sid))
@@ -1846,9 +2114,12 @@ class BspWriter:
         num_idx = 3 * (len(poly) - 2)
         center = tuple(sum(p[i] for p in poly) / len(poly) for i in range(3))
         sid = len(self.surfaces)
+        # fogNum: tag every non-sky surface to global fog 0 (-> fogIndex 1) when
+        # the map carries a fog volume; sky stays unfogged (-1)
+        fog_num = 0 if (self.has_fog and f.tex != TEX_SKY) else -1
         self.surfaces.append(struct.pack(
             "<12i12f2i",
-            shader_id, -1, MST_PLANAR,
+            shader_id, fog_num, MST_PLANAR,
             first_vert, len(poly), first_index, num_idx,
             LIGHTMAP_BY_VERTEX, 0, 0, 0, 0,
             center[0], center[1], center[2],
@@ -1935,7 +2206,23 @@ class BspWriter:
     # ---- assembly -------------------------------------------------------
     def write(self, path):
         c = self.c
+        # wrap the whole play volume in one global fog brush sized to the world
+        # bounds, so every non-sky surface (tagged fogNum 0 in emit_face) fades
+        # with distance toward the synthwave horizon. Non-solid: movement and
+        # collision ignore it. Added as a world brush so it lives in the world
+        # model + tree like any other.
+        if c.solids:
+            fxs = [b.mins[0] for b in c.solids] + [b.maxs[0] for b in c.solids]
+            fys = [b.mins[1] for b in c.solids] + [b.maxs[1] for b in c.solids]
+            fzs = [b.mins[2] for b in c.solids] + [b.maxs[2] for b in c.solids]
+            fog = make_box((min(fxs), min(fys), min(fzs)),
+                           (max(fxs), max(fys), max(fzs)),
+                           tex=TEX_FOG, contents=CONTENTS_FOG, draw=set())
+            c.solids.append(fog)
+            self.has_fog = True
         for b in c.solids:
+            if b.contents == CONTENTS_FOG:
+                self.fog_brush_index = len(self.brushes)
             self.brush_surfs.append(self.emit_brush(b))
         n_world = len(c.solids)
         n_world_surfs = len(self.surfaces)
@@ -1990,7 +2277,11 @@ class BspWriter:
         lumps[LUMP_DRAWVERTS] = b"".join(self.verts)
         lumps[LUMP_DRAWINDEXES] = struct.pack(
             f"<{len(self.indexes)}i", *self.indexes)
-        lumps[LUMP_FOGS] = b""
+        if self.fog_brush_index is not None:
+            lumps[LUMP_FOGS] = struct.pack(
+                "<64s2i", TEX_FOG.encode(), self.fog_brush_index, -1)
+        else:
+            lumps[LUMP_FOGS] = b""
         lumps[LUMP_SURFACES] = b"".join(self.surfaces)
         lumps[LUMP_LIGHTMAPS] = b""      # vertex-lit
         lumps[LUMP_LIGHTGRID] = self.lightgrid(wm, wx)
@@ -2149,10 +2440,21 @@ def check_bsp(path):
             world_brushes = v[9]
     assert set(lb) == set(range(world_brushes)), \
         "world brushes not fully covered by leafs"
+    # fogs: 0 (none) or 1 global fog whose brush exists and has >=6 axial sides
+    # (R_LoadFogs reads sides 0-5 for the volume bounds, errors otherwise)
+    n_fogs = count(LUMP_FOGS, SZ_FOGS)
+    assert n_fogs in (0, 1), f"unexpected fog count {n_fogs}"
+    if n_fogs:
+        fshader, fbrush, fside = struct.unpack_from("<64s2i", lump(LUMP_FOGS), 0)
+        assert 0 <= fbrush < n_brushes, "fog brushNum out of range"
+        fs, ns, sh = struct.unpack_from("<3i", brushes, fbrush * SZ_BRUSH)
+        assert ns >= 6, "fog brush needs >=6 axial sides"
     surfs = lump(LUMP_SURFACES)
     for i in range(n_surfs):
         v = struct.unpack_from("<12i", surfs, i * SZ_SURFACE)
-        assert v[2] == MST_PLANAR and v[1] == -1
+        assert v[2] == MST_PLANAR
+        # fogNum is -1 (unfogged: sky) or 0 (the single global fog)
+        assert v[1] == -1 or (v[1] == 0 and n_fogs == 1), f"surf {i} fogNum {v[1]}"
         assert v[7] == LIGHTMAP_BY_VERTEX
         assert 0 <= v[3] and v[3] + v[4] <= n_verts, f"surf {i} verts"
         assert 0 <= v[5] and v[5] + v[6] <= n_idx and v[6] % 3 == 0
@@ -2498,9 +2800,13 @@ class SurfTurn:
 
 def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
              arena=False, name=None, void=True, voidrise=None,
-             voiddelay=None, dojo=None, surf=False):
+             voiddelay=None, dojo=None, surf=False, killbox=False):
     os.makedirs(out_dir, exist_ok=True)
-    if surf == "turn":
+    if killbox:
+        name = name or (f"strafe64kb_{seed}"
+                        + ("" if difficulty == 1 else f"_d{difficulty}"))
+        course = Killbox(seed, difficulty).build()
+    elif surf == "turn":
         name = name or (f"surfturn_{seed}" if seed else "surfturn_64")
         course = SurfTurn(seed).build()  # banked surf-turn test (human feel-validated)
     elif surf:
@@ -2581,6 +2887,19 @@ def selftest():
                 BspWriter(arena).write(p)
                 check_bsp(p)
                 ok += 1
+        # killbox: vertical melee arena with momentum portals
+        for seed in (1, 42, 1337):
+            kb = Killbox(seed, 1).build()
+            classes = [e["classname"] for _, e in kb.triggers]
+            assert classes.count("trigger_teleport") == 4, "killbox wants 4 portals"
+            dests = [e for e in kb.entities
+                     if e.get("classname") == "misc_teleporter_dest"]
+            assert all(float(d["angles"].split()[0]) > 999999 for d in dests), \
+                "killbox portals must preserve momentum (angles[0] > 999999)"
+            p = os.path.join(td, f"kb_{seed}.bsp")
+            BspWriter(kb).write(p)
+            check_bsp(p)
+            ok += 1
     print(f"selftest: {ok} maps generated and validated, all invariants hold")
     print(f"physics: jump range @320 = {jump_range(320):.0f}u, "
           f"single-jump ledge <= {LEDGE_SJ:.0f}u, "
@@ -2597,6 +2916,10 @@ def main():
     ap.add_argument("--arena", action="store_true",
                     help="deathmatch arena with a velodrome ring instead "
                          "of a linear run")
+    ap.add_argument("--killbox", action="store_true",
+                    help="futuristic vertical melee arena: wall-jump columns, "
+                         "a central spire and momentum portals for the "
+                         "hack-and-slash / time-bind game")
     ap.add_argument("--surf", action="store_true",
                     help="generate the ★ core-loop surf line (steep banked "
                          "ramps you air-strafe along; finish laps back to start)")
@@ -2672,8 +2995,8 @@ def main():
     if args.seed is None:
         ap.error("a seed is required (or use --daily / --check / --selftest)")
     generate(args.seed, args.difficulty, length, args.out,
-             args.map, args.pk3, arena=args.arena, name=name,
-             void=not args.no_void, voidrise=args.voidrise,
+             args.map, args.pk3, arena=args.arena, killbox=args.killbox,
+             name=name, void=not args.no_void, voidrise=args.voidrise,
              voiddelay=args.voiddelay)
 
 

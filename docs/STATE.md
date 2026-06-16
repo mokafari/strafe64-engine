@@ -81,6 +81,11 @@ deploys them together; a stale mix makes the client exit on load. See the
 - **Bots** — bhop / wall / double-jump via `bot_moveset`; can now surf
   (`BotSurfControl`). Dojo harness (`tools/strafegen/dojo.py`, `g_playtest.c`)
   for headless telemetry.
+- **LATTICE mode** — last-pilot-alive battle royale where each pilot's
+  damaging speed-trail is the third player (`g_lattice 1`). Per-client trail
+  ring + contact-chip in `code/game/g_lattice.c`; colour-coded vertical
+  light-wall rendering in `code/cgame/cg_lattice.c`; short health, death→
+  elimination, reuses the rising void as the collapsing floor. See ROADMAP.
 
 ## Key cvars
 
@@ -94,6 +99,10 @@ deploys them together; a stale mix makes the client exit on load. See the
 | `g_timeBindLog` | 1 | logarithmic ("Matrix") slow-mo curve vs linear |
 | `g_vectorgun` | 1 | vectorgun weapon mode |
 | `g_mutator` | 0 | daily mutator selector (9 = resolve-at-load) |
+| `g_lattice` | 0 | LATTICE last-pilot-alive mode (latched; damaging speed-trails) |
+| `g_latticeHealth` | 60 | pilot health pool in LATTICE (short by design) |
+| `g_latticeDamage` | 9 | chip damage per trail-contact tick |
+| `g_latticeRadius` | 40 | proximity (u) to a trail that counts as contact |
 
 ## Known sharp edges
 

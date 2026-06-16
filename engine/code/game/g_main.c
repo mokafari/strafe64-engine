@@ -82,6 +82,10 @@ vmCvar_t	g_dedicated;
 vmCvar_t	g_speed;
 vmCvar_t	g_gravity;
 vmCvar_t	g_mutator;
+vmCvar_t	g_lattice;			// LATTICE: last-pilot-alive, speed-trail lattice is the third player
+vmCvar_t	g_latticeHealth;	// pilot health pool (short — a few hits, not one)
+vmCvar_t	g_latticeDamage;	// chip damage per contact tick with a trail segment
+vmCvar_t	g_latticeRadius;	// proximity (u) to a trail segment that counts as contact
 vmCvar_t	g_cheats;
 vmCvar_t	g_knockback;
 vmCvar_t	g_quadfactor;
@@ -202,6 +206,10 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_speed, "g_speed", "320", 0, 0, qtrue  },
 	{ &g_gravity, "g_gravity", "1000", 0, 0, qtrue  },
 	{ &g_mutator, "g_mutator", "0", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_lattice, "g_lattice", "0", CVAR_SERVERINFO | CVAR_ARCHIVE | CVAR_LATCH, 0, qtrue  },
+	{ &g_latticeHealth, "g_latticeHealth", "60", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_latticeDamage, "g_latticeDamage", "9", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_latticeRadius, "g_latticeRadius", "40", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_knockback, "g_knockback", "1000", 0, 0, qtrue  },
 	{ &g_quadfactor, "g_quadfactor", "3", 0, 0, qtrue  },
 	{ &g_weaponRespawn, "g_weaponrespawn", "5", 0, 0, qtrue  },
@@ -1440,6 +1448,13 @@ void CheckExitRules( void ) {
 		return;
 	}
 
+	// LATTICE: a heat ends when one pilot is left standing, not on frag/time limits
+	if ( g_lattice.integer ) {
+		if ( G_LatticeCheckWin() ) {
+			return;
+		}
+	}
+
 	// check for sudden death
 	if ( ScoreIsTied() ) {
 		// always wait for sudden death
@@ -1995,6 +2010,9 @@ void G_RunFrame( int levelTime ) {
 
 	// the rising void consumes the world from below
 	G_RunVoid();
+
+	// LATTICE: each pilot's speed-trail is a damaging hazard — the third player
+	G_RunLattice();
 
 	// bot playtest telemetry: sample every alive bot this frame
 	G_PlaytestSample();

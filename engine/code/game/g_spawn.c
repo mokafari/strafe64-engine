@@ -407,6 +407,12 @@ void G_SpawnGEntityFromSpawnVars( void ) {
 	// get the next free entity
 	ent = G_Spawn();
 
+	// tag entities spawned live via the `spawnent` console cmd so `clearents`
+	// can remove just those, leaving the map's own entities alone.
+	if ( g_apiRuntimeSpawn ) {
+		ent->runtimeSpawned = qtrue;
+	}
+
 	for ( i = 0 ; i < level.numSpawnVars ; i++ ) {
 		G_ParseField( level.spawnVars[i][0], level.spawnVars[i][1], ent );
 	}
@@ -598,13 +604,25 @@ void SP_worldspawn( void ) {
 	// rising void: strafegen writes these so the world chases the pace.
 	// g_voidRise scales the rate (0 disables, for free practice)
 	{
-		float	voidRise, voidBase, voidDelay;
+		float		voidRise, voidBase, voidDelay;
+		qboolean	latticeAutoVoid = qfalse;
 
 		G_SpawnFloat( "voidrise", "0", &voidRise );
 		voidRise *= g_voidRise.value;
+
+		// LATTICE: the collapsing floor is the heat's third pressure. If the map
+		// itself didn't schedule a void, give the mode a default rising floor so
+		// stalemates always resolve. Starts just below a near-zero arena floor;
+		// tune voidbase per arena (latched at load) once you see where it sits.
+		// g_voidRise 0 still disables it entirely (free-practice / visual testing).
+		if ( g_lattice.integer && voidRise <= 0 && g_voidRise.value > 0 ) {
+			voidRise = 48.0f;
+			latticeAutoVoid = qtrue;
+		}
+
 		if ( voidRise > 0 ) {
-			G_SpawnFloat( "voidbase", "-4096", &voidBase );
-			G_SpawnFloat( "voiddelay", "10", &voidDelay );
+			G_SpawnFloat( "voidbase", latticeAutoVoid ? "-256" : "-4096", &voidBase );
+			G_SpawnFloat( "voiddelay", latticeAutoVoid ? "15" : "10", &voidDelay );
 			level.voidActive = qtrue;
 			level.voidBase = voidBase;
 			level.voidRise = voidRise;

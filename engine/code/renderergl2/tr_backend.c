@@ -1641,6 +1641,9 @@ const void *RB_PostProcess(const void *data)
 		}
 	}
 
+	if (srcFbo && r_bloom->value > 0.0f)
+		RB_Bloom(srcFbo, srcBox);
+
 	if (r_drawSunRays->integer)
 		RB_SunRays(srcFbo, srcBox, srcFbo, srcBox);
 

@@ -18,9 +18,11 @@ set(CGAME_SOURCES
     ${SOURCE_DIR}/cgame/cg_ents.c
     ${SOURCE_DIR}/cgame/cg_event.c
     ${SOURCE_DIR}/cgame/cg_info.c
+    ${SOURCE_DIR}/cgame/cg_lattice.c
     ${SOURCE_DIR}/cgame/cg_localents.c
     ${SOURCE_DIR}/cgame/cg_marks.c
     ${SOURCE_DIR}/cgame/cg_particles.c
+    ${SOURCE_DIR}/cgame/cg_ragdoll.c
     ${SOURCE_DIR}/cgame/cg_players.c
     ${SOURCE_DIR}/cgame/cg_playerstate.c
     ${SOURCE_DIR}/cgame/cg_predict.c
@@ -55,6 +57,7 @@ set(GAME_SOURCES
     ${SOURCE_DIR}/game/g_cmds.c
     ${SOURCE_DIR}/game/g_combat.c
     ${SOURCE_DIR}/game/g_items.c
+    ${SOURCE_DIR}/game/g_lattice.c
     ${SOURCE_DIR}/game/g_mem.c
     ${SOURCE_DIR}/game/g_misc.c
     ${SOURCE_DIR}/game/g_missile.c

@@ -129,6 +129,13 @@ vmCvar_t	cg_viewsize;
 vmCvar_t	cg_drawGun;
 vmCvar_t	cg_gun_frame;
 vmCvar_t	cg_gun_x;
+vmCvar_t	cg_swordTrailBaseX;
+vmCvar_t	cg_swordTrailBaseY;
+vmCvar_t	cg_swordTrailBaseZ;
+vmCvar_t	cg_swordTrailTipX;
+vmCvar_t	cg_swordTrailTipY;
+vmCvar_t	cg_swordTrailTipZ;
+vmCvar_t	cg_swordTrailAlpha;
 vmCvar_t	cg_gun_y;
 vmCvar_t	cg_gun_z;
 vmCvar_t	cg_tracerChance;
@@ -147,6 +154,15 @@ vmCvar_t	cg_speedLines;
 vmCvar_t	cg_strafeHelper;
 vmCvar_t	cg_ghost;
 vmCvar_t	cg_ghostAlpha;
+vmCvar_t	cg_latticeGlitch;
+vmCvar_t	cg_latticeAudio;	// 0-2: how hard the lattice pulses to the music bands
+vmCvar_t	cg_ragdoll;				// 1: dead bodies ragdoll; 0: stock death animation
+vmCvar_t	cg_ragdollDamp;			// Verlet velocity retention per step (0..1)
+vmCvar_t	cg_ragdollIterations;	// constraint relaxation passes per frame
+vmCvar_t	au_bass;			// music band envelopes (set by snd_codec_mod), read for reactivity
+vmCvar_t	au_mid;
+vmCvar_t	au_high;
+vmCvar_t	au_level;
 vmCvar_t	cg_zoomFov;
 vmCvar_t	cg_thirdPerson;
 vmCvar_t	cg_thirdPersonRange;
@@ -224,13 +240,22 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_fov, "cg_fov", "90", CVAR_ARCHIVE },
 	{ &cg_drawSpeed, "cg_drawSpeed", "1", CVAR_ARCHIVE },
 	{ &cg_speedFov, "cg_speedFov", "1", CVAR_ARCHIVE },
-	{ &cg_flowColor, "cg_flowColor", "1", CVAR_ARCHIVE },
+	{ &cg_flowColor, "cg_flowColor", "0", CVAR_ARCHIVE },
 	{ &cg_glitch, "cg_glitch", "1", CVAR_ARCHIVE },
-	{ &cg_glitchAmount, "cg_glitchAmount", "1", CVAR_ARCHIVE },
+	{ &cg_glitchAmount, "cg_glitchAmount", "0.6", CVAR_ARCHIVE },
 	{ &cg_speedLines, "cg_speedLines", "1", CVAR_ARCHIVE },
 	{ &cg_strafeHelper, "cg_strafeHelper", "1", CVAR_ARCHIVE },
 	{ &cg_ghost, "cg_ghost", "1", CVAR_ARCHIVE },
 	{ &cg_ghostAlpha, "cg_ghostAlpha", "0.55", CVAR_ARCHIVE },
+	{ &cg_latticeGlitch, "cg_latticeGlitch", "1", CVAR_ARCHIVE },
+	{ &cg_latticeAudio, "cg_latticeAudio", "1", CVAR_ARCHIVE },
+	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },
+	{ &cg_ragdollDamp, "cg_ragdollDamp", "0.97", CVAR_ARCHIVE },
+	{ &cg_ragdollIterations, "cg_ragdollIterations", "6", CVAR_ARCHIVE },
+	{ &au_bass, "au_bass", "0", 0 },
+	{ &au_mid, "au_mid", "0", 0 },
+	{ &au_high, "au_high", "0", 0 },
+	{ &au_level, "au_level", "0", 0 },
 	{ &cg_viewsize, "cg_viewsize", "100", CVAR_ARCHIVE },
 	{ &cg_shadows, "cg_shadows", "1", CVAR_ARCHIVE  },
 	{ &cg_gibs, "cg_gibs", "1", CVAR_ARCHIVE  },
@@ -258,6 +283,13 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_gun_x, "cg_gunX", "0", CVAR_CHEAT },
 	{ &cg_gun_y, "cg_gunY", "0", CVAR_CHEAT },
 	{ &cg_gun_z, "cg_gunZ", "0", CVAR_CHEAT },
+	{ &cg_swordTrailBaseX, "cg_swordTrailBaseX", "5", CVAR_ARCHIVE },
+	{ &cg_swordTrailBaseY, "cg_swordTrailBaseY", "0", CVAR_ARCHIVE },
+	{ &cg_swordTrailBaseZ, "cg_swordTrailBaseZ", "-1.9", CVAR_ARCHIVE },	// guard rides low (katana curve)
+	{ &cg_swordTrailTipX, "cg_swordTrailTipX", "23", CVAR_ARCHIVE },
+	{ &cg_swordTrailTipY, "cg_swordTrailTipY", "0", CVAR_ARCHIVE },
+	{ &cg_swordTrailTipZ, "cg_swordTrailTipZ", "2.4", CVAR_ARCHIVE },	// tip rides high (katana curve)
+	{ &cg_swordTrailAlpha, "cg_swordTrailAlpha", "0.5", CVAR_ARCHIVE },	// trail brightness
 	{ &cg_centertime, "cg_centertime", "3", CVAR_CHEAT },
 	{ &cg_runpitch, "cg_runpitch", "0.002", CVAR_ARCHIVE},
 	{ &cg_runroll, "cg_runroll", "0.005", CVAR_ARCHIVE },
@@ -903,6 +935,7 @@ static void CG_RegisterGraphics( void ) {
 	cgs.media.battleWeaponShader = trap_R_RegisterShader("powerups/battleWeapon" );
 	cgs.media.invisShader = trap_R_RegisterShader("powerups/invisibility" );
 	cgs.media.ghostShader = trap_R_RegisterShader("strafe64/ghost" );	// optional, from the strafe64 pk3
+	cgs.media.latticeShader = trap_R_RegisterShader("strafe64/lattice" );	// LATTICE trail wall (baseoa/scripts)
 	cgs.media.voidShader = trap_R_RegisterShader("strafe64/void" );	// optional, from the strafe64 pk3
 	cgs.media.regenShader = trap_R_RegisterShader("powerups/regen" );
 	cgs.media.hastePuffShader = trap_R_RegisterShader("hasteSmokePuff" );
@@ -1949,6 +1982,8 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 	CG_LoadingString( "clients" );
 
 	CG_RegisterClients();		// if low on memory, some clients will be deferred
+
+	CG_RagdollReset();			// drop any corpses carried across a map load
 
 #ifdef MISSIONPACK
 	CG_AssetCache();

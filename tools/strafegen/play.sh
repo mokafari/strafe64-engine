@@ -11,6 +11,9 @@
 #   ./play.sh arena 42         arena, seed 42
 #   ./play.sh arena new 2      arena, random seed, difficulty 2
 #
+#   ./play.sh kb               killbox: strafe64kb_1337 (vertical melee arena)
+#   BOTS=6 ./play.sh kb 42     killbox seed 42, 6 bots to hack and slash
+#
 #   BOTS=3 ./play.sh arena     auto-fill the arena with 3 bots
 #   FULLSCREEN=1 ./play.sh     fullscreen instead of windowed
 
@@ -25,6 +28,13 @@ if [ "$1" = arena ]; then
 	NAME="strafe64dm_${SEED}"
 	[ "$DIFF" != 1 ] && NAME="${NAME}_d${DIFF}"
 	GEN_ARGS="$SEED --arena --difficulty $DIFF"
+elif [ "$1" = kb ] || [ "$1" = killbox ]; then
+	SEED=${2:-1337}
+	DIFF=${3:-1}
+	[ "$SEED" = new ] && SEED=$(jot -r 1 1 99999)
+	NAME="strafe64kb_${SEED}"
+	[ "$DIFF" != 1 ] && NAME="${NAME}_d${DIFF}"
+	GEN_ARGS="$SEED --killbox --difficulty $DIFF"
 else
 	SEED=${1:-1337}
 	DIFF=${2:-1}
