@@ -47,4 +47,25 @@ neon veins that churn and flare on the kick drum.
   scales for the churn. The third stage's brightness is `rgbGen wave bass`, so it
   pumps with the music; the gl2 bloom makes the bright veins glow.
 
+### 02 · Synthwave Sun — `shaderlib/sun`
+
+![Synthwave Sun](previews/02_sun.jpg)
+
+The signature retro sunset disc — a white-hot/amber crown fading down to magenta,
+cut by horizontal scanline bars that widen toward the base, wrapped in a soft glow
+that swells and pumps on the kick.
+
+- **Ports:** Shadertoy — [*Synthwave Shader [VIP2017]* (MslfRn)](https://www.shadertoy.com/view/MslfRn) and [*another synthwave sunset thing* (tsScRK)](https://www.shadertoy.com/view/tsScRK).
+- **Technique:** the sun disc (vertical white→amber→magenta gradient with widening
+  scanline gaps on the lower half) and a soft radial halo are baked on black for
+  additive blend. `rgbGen wave bass` swells the halo and pumps the disc on the
+  kick. This is a **single-image** shader, so it uses the gallery's `%FIT%` token
+  → a per-panel `tcMod transform` that maps the texture exactly once onto the panel
+  (no tiling), unlike the seamless plasma which tiles.
+
+> **Gallery note:** panels are square so single-image discs stay round, and each
+> `fit` shader gets a `tcMod transform` computed for its panel (`_fit_tcmod`). To
+> reuse a `fit` shader on a real map surface, size/scale the surface to taste —
+> the transform is gallery-panel-specific.
+
 <!-- next entries appended here by the shader loop -->

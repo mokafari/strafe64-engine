@@ -219,6 +219,74 @@ shaderlib/plasma
 """
 
 
+# --- #2 : Synthwave Sun ----------------------------------------------------
+def _sun_textures():
+    n = 128
+    cx, cy, R = n * 0.5, n * 0.5, n * 0.42
+    disc = [
+        (0.00, (255, 250, 205)),  # hot white-yellow crown
+        (0.32, (255, 196, 70)),   # amber
+        (0.60, (255, 92, 120)),   # hot pink
+        (1.00, (175, 28, 140)),   # magenta base
+    ]
+    sun, glow = [], []
+    for y in range(n):
+        for x in range(n):
+            dx, dy = x - cx, y - cy
+            r = math.hypot(dx, dy)
+            # --- glow halo: soft radial magenta-pink falloff on black ---
+            gf = 1.0 - r / (n * 0.52)
+            if gf < 0:
+                gf = 0.0
+            gf = gf * gf
+            glow.append((int(255 * gf), int(110 * gf), int(165 * gf)))
+            # --- sun disc: vertical gradient, scanline bars on the lower half ---
+            if r > R:
+                sun.append((0, 0, 0))
+                continue
+            vy = (y - (cy - R)) / (2.0 * R)
+            vy = 0.0 if vy < 0 else (1.0 if vy > 1 else vy)
+            c = ramp(disc, vy)
+            if y > cy:                       # lower half: retro scanline gaps
+                below = (y - cy) / R         # 0..1 downward
+                period = 4 + int(below * 11)
+                if (y - int(cy)) % period < 1 + below * 5:
+                    c = (0, 0, 0)            # gap (black -> additive shows nothing)
+            sun.append(tuple(int(v) for v in c))
+    # the panel's t maps inverted, so flip vertically -> crown up, stripes at the base
+    def flipv(px):
+        return [px[(n - 1 - y) * n + x] for y in range(n) for x in range(n)]
+    return {
+        "textures/shaderlib/sun.tga": _tga32(n, n, flipv(sun)),
+        "textures/shaderlib/sunglow.tga": _tga32(n, n, flipv(glow)),
+    }
+
+
+def _sun_shader():
+    return """
+shaderlib/sun
+{
+\tnopicmip
+\t{
+\t\tmap textures/shaderlib/bezel.tga
+\t\trgbGen identity
+\t}
+\t{
+\t\tmap textures/shaderlib/sunglow.tga
+\t\tblendFunc GL_ONE GL_ONE
+\t\t%FIT%
+\t\trgbGen wave bass 0.20 1.0 0 0
+\t}
+\t{
+\t\tmap textures/shaderlib/sun.tga
+\t\tblendFunc GL_ONE GL_ONE
+\t\t%FIT%
+\t\trgbGen wave bass 0.74 0.5 0 0
+\t}
+}
+"""
+
+
 SHADERS = [
     {
         "key": "plasma",
@@ -234,12 +302,59 @@ SHADERS = [
         "textures": _plasma_textures,
         "shader": _plasma_shader,
     },
+    {
+        "key": "sun",
+        "title": "Synthwave Sun",
+        "ref": ("Shadertoy — 'Synthwave Shader [VIP2017]' (MslfRn) / 'another "
+                "synthwave sunset thing' (tsScRK)",
+                "https://www.shadertoy.com/view/MslfRn"),
+        "blurb": "The signature retro sunset disc — white-hot crown fading to "
+                 "magenta, cut by horizontal scanline bars, glowing and pulsing "
+                 "on the kick.",
+        "technique": "Baked sun disc (vertical white->amber->magenta gradient "
+                     "with widening scanline gaps on the lower half) plus a soft "
+                     "radial halo, both on black for additive blend. rgbGen wave "
+                     "bass swells the halo and pumps the disc on the kick.",
+        "textures": _sun_textures,
+        "shader": _sun_shader,
+        "fit": True,
+    },
 ]
 
 
 # ---------------------------------------------------------------------------
-# gallery map: a sealed dark room with one glowing panel per library shader
+# gallery layout: a sealed dark room with one glowing panel per library shader.
+# Shared by the map builder and the shader writer so the per-panel "fit" texture
+# transform matches the panel it lands on.
 # ---------------------------------------------------------------------------
+PW, PH, GAP = 230.0, 230.0, 90.0    # panel width/height + gap (square -> round discs)
+D, H, T = 380.0, 360.0, 16.0        # room half-depth, height, shell thickness
+PANEL_Y = D - 4.0                   # front face plane of every panel
+
+
+def _panel_layout(n):
+    """Return (W, rects). rects[i] = (x0, z0, x1, z1) of panel i's front face."""
+    row_w = n * PW + (n + 1) * GAP
+    W = max(440.0, row_w / 2.0 + 48.0)
+    z0 = H * 0.5 - PH * 0.5
+    rects = []
+    x = -row_w / 2.0 + GAP
+    for _ in range(n):
+        rects.append((x, z0, x + PW, z0 + PH))
+        x += PW + GAP
+    return W, rects
+
+
+def _fit_tcmod(rect):
+    """A `tcMod transform` that maps the texture's 0..1 exactly onto this panel's
+    front face (no tiling, no wrap-split), for single-image shaders. The face is
+    -y, so _face_st gives s=x/64, t=z/64; we invert that to fit the panel rect."""
+    x0, z0, x1, z1 = rect
+    msx, msz = 64.0 / (x1 - x0), 64.0 / (z1 - z0)
+    return ("tcMod transform %g 0 0 %g %g %g"
+            % (msx, msz, -x0 / (x1 - x0), -z0 / (z1 - z0)))
+
+
 class GalleryRoom:
     def __init__(self, shaders):
         self.shaders = shaders
@@ -251,11 +366,7 @@ class GalleryRoom:
 
     def build(self):
         n = len(self.shaders)
-        PW, PH, GAP = 160.0, 220.0, 80.0
-        row_w = n * PW + (n + 1) * GAP
-        W = max(420.0, row_w / 2.0 + 48.0)
-        D, H = 380.0, 320.0
-        T = 16.0  # shell thickness
+        W, rects = _panel_layout(n)
         ROOM = "shaderlib/room"
 
         def shell(mins, maxs, face):
@@ -270,15 +381,11 @@ class GalleryRoom:
         shell((-W, -D - T, -T), (W, -D, H + T), "+y")     # near wall (behind spawn)
 
         # display panels mounted on the far (+y) wall, facing the spawn (-y)
-        cz0 = H * 0.5 - PH * 0.5
-        cz1 = cz0 + PH
-        x = -row_w / 2.0 + GAP
-        for s in self.shaders:
+        for s, (x0, z0, x1, z1) in zip(self.shaders, rects):
             shader = "shaderlib/" + s["key"]
             self.solids.append(make_box(
-                (x, D - 4.0, cz0), (x + PW, D + T, cz1),
+                (x0, PANEL_Y, z0), (x1, D + T, z1),
                 tex=ROOM, draw={"-y"}, face_tex={"-y": shader}))
-            x += PW + GAP
 
         self.entities.append({"classname": "worldspawn",
                                "message": "STRAFE 64 shader library"})
@@ -297,9 +404,13 @@ class GalleryRoom:
 def build():
     textures = dict(room_textures())
     shader_text = ROOM_SHADERS
-    for s in SHADERS:
+    _, rects = _panel_layout(len(SHADERS))
+    for s, rect in zip(SHADERS, rects):
         textures.update(s["textures"]())
-        shader_text += "\n" + s["shader"]().strip() + "\n"
+        # single-image shaders carry a %FIT% token on the stages that must map
+        # the texture once onto the gallery panel; tiling shaders have no token.
+        fit = _fit_tcmod(rect) if s.get("fit") else ""
+        shader_text += "\n" + s["shader"]().strip().replace("%FIT%", fit) + "\n"
 
     scripts = os.path.join(BASEOA, "scripts")
     tex_dir = os.path.join(BASEOA, "textures", "shaderlib")
