@@ -616,13 +616,18 @@ void SP_worldspawn( void ) {
 		// tune voidbase per arena (latched at load) once you see where it sits.
 		// g_voidRise 0 still disables it entirely (free-practice / visual testing).
 		if ( g_lattice.integer && voidRise <= 0 && g_voidRise.value > 0 ) {
-			voidRise = 48.0f;
+			voidRise = g_latticeVoidRise.value > 0 ? g_latticeVoidRise.value : 48.0f;
 			latticeAutoVoid = qtrue;
 		}
 
 		if ( voidRise > 0 ) {
 			G_SpawnFloat( "voidbase", latticeAutoVoid ? "-256" : "-4096", &voidBase );
 			G_SpawnFloat( "voiddelay", latticeAutoVoid ? "15" : "10", &voidDelay );
+			// LATTICE auto-void: a live cvar overrides the worldspawn grace so the
+			// collapse can be co-timed with the ~8s lattice burst (TTK sweep).
+			if ( latticeAutoVoid && g_latticeVoidDelay.value > 0 ) {
+				voidDelay = g_latticeVoidDelay.value;
+			}
 			level.voidActive = qtrue;
 			level.voidBase = voidBase;
 			level.voidRise = voidRise;

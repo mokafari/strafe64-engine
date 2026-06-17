@@ -161,6 +161,12 @@ void CG_FragmentBounceMark( localEntity_t *le, trace_t *trace ) {
 		radius = 16 + (rand()&31);
 		CG_ImpactMark( cgs.media.bloodMarkShader, trace->endpos, trace->plane.normal, random()*360,
 			1,1,1,1, qtrue, radius, qfalse );
+
+		// STRAFE 64: where a blood gib first strikes the floor, start a puddle
+		// that spreads and lingers beyond the quick decal above
+		if ( trace->plane.normal[2] > 0.6f ) {
+			CG_SpawnBloodPool( trace->endpos, 4, 12 + (rand()&7), 8000 );
+		}
 	} else if ( le->leMarkType == LEMT_BURN ) {
 
 		radius = 8 + (rand()&15);
@@ -805,6 +811,102 @@ CG_AddLocalEntities
 
 ===================
 */
+/*
+================
+CG_LaunchBloodSpurt
+
+STRAFE 64: start a dismemberment geyser at a wound. It lives for `duration`
+ms and pumps blood out every frame (see CG_AddBloodSpurt). The jet rides mostly
+upward with the blade direction mixed in, so it fountains rather than dribbles.
+================
+*/
+void CG_LaunchBloodSpurt( const vec3_t origin, const vec3_t dir, int duration, int trackEnt, int trackPart ) {
+	localEntity_t	*le;
+	vec3_t			sdir;
+
+	if ( !cg_blood.integer || !cg_bloodSpurt.integer ) {
+		return;
+	}
+	if ( duration < 1 ) {
+		return;
+	}
+
+	le = CG_AllocLocalEntity();
+	le->leType = LE_BLOOD_SPURT;
+	le->startTime = cg.time;
+	le->endTime = cg.time + duration;
+
+	// a ragdoll stump to ride, so the geyser follows the falling body / each
+	// sliced half (trackEnt < 0 = stay put). Stashed in otherwise-unused fields.
+	le->light = trackEnt;
+	le->radius = trackPart;
+
+	VectorCopy( origin, le->refEntity.origin );
+	VectorCopy( origin, le->pos.trBase );
+
+	// flatten the cut direction, then bias hard upward into a fountain
+	VectorCopy( dir, sdir );
+	sdir[2] = 0;
+	if ( VectorNormalize( sdir ) == 0 ) {
+		VectorSet( sdir, 1, 0, 0 );
+	}
+	sdir[0] *= 0.5f;
+	sdir[1] *= 0.5f;
+	sdir[2] = 1.0f;
+	VectorNormalize( sdir );
+	VectorCopy( sdir, le->pos.trDelta );		// stash spray direction
+}
+
+/*
+================
+CG_AddBloodSpurt
+
+STRAFE 64: per-frame body of the dismemberment geyser. Blood pumps out in
+throbbing arterial pulses whose pressure bleeds off toward the end, while a
+pool keeps spreading on the floor beneath the wound.
+================
+*/
+void CG_AddBloodSpurt( localEntity_t *le ) {
+	vec3_t	dir, wound;
+	float	age, life, decay, throb, speed;
+	int		count, step, t, t2, trackEnt;
+
+	if ( !cg_blood.integer ) {
+		return;
+	}
+
+	// ride the severed stump: follow the ragdoll particle as the body tumbles
+	trackEnt = (int)le->light;
+	if ( trackEnt >= 0 && CG_RagdollWound( trackEnt, (int)le->radius, wound ) ) {
+		VectorCopy( wound, le->refEntity.origin );
+	}
+
+	age  = (float)( cg.time - le->startTime );
+	life = (float)( le->endTime - le->startTime );
+	if ( life <= 0 ) {
+		life = 1;
+	}
+	decay = 1.0f - age / life;					// pressure bleeds out
+	if ( decay < 0 ) {
+		decay = 0;
+	}
+
+	throb = 0.65f + 0.35f * sin( age * 0.018f );	// arterial pulse
+	speed = 300.0f * decay * throb;
+	count = (int)( 4 * decay * throb ) + 1;
+
+	VectorCopy( le->pos.trDelta, dir );
+	CG_BloodSpurt( le->refEntity.origin, dir, count, speed );
+
+	// keep the floor pooling, ~ one puddle every 220ms regardless of fps
+	step = 220;
+	t  = step * ( ( cg.time - cg.frametime + step ) / step );
+	t2 = step * ( cg.time / step );
+	for ( ; t <= t2 ; t += step ) {
+		CG_BloodPoolTrace( le->refEntity.origin, 400, 8, 26, 10000 );
+	}
+}
+
 void CG_AddLocalEntities( void ) {
 	localEntity_t	*le, *next;
 
@@ -858,6 +960,10 @@ void CG_AddLocalEntities( void ) {
 
 		case LE_SCOREPLUM:
 			CG_AddScorePlum( le );
+			break;
+
+		case LE_BLOOD_SPURT:			// STRAFE 64: continuous dismemberment geyser
+			CG_AddBloodSpurt( le );
 			break;
 
 #ifdef MISSIONPACK

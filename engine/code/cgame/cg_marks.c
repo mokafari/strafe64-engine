@@ -235,6 +235,7 @@ void CG_AddMarks( void ) {
 	markPoly_t	*mp, *next;
 	int			t;
 	int			fade;
+	int			total;
 
 	if ( !cg_addMarks.integer ) {
 		return;
@@ -246,8 +247,14 @@ void CG_AddMarks( void ) {
 		// still have it
 		next = mp->nextMark;
 
+		// STRAFE 64: blood splatter lingers longer than other decals
+		total = MARK_TOTAL_TIME;
+		if ( mp->markShader == cgs.media.bloodMarkShader && cg_bloodTime.value > 1.0f ) {
+			total = (int)( MARK_TOTAL_TIME * cg_bloodTime.value );
+		}
+
 		// see if it is time to completely remove it
-		if ( cg.time > mp->time + MARK_TOTAL_TIME ) {
+		if ( cg.time > mp->time + total ) {
 			CG_FreeMarkPoly( mp );
 			continue;
 		}
@@ -271,7 +278,7 @@ void CG_AddMarks( void ) {
 		}
 
 		// fade all marks out with time
-		t = mp->time + MARK_TOTAL_TIME - cg.time;
+		t = mp->time + total - cg.time;
 		if ( t < MARK_FADE_TIME ) {
 			fade = 255 * t / MARK_FADE_TIME;
 			if ( mp->alphaFade ) {

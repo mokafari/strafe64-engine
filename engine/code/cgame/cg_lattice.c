@@ -181,7 +181,6 @@ static void CG_LatticeDraw( int client ) {
 	qhandle_t	shader;
 	float		scroll, glitch;
 	unsigned	tbucket;
-	vec3_t		hpos, r, u;
 
 	n = latCount[client];
 	if ( n < 2 ) {
@@ -262,42 +261,12 @@ static void CG_LatticeDraw( int client ) {
 		CG_LatticeQuad( shader, a, b, segCol, i, i + 1, n, scroll, aMul, latSlow );
 	}
 
-	// glowing emitter node at the head: a billboarded additive sprite pulsing at
-	// the pilot's newest trail point, so the wall reads as energy being extruded
+	// the head index is reused by the dynamic lights below. NOTE: the billboarded
+	// additive "emitter" glow sprite that used to pulse at the pilot's newest trail
+	// point was REMOVED — it rendered right on the player and read as a glowing blob
+	// stuck to them. The trail wall + the head dynamic light below carry the
+	// energy-extrusion read without a sprite sitting on the body.
 	head = ( latHead[client] - 1 + LAT_PTS ) % LAT_PTS;
-	VectorCopy( latPts[client][head], hpos );
-	hpos[2] += ( LAT_WALL_LO + LAT_WALL_HI ) * 0.5f;
-	{
-		polyVert_t	g[4];
-		float		sz = 16.0f + ( 5.0f + 9.0f * latSlow ) * sin( latRealMs * 0.012f ) + 11.0f * latBass;
-		byte		gc[3];
-
-		if ( sz > 40.0f ) sz = 40.0f;		// cap so a peak kick punches, not blinds
-		int			k;
-
-		gc[0] = (byte)( col[0] + ( 255 - col[0] ) * 0.6f );
-		gc[1] = (byte)( col[1] + ( 255 - col[1] ) * 0.6f );
-		gc[2] = (byte)( col[2] + ( 255 - col[2] ) * 0.6f );
-
-		VectorScale( cg.refdef.viewaxis[1], sz, r );
-		VectorScale( cg.refdef.viewaxis[2], sz, u );
-
-		VectorAdd( hpos, r, g[0].xyz ); VectorAdd( g[0].xyz, u, g[0].xyz );
-		VectorSubtract( hpos, r, g[1].xyz ); VectorAdd( g[1].xyz, u, g[1].xyz );
-		VectorSubtract( hpos, r, g[2].xyz ); VectorSubtract( g[2].xyz, u, g[2].xyz );
-		VectorAdd( hpos, r, g[3].xyz ); VectorSubtract( g[3].xyz, u, g[3].xyz );
-		g[0].st[0] = 0; g[0].st[1] = 0;
-		g[1].st[0] = 1; g[1].st[1] = 0;
-		g[2].st[0] = 1; g[2].st[1] = 1;
-		g[3].st[0] = 0; g[3].st[1] = 1;
-		for ( k = 0 ; k < 4 ; k++ ) {
-			g[k].modulate[0] = gc[0];
-			g[k].modulate[1] = gc[1];
-			g[k].modulate[2] = gc[2];
-			g[k].modulate[3] = 255;
-		}
-		trap_R_AddPolyToScene( cgs.media.whiteShader, 4, g );	// additive glow core
-	}
 
 	// DYNAMIC NEON LIGHTS: the wall is a real light source, but kept as a subtle
 	// ACCENT (not a floodlight) so the arena still reads cleanly. A modest pulsing

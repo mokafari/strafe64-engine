@@ -192,6 +192,11 @@ typedef struct centity_s {
 	// exact interpolated position of entity on this frame
 	vec3_t			lerpOrigin;
 	vec3_t			lerpAngles;
+
+	// slow-mo motion smoothing: a real-time low-pass on the render origin so
+	// integer-quantised snapshot positions don't stair-step in deep bullet-time
+	vec3_t			smoothOrigin;
+	int				smoothTime;		// last frame this was updated (0 = uninitialised)
 } centity_t;
 
 
@@ -221,6 +226,7 @@ typedef enum {
 	LE_FADE_RGB,
 	LE_SCALE_FADE,
 	LE_SCOREPLUM,
+	LE_BLOOD_SPURT,			// STRAFE 64: continuous dismemberment geyser
 #ifdef MISSIONPACK
 	LE_KAMIKAZE,
 	LE_INVULIMPACT,
@@ -517,6 +523,8 @@ typedef struct {
 	int			peakStreak;		// longest bhop chain this life
 	vmCvar_t	mapSpeedRecord;	// this map's persisted all-time peak-speed PB
 	char		mapRecordName[64];	// the archived cvar backing it (cgr_<map>)
+	vmCvar_t	mapPar;			// this map's PAR peak-speed (best-bot calibration) for the medal
+	char		mapParName[64];	// the archived cvar backing it (cgp_<map>)
 
 	// movement mod: speed-tinted hit marker
 	int			hitMarkerTime;
@@ -1072,6 +1080,10 @@ typedef struct {
 	// parsed from serverinfo
 	gametype_t		gametype;
 	int				lattice;			// LATTICE last-pilot-alive mode active (g_lattice)
+	int				latticeRound;		// bracket HUD: current round (0 = no bracket), from CS_LATTICEHEAT
+	int				latticeHeatSize;	// pilots in the active sub-heat
+	int				latticeAdv;			// pilots who have advanced this round
+	int				latticeLeft;		// pilots still queued this round
 	int				dmflags;
 	int				teamflags;
 	int				fraglimit;
@@ -1221,12 +1233,15 @@ extern	vmCvar_t		cg_fov;
 extern	vmCvar_t		cg_drawSpeed;
 extern	vmCvar_t		cg_speedFov;
 extern	vmCvar_t		cg_flowColor;
+extern	vmCvar_t		cg_stillVignette;	// cold edge vignette when slow (off = clean full-bleed)
 extern	vmCvar_t		cg_glitch;
 extern	vmCvar_t		cg_glitchAmount;
 extern	vmCvar_t		cg_speedLines;
 extern	vmCvar_t		cg_strafeHelper;
 extern	vmCvar_t		cg_ghost;
 extern	vmCvar_t		cg_ghostAlpha;
+extern	vmCvar_t		cg_bulletTrail;
+extern	vmCvar_t		cg_bulletTrailWidth;
 extern	vmCvar_t		cg_latticeGlitch;
 extern	vmCvar_t		cg_latticeAudio;
 extern	vmCvar_t		au_bass;
@@ -1250,6 +1265,10 @@ extern	vmCvar_t 		cg_forceModel;
 extern	vmCvar_t 		cg_buildScript;
 extern	vmCvar_t		cg_paused;
 extern	vmCvar_t		cg_blood;
+extern	vmCvar_t		cg_bloodSpurt;	// STRAFE 64: arterial spray amount (0 = off)
+extern	vmCvar_t		cg_bloodPool;	// STRAFE 64: ground pooling (0 = off)
+extern	vmCvar_t		cg_bloodTime;	// STRAFE 64: gore longevity multiplier (pools + blood marks)
+extern	vmCvar_t		cg_bloodSpurtTime;	// STRAFE 64: dismember geyser duration (ms)
 extern	vmCvar_t		cg_predictItems;
 extern	vmCvar_t		cg_deferPlayers;
 extern	vmCvar_t		cg_drawFriend;
@@ -1464,6 +1483,13 @@ void CG_LatticeFrame( void );
 //
 void CG_RagdollReset( void );
 qboolean CG_RagdollAdd( centity_t *cent, int renderfx, float shadowPlane );
+// ragdoll spine particle indices (mirror of ragPart_t in cg_ragdoll.c), used by
+// blood geysers to ride a severed stump. Keep in sync with that enum.
+#define RAG_PART_FEET	0
+#define RAG_PART_PELVIS	1
+#define RAG_PART_CHEST	2
+#define RAG_PART_HEAD	3
+qboolean CG_RagdollWound( int entnum, int part, vec3_t out );
 void CG_SpawnSwordCut( vec3_t origin, vec3_t normal, vec3_t fwd );
 void CG_AddSwordCuts( void );
 void CG_Beam( centity_t *cent );
@@ -1544,10 +1570,18 @@ void CG_LightningBoltBeam( vec3_t start, vec3_t end );
 void CG_ScorePlum( int client, vec3_t org, int score );
 
 void CG_GibPlayer( vec3_t playerOrigin );
-void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, vec3_t cutNormal, int cutType );
+void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, vec3_t cutNormal, int cutType, int entityNum );
 void CG_BigExplode( vec3_t playerOrigin );
 
 void CG_Bleed( vec3_t origin, int entityNum );
+
+// STRAFE 64: arterial spray + spreading ground pools
+void CG_BloodSpurt( const vec3_t origin, const vec3_t dir, int count, float speed );
+void CG_SpawnBloodPool( const vec3_t origin, float startSize, float endSize, int lifetime );
+void CG_BloodPoolTrace( const vec3_t origin, float dropDist, float startSize, float endSize, int lifetime );
+// continuous geyser; trackEnt/trackPart ride a ragdoll stump (trackEnt < 0 = fixed)
+void CG_LaunchBloodSpurt( const vec3_t origin, const vec3_t dir, int duration, int trackEnt, int trackPart );
+void CG_AddBloodSpurt( localEntity_t *le );
 
 localEntity_t *CG_MakeExplosion( vec3_t origin, vec3_t dir,
 								qhandle_t hModel, qhandle_t shader, int msec,

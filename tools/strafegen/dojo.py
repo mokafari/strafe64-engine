@@ -23,8 +23,15 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ENGINE = "/Users/gustav/ioquake3/build/Release"
-OA = "/Users/gustav/openarena-0.8.8"
+# Repo root = two up from tools/strafegen. After the in-tree port (commits
+# 469c853 / 6a2265c) the engine + OA assets live INSIDE this repo; the old
+# hardcoded /Users/gustav/ioquake3 + /Users/gustav/openarena-0.8.8 paths still
+# exist on disk but build STALE pre-port binaries — the dojo was silently
+# regression-testing the wrong engine. Default to the in-tree tree; override
+# with DOJO_ENGINE / DOJO_OA env vars for an out-of-tree build.
+REPO = os.path.dirname(os.path.dirname(HERE))
+ENGINE = os.environ.get("DOJO_ENGINE", os.path.join(REPO, "engine/build/Release"))
+OA = os.environ.get("DOJO_OA", os.path.join(REPO, "assets/openarena"))
 DED = os.path.join(ENGINE, "ioq3ded")
 BUILD_BASEQ3 = os.path.join(ENGINE, "baseq3")
 JOURNAL = os.path.join(HERE, "dojo_runs.jsonl")
@@ -48,6 +55,12 @@ ARCHETYPES = {
                "extra": ["bot_combatBhop", "0"]},
     "arena":  {"map": "dojo_arena",  "void": 0, "bots": 12,
                "extra": ["g_vectorgun", "1"]},   # rail; combat-bhop on by default
+    # ★ surf core-loop TRAVERSAL regression: bots surf the ramps (BotSurfControl,
+    # iter36) at 445-646 ups but don't reliably finish laps — so this guards surf
+    # QUALITY (they keep carving fast + airborne), not completion. surf_64 ships
+    # item-bait midline + 4 spread spawns so bots ride the line.
+    "surf":   {"map": "surf_64",     "void": 0, "bots": 5,
+               "extra": ["bot_combatBhop", "0"]},
     # clustertruck/trackmania sections (movement isolation, combat off)
     "slalom":  {"map": "dojo_slalom",  "void": 0, "bots": 5,
                 "extra": ["bot_combatBhop", "0"]},
@@ -82,6 +95,12 @@ DEFAULT_DOSSIER = {
     "ztrick": {"flowpct": [40, None], "maxspd": [350, None],
                "stuckms": [None, 1500]},   # ztrick reliably <1300, kept tight
     "arena":  {"frags_per_min": [0.5, None], "midair_pct": [15, None]},
+    # surf: calibrated from baseline (maxspd 440-477, air 72-80%, both STABLE across
+    # runs). Guard maxspd + airpct only — a broken surf drops bots to the ground so
+    # both crater (speed ~150, air low). stuckms is DROPPED: surf bots stall at ramp
+    # transitions so it runs high AND erratic (2919-3532), a false-PARTIAL source,
+    # not a break signal. Floors carry margin under the observed spread.
+    "surf":   {"maxspd": [380, None], "airpct": [55, None]},
     # provisional bands for the new sections (set from the tuning baseline;
     # traversal-quality regression guards, comparable to flow/ztrick)
     "slalom":  {"flowpct": [25, None], "maxspd": [350, None], "stuckms": [None, 4000]},
@@ -255,7 +274,22 @@ def main():
 
     if not os.path.exists(DED):
         sys.exit(f"ioq3ded not found at {DED}")
-    archs = [a for a in args.archetypes.split(",") if a in ARCHETYPES]
+
+    # The LATTICE mode's health lives in Kill-line OUTCOMES (telefrag-free spawns,
+    # the rival-trail mechanic, heats resolving), not the movement telemetry the
+    # four archetypes classify on. So `--archetypes lattice` delegates to the
+    # self-contained lattice gate (lattice_sweep.regress) and returns BEFORE the
+    # movement battery — it shares the no-regression discipline without entangling
+    # with the profile pipeline. Combine: `--archetypes speed,flow,ztrick,arena,lattice`.
+    req = args.archetypes.split(",")
+    if "lattice" in req:
+        import lattice_sweep
+        lat_ok = lattice_sweep.regress(max(args.dur, 60))
+        req = [a for a in req if a != "lattice"]
+        if not req:
+            sys.exit(0 if lat_ok else 1)
+
+    archs = [a for a in req if a in ARCHETYPES]
 
     # load (or seed) the target dossier
     if os.path.exists(DOSSIER_PATH):

@@ -424,8 +424,19 @@ typedef struct {
 	int			voidStartTime;			// level.time the rise begins
 
 	// LATTICE last-pilot-alive mode (g_lattice)
-	int			latticeMaxPlayers;		// high-water mark of simultaneous live pilots this heat
-	qboolean	latticeEnded;			// heat already resolved (a champion was declared)
+	int			latticeMaxPlayers;		// high-water mark of simultaneous live pilots this (sub-)heat
+	qboolean	latticeEnded;			// match already resolved (a champion was declared)
+	// LATTICE bracket/heat format (g_latticeBracket): sequential FFA-N sub-heats,
+	// winners advance round to round until one champion. Round 0 = not yet seeded.
+	qboolean	latticeBracket;			// bracket active this match
+	int			latticeRound;			// current round (1-based; 0 = uninitialised)
+	int			latticePending[MAX_CLIENTS];	// clients still to play a sub-heat THIS round
+	int			latticePendingNum;
+	int			latticeAdvance[MAX_CLIENTS];	// sub-heat winners advancing to the next round
+	int			latticeAdvanceNum;
+	int			latticeSubSize;			// pilots activated in the current sub-heat
+	int			latticeSeedTime;		// level.time deadline to wait for the field to connect before seeding
+	int			latticeNextHeatTime;	// level.time to activate the next sub-heat (0 = none) — the inter-heat beat
 #ifdef MISSIONPACK
 	int			portalSequence;
 #endif
@@ -769,6 +780,9 @@ extern	vmCvar_t	g_timeBindSmooth;
 extern	vmCvar_t	g_timeBindRise;
 extern	vmCvar_t	g_timeBindFire;
 extern	vmCvar_t	g_timeBindLog;
+extern	vmCvar_t	g_timeBindCrouch;	// crouch/slide time-brake: intent scale while ducked
+extern	vmCvar_t	g_bulletSpeed;		// live scale on deflectable-bolt travel speed
+extern	vmCvar_t	g_corpseTime;		// STRAFE 64: seconds a dead body lingers before removal
 extern	vmCvar_t	g_strafeAccel;		// live air-strafe tuning cvars
 extern	vmCvar_t	g_airWishClamp;
 extern	vmCvar_t	g_airAccel;
@@ -781,11 +795,19 @@ extern	vmCvar_t	g_password;
 extern	vmCvar_t	g_needpass;
 extern	vmCvar_t	g_gravity;
 extern	vmCvar_t	g_speed;
-extern	vmCvar_t	g_mutator;	// STRAFE 64 run mutator: 0 none, 1 low-g, 2 rush, 3 heavy
+extern	vmCvar_t	g_mutator;	// STRAFE 64 run mutator: 0 none, 1 low-g, 2 rush, 3 heavy, 4 vectorgun-only
+// vectorgun (one speed-scaled rail, no other guns) is active when its own cvar is
+// set OR the VECTORGUN-ONLY run mutator (4) is selected — one gate for both.
+#define G_VECTORGUN_ON	( g_vectorgun.integer || g_mutator.integer == 4 )
 extern	vmCvar_t	g_lattice;	// STRAFE 64 LATTICE mode: last-pilot-alive, damaging speed-trails
 extern	vmCvar_t	g_latticeHealth;	// pilot health pool in LATTICE (short by design)
 extern	vmCvar_t	g_latticeDamage;	// chip damage per contact tick with a trail
 extern	vmCvar_t	g_latticeRadius;	// how close to a trail segment counts as contact (u)
+extern	vmCvar_t	g_latticeSelfMs;	// ignore your own trail younger than this (ms)
+extern	vmCvar_t	g_latticeVoidDelay;	// lattice auto-void grace (s)
+extern	vmCvar_t	g_latticeVoidRise;	// lattice auto-void rise rate (ups)
+extern	vmCvar_t	g_latticeBracket;	// bracket/heat format: sequential FFA-N sub-heats
+extern	vmCvar_t	g_latticeBracketSize;	// pilots per sub-heat (default 3 = FFA-3)
 extern	vmCvar_t	g_knockback;
 extern	vmCvar_t	g_quadfactor;
 extern	vmCvar_t	g_forcerespawn;

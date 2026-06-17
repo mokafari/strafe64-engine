@@ -69,9 +69,17 @@ int		pm_doubleJumpWindowMs = 400;
 float	pm_doubleJumpBoost = 75.0f;		// added to JUMP_VELOCITY
 
 // crouch slide (ducking at speed nearly removes ground friction)
-float	pm_slideMinSpeed = 250.0f;		// need at least this much speed to slide
-float	pm_slideFrictionScale = 0.12f;	// friction multiplier while sliding (slicker carry)
+float	pm_slideMinSpeed = 200.0f;		// need at least this much speed to slide (Apex/TF trigger)
+float	pm_slideFrictionScale = 0.06f;	// friction at SPEED — Titanfall-slick long glide (slick end of the ramp)
+float	pm_slideTailFriction = 0.60f;	// friction at the SLOW end — grips so the slide tail doesn't drag/crawl
 float	pm_slideJumpBoost = 1.15f;		// horizontal kick when jumping out of a slide
+// slide as the "draw a line through the space" state (STRAFE 64 flow loop):
+float	pm_slideCarveRate = 0.0f;		// slide bends toward look (per sec). 0 = Apex/TF lock: slide direction
+										// stays on your momentum, mouse only aims (slide one way, shoot another)
+float	pm_slideSlopeAccel = 1.0f;		// gravity fed into speed sliding downhill (surf-style; 0 = off)
+float	pm_slideEntrySpeed = 200.0f;	// Apex/TF slide BOOST: launch this much faster than your run on entry
+float	pm_slideSpeedCap = 1000.0f;		// entry boost only fires below this — must sit ABOVE run speed (~670) so a slide out-paces a run
+float	pm_slideViewheight = 6.0f;		// camera height while sliding — drops LOW to hug the ground (Titanfall)
 
 // wall jump (fresh jump press while airborne next to a wall)
 float	pm_wallJumpKick = 200.0f;		// push away from the wall
@@ -88,6 +96,8 @@ float	pm_wallRunGravityScale = 0.22f;	// gravity multiplier while running
 float	pm_wallRunMinSpeed = 280.0f;	// horizontal speed needed to stick
 float	pm_wallRunSlideSpeed = 60.0f;	// max downward speed while running (gentle slide)
 float	pm_wallRunBoost = 80.0f;		// upward kick on the frame you attach while falling
+float	pm_wallRunJumpKick = 300.0f;	// perpendicular pop-off speed when you jump out of a wall run
+float	pm_wallRunJumpUp = 270.0f;		// upward speed of that wall-run jump
 
 // vault / mantle (Titanfall-style: clip a ledge with speed, pull up over it
 // keeping momentum). No cooldown stat — it self-limits because after a vault
@@ -249,9 +259,19 @@ static void PM_Friction( void ) {
 		if ( pml.walking && !(pml.groundTrace.surfaceFlags & SURF_SLICK) ) {
 			// if getting knocked back, no friction
 			if ( ! (pm->ps->pm_flags & PMF_TIME_KNOCKBACK) ) {
-				// crouch slide: ducking at speed rides momentum
+				// crouch slide: ducking at speed rides momentum. Friction RAMPS UP
+				// as the slide slows — slick at speed (long Titanfall glide), grippy
+				// as you approach the min so the tail doesn't drag on forever (the
+				// proportional-to-speed default gives an endless crawl). Lerp the
+				// scale from slick (at slick speed) to tail-grip (at the min).
 				if ( ( pm->ps->pm_flags & PMF_DUCKED ) && speed > pm_slideMinSpeed ) {
-					drop += speed*pm_friction*pm_slideFrictionScale*pml.frametime;
+					float	slick = 550.0f;		// speed above which the slide is fully slick
+					float	t = ( speed - pm_slideMinSpeed ) / ( slick - pm_slideMinSpeed );
+					float	scale;
+					if ( t > 1.0f ) t = 1.0f;
+					if ( t < 0.0f ) t = 0.0f;
+					scale = pm_slideTailFriction + t * ( pm_slideFrictionScale - pm_slideTailFriction );
+					drop += speed*pm_friction*scale*pml.frametime;
 				} else {
 					control = speed < pm_stopspeed ? pm_stopspeed : speed;
 					drop += control*pm_friction*pml.frametime;
@@ -706,9 +726,15 @@ static qboolean PM_CheckWallJump( void ) {
 	if ( pm->cmd.upmove < 10 ) {
 		return qfalse;
 	}
-	// unlike the ground hop, walljumps need a fresh press
+	// unlike the ground hop, walljumps need a fresh press -- EXCEPT off an active
+	// wall run that's been riding briefly: you reach the wall HOLDING jump, so
+	// forcing a release to detach feels stuck. After ~150ms of ride a held jump
+	// pops you off; before that it doesn't, so jumping to reach the wall doesn't
+	// instantly bounce you straight back off.
 	if ( pm->ps->pm_flags & PMF_JUMP_HELD ) {
-		return qfalse;
+		if ( abs( pm->ps->stats[STAT_WALLRUN] ) < 150 ) {
+			return qfalse;
+		}
 	}
 	if ( pm->ps->groundEntityNum != ENTITYNUM_NONE ) {
 		return qfalse;
@@ -731,7 +757,7 @@ static qboolean PM_CheckWallJump( void ) {
 		dirs[i][2] = 0;
 		VectorNormalize( dirs[i] );
 
-		VectorMA( pm->ps->origin, 20, dirs[i], spot );
+		VectorMA( pm->ps->origin, 26, dirs[i], spot );	// >= wall-run reach (24) so the run's wall is always found
 		pm->trace( &trace, pm->ps->origin, pm->mins, pm->maxs, spot,
 			pm->ps->clientNum, pm->tracemask );
 
@@ -918,6 +944,26 @@ static qboolean PM_CheckWallRun( void ) {
 			continue;
 		}
 
+		// JUMP OFF: a fresh jump press during the run pops you straight off the
+		// wall — PERPENDICULAR along the wall normal (away from the wall) + a little
+		// up, keeping your along-wall momentum. Handled here, with the exact normal
+		// we just traced, so it can't miss like the generic wall-jump probe does at
+		// wall-run hug distance (which is what made popping off feel unreliable).
+		if ( pm->cmd.upmove >= 10 && !( pm->ps->pm_flags & PMF_JUMP_HELD )
+				&& !( pm->ps->pm_flags & PMF_RESPAWNED ) ) {
+			PM_ClipVelocity( pm->ps->velocity, trace.plane.normal, pm->ps->velocity, OVERCLIP );
+			VectorMA( pm->ps->velocity, pm_wallRunJumpKick, trace.plane.normal, pm->ps->velocity );
+			if ( pm->ps->velocity[2] < pm_wallRunJumpUp ) {
+				pm->ps->velocity[2] = pm_wallRunJumpUp;
+			}
+			pm->ps->pm_flags |= PMF_JUMP_HELD;
+			pm->ps->stats[STAT_WALLRUN] = 0;		// detached
+			pml.groundPlane = qfalse;
+			PM_AddEvent( EV_JUMP );
+			PM_ForceLegsAnim( LEGS_JUMP );
+			return qfalse;			// leapt off — not wall-running this frame
+		}
+
 		// engaged: hug the wall, kill the into-wall component
 		PM_ClipVelocity( pm->ps->velocity, trace.plane.normal, pm->ps->velocity, OVERCLIP );
 
@@ -929,8 +975,10 @@ static qboolean PM_CheckWallRun( void ) {
 			pm->ps->velocity[2] = -pm_wallRunSlideSpeed;
 		}
 
-		// keep a wall jump available so you can always kick off the run
+		// riding a wall refreshes your air kit: a wall jump to kick off the run,
+		// and the double-jump/air-dash for when you leap away from it
 		pm->ps->stats[STAT_WALLJUMP_COUNT] = 0;
+		pm->ps->stats[STAT_AIRJUMP_COUNT] = 0;
 
 		// accumulate ride time, sign carries the wall side for the camera
 		sign = ( s == 0 ) ? 1 : -1;
@@ -1088,6 +1136,8 @@ static void PM_AirMove( void ) {
 	float		accel;
 	float		wishspeed2;
 
+	pm->ps->pm_flags &= ~PMF_SLIDING;	// leaving the ground ends the slide
+
 	PM_Friction();
 
 	// walls take priority over the air jump on a fresh press
@@ -1240,6 +1290,76 @@ static void PM_GrappleMove( void ) {
 
 /*
 ===================
+PM_CrouchSlide
+
+STRAFE 64: the slide is the "draw a line through the space" state — the Tighten
+phase of the flow loop. Two things happen while ducked and carrying speed:
+
+  CARVE  — your momentum bends toward where you look, so you steer the slide with
+           your aim and conserve speed. This is how you aim with your body: point
+           your line through the cluster you mean to slice.
+  DESCEND — sliding downhill feeds gravity into speed (surf-style), so dropping
+           into a space BUILDS the speed that powers the slice and the exit-bhop.
+
+Speed is never freely added on the flat: carve only redirects it, slope-accel
+only converts height to speed. Called from PM_WalkMove while sliding, BEFORE the
+slope clip captures the velocity magnitude, so both effects survive the rescale.
+===================
+*/
+static void PM_CrouchSlide( void ) {
+	vec3_t	vh, aim, down;
+	float	speedh, frac, gain;
+
+	// drop the camera LOW for the slide — lower than a normal crouch — so you
+	// feel pinned to the ground rushing past. PM_CheckDuck set CROUCH_VIEWHEIGHT
+	// this frame; override it here while sliding (the cgame smooths the change).
+	pm->ps->viewheight = (int)pm_slideViewheight;
+
+	// --- carve: rotate horizontal velocity toward horizontal aim ---
+	vh[0] = pm->ps->velocity[0];
+	vh[1] = pm->ps->velocity[1];
+	vh[2] = 0;
+	speedh = VectorLength( vh );
+	if ( speedh > 1.0f && pm_slideCarveRate > 0.0f ) {
+		aim[0] = pml.forward[0];
+		aim[1] = pml.forward[1];
+		aim[2] = 0;
+		if ( VectorNormalize( aim ) > 0.0f ) {
+			vh[0] /= speedh;
+			vh[1] /= speedh;			// vh = unit heading
+			frac = pm_slideCarveRate * pml.frametime;
+			if ( frac > 1.0f ) frac = 1.0f;
+			// nlerp the heading toward aim, then restore the horizontal speed —
+			// direction bends, magnitude is preserved
+			vh[0] += ( aim[0] - vh[0] ) * frac;
+			vh[1] += ( aim[1] - vh[1] ) * frac;
+			if ( VectorNormalize( vh ) > 0.0f ) {
+				pm->ps->velocity[0] = vh[0] * speedh;
+				pm->ps->velocity[1] = vh[1] * speedh;
+			}
+		}
+	}
+
+	// --- descend: gain speed sliding downhill ---
+	// the horizontal part of the ground normal points UPHILL, so its negation is
+	// the downhill gradient; (1 - n.z) scales the gravity that becomes speed by
+	// how steep the slope is. On the flat (n.z == 1) this is exactly zero.
+	if ( pm_slideSlopeAccel > 0.0f && pml.groundTrace.plane.normal[2] < 0.999f ) {
+		down[0] = -pml.groundTrace.plane.normal[0];
+		down[1] = -pml.groundTrace.plane.normal[1];
+		down[2] = 0;
+		if ( VectorNormalize( down ) > 0.0f ) {
+			gain = pm->ps->gravity * pm_slideSlopeAccel
+				 * ( 1.0f - pml.groundTrace.plane.normal[2] ) * pml.frametime;
+			pm->ps->velocity[0] += down[0] * gain;
+			pm->ps->velocity[1] += down[1] * gain;
+		}
+	}
+}
+
+
+/*
+===================
 PM_WalkMove
 
 ===================
@@ -1330,7 +1450,14 @@ static void PM_WalkMove( void ) {
 		accelerate = pm_accelerate;
 	}
 
-	PM_Accelerate (wishdir, wishspeed, accelerate);
+	// momentum-locked slide: while sliding we DON'T apply walk acceleration —
+	// the slide is carried by momentum + the carve steer, like Titanfall (you let
+	// go of forward and ride it). Driving accel here is what made a slide feel like
+	// crouch-WALKING. PMF_SLIDING is sticky from last frame, so a continuing slide
+	// skips accel; the entry frame still accels once, which is fine.
+	if ( !( pm->ps->pm_flags & PMF_SLIDING ) ) {
+		PM_Accelerate (wishdir, wishspeed, accelerate);
+	}
 
 	//Com_Printf("velocity = %1.1f %1.1f %1.1f\n", pm->ps->velocity[0], pm->ps->velocity[1], pm->ps->velocity[2]);
 	//Com_Printf("velocity1 = %1.1f\n", VectorLength(pm->ps->velocity));
@@ -1342,10 +1469,45 @@ static void PM_WalkMove( void ) {
 //		pm->ps->velocity[2] = 0;
 	}
 
+	// crouch slide: carve toward aim + feed downhill speed while ducked at pace.
+	// Runs before the magnitude is captured below so a downhill gain survives the
+	// slope rescale. The slide is STICKY — entry needs slide speed, but once you're
+	// in it stays a slide while you hold duck on the ground, so a brief speed dip
+	// (grazing a wall) can't re-trigger the entry pop and runaway-boost you.
+	if ( pm->ps->pm_flags & PMF_DUCKED ) {
+		if ( pm->ps->pm_flags & PMF_SLIDING ) {
+			PM_CrouchSlide();					// already sliding: keep carving
+		} else if ( VectorLength( pm->ps->velocity ) > pm_slideMinSpeed ) {
+			// ENTRY: Apex/TF slide BOOST — launch faster than your run so the slide
+			// clearly out-paces walking (the contrast is what makes it read as a
+			// slide). Boost-to-cap: only fires below pm_slideSpeedCap, so chaining
+			// slidehops builds toward the cap instead of running away. PMF_SLIDING
+			// also drives the cgame lean + FOV-kick.
+			vec3_t vd;
+			float  cur;
+			vd[0] = pm->ps->velocity[0];
+			vd[1] = pm->ps->velocity[1];
+			vd[2] = 0;
+			cur = VectorNormalize( vd );
+			if ( cur > 0.0f && pm_slideEntrySpeed > 0.0f && cur < pm_slideSpeedCap ) {
+				float ns = cur + pm_slideEntrySpeed;
+				if ( ns > pm_slideSpeedCap ) {
+					ns = pm_slideSpeedCap;
+				}
+				pm->ps->velocity[0] = vd[0] * ns;
+				pm->ps->velocity[1] = vd[1] * ns;
+			}
+			pm->ps->pm_flags |= PMF_SLIDING;
+			PM_CrouchSlide();
+		}
+	} else {
+		pm->ps->pm_flags &= ~PMF_SLIDING;	// stood up: slide ends
+	}
+
 	vel = VectorLength(pm->ps->velocity);
 
 	// slide along the ground plane
-	PM_ClipVelocity (pm->ps->velocity, pml.groundTrace.plane.normal, 
+	PM_ClipVelocity (pm->ps->velocity, pml.groundTrace.plane.normal,
 		pm->ps->velocity, OVERCLIP );
 
 	// don't decrease velocity when going up or down a slope

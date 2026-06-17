@@ -76,5 +76,9 @@
     "flowpct": [28, null],
     "maxspd": [350, null],
     "stuckms": [null, 3500]
+  },
+  "surf": {
+    "maxspd": [380, null],
+    "airpct": [55, null]
   }
 }

@@ -288,6 +288,13 @@ qboolean CG_DrawOldScoreboard( void ) {
 		return qfalse;
 	}
 
+	// STRAFE 64: on a normal death the NERV MISSION REPORT owns the screen — suppress
+	// the old frag scoreboard (the player-name/score list) unless you're explicitly
+	// holding the scores key. End-of-match intermission still shows it.
+	if ( cg.predictedPlayerState.pm_type == PM_DEAD && !cg.showScores ) {
+		return qfalse;
+	}
+
 	if ( cg.showScores || cg.predictedPlayerState.pm_type == PM_DEAD ||
 		 cg.predictedPlayerState.pm_type == PM_INTERMISSION ) {
 		fade = 1.0;

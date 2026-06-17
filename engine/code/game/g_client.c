@@ -381,14 +381,27 @@ After sitting around for five seconds, fall into the ground and disappear
 =============
 */
 void BodySink( gentity_t *ent ) {
-	if ( level.time - ent->timestamp > 6500 ) {
+	int		life;
+
+	// STRAFE 64: corpses linger for g_corpseTime seconds, then sink + vanish.
+	// (Ragdoll corpses render from their own sim, so the sink is invisible for
+	// them -- what matters is the longer time before the body is unlinked.)
+	life = g_corpseTime.integer * 1000;
+	if ( life < 1500 ) {
+		life = 1500;
+	}
+
+	if ( level.time - ent->timestamp > life ) {
 		// the body ques are never actually freed, they are just unlinked
 		trap_UnlinkEntity( ent );
 		ent->physicsObject = qfalse;
-		return;	
+		return;
 	}
 	ent->nextthink = level.time + 100;
-	ent->s.pos.trBase[2] -= 1;
+	// only sink during the final 1.5s
+	if ( level.time - ent->timestamp > life - 1500 ) {
+		ent->s.pos.trBase[2] -= 1;
+	}
 }
 
 /*
@@ -482,7 +495,15 @@ void CopyToBodyQue( gentity_t *ent ) {
 	body->r.contents = CONTENTS_CORPSE;
 	body->r.ownerNum = ent->s.number;
 
-	body->nextthink = level.time + 5000;
+	// STRAFE 64: hold the corpse for g_corpseTime, then BodySink runs out its
+	// final sink. Start the sink think ~1.5s before removal.
+	{
+		int	life = g_corpseTime.integer * 1000;
+		if ( life < 1500 ) {
+			life = 1500;
+		}
+		body->nextthink = level.time + life - 1500;
+	}
 	body->think = BodySink;
 
 	body->die = body_die;
@@ -1171,7 +1192,7 @@ void ClientSpawn(gentity_t *ent) {
 
 	client->ps.clientNum = index;
 
-	if ( g_vectorgun.integer ) {
+	if ( G_VECTORGUN_ON ) {
 		// vectorgun mode: one gun, infinite ammo. damage, spread and
 		// fire rate are all functions of speed — the gun is only as
 		// good as your movement
@@ -1214,9 +1235,22 @@ void ClientSpawn(gentity_t *ent) {
 		client->ps.pm_flags |= PMF_AIRJUMP_BONUS;	// bought movement kit persists
 	}
 
+	// STRAFE 64 LATTICE: the trail (and the rising void) decide the heat, not
+	// bullets. Strip ranged ammo on spawn so a pilot can't fall back to machinegun
+	// spam — only the always-infinite melee (gauntlet/sword, ammo -1) and the
+	// lattice remain. Without this the server-granted spawn MG produces ~1/5 of
+	// all kills and muddies the pure trail-vs-trail read (measured 2026-06-16).
+	if ( g_lattice.integer ) {
+		for ( i = 0 ; i < WP_NUM_WEAPONS ; i++ ) {
+			if ( client->ps.ammo[i] > 0 ) {
+				client->ps.ammo[i] = 0;
+			}
+		}
+	}
+
 	// STRAFE 64: announce the active run mutator on (re)spawn
-	if ( g_mutator.integer >= 1 && g_mutator.integer <= 3 ) {
-		static const char *mutName[] = { "", "LOW GRAVITY", "RUSH", "HEAVY" };
+	if ( g_mutator.integer >= 1 && g_mutator.integer <= 4 ) {
+		static const char *mutName[] = { "", "LOW GRAVITY", "RUSH", "HEAVY", "VECTORGUN" };
 		trap_SendServerCommand( ent - g_entities,
 			va( "cp \"MUTATOR  %s\"", mutName[g_mutator.integer] ) );
 	}
@@ -1251,7 +1285,7 @@ void ClientSpawn(gentity_t *ent) {
 		if (ent->client->sess.sessionTeam != TEAM_SPECTATOR) {
 			G_KillBox(ent);
 			// force the base weapon up
-			client->ps.weapon = g_vectorgun.integer ? WP_RAILGUN : WP_MACHINEGUN;
+			client->ps.weapon = G_VECTORGUN_ON ? WP_RAILGUN : WP_MACHINEGUN;
 			client->ps.weaponstate = WEAPON_READY;
 			// fire the targets of the spawn point
 			G_UseTargets(spawnPoint, ent);

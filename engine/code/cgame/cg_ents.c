@@ -408,6 +408,119 @@ static void CG_Item( centity_t *cent ) {
 
 /*
 ===============
+CG_BulletTrail
+
+STRAFE 64: the deflectable bolts (the former hitscan guns) need to READ as the
+slow-mo darts you can see, track, and bat back. We draw a fading billboarded
+streak behind each bolt so the firing line, the deflect, and the return-to-
+sender arc all read at a glance under the time-bind near-freeze.
+
+The bolt flies on a TR_LINEAR trajectory, so its past positions are exact —
+we just evaluate the trajectory backwards in fixed game-time steps to stitch
+the ribbon, no per-missile history buffer needed. World length is constant
+across timescale (the trajectory is in game-time), so a parried shot crawling
+through the freeze still trails a clean, fixed-length comet streak.
+
+Colour: live shots ride a hot amber-orange; a parried shot (s.generic1, set in
+G_DeflectMissile) flips to ghost-cyan so a deflected bolt visibly changes
+allegiance the instant the katana swats it back.
+===============
+*/
+#define BTRAIL_SEGS		9		// ribbon segments stitched behind the bolt
+#define BTRAIL_STEP		14		// game-ms between trajectory samples
+
+static void CG_BulletTrail( centity_t *cent ) {
+	vec3_t		pts[BTRAIL_SEGS + 1];
+	vec3_t		right, dir, toEye;
+	float		width, tintR, tintG, tintB;
+	int			i, trTime;
+
+	if ( !cg_bulletTrail.integer ) {
+		return;
+	}
+
+	width = cg_bulletTrailWidth.value;
+	if ( width < 0.5f ) {
+		width = 0.5f;
+	}
+
+	// a deflected bolt flips to ghost-cyan (parry cue). A live bolt tints to the
+	// SHOOTER's player colour (networked via s.otherEntityNum) so you can read
+	// whose shots are whose in a melee/FFA — falling back to hot amber if the
+	// owner colour is unknown or too dark to read as a streak.
+	if ( cent->currentState.generic1 ) {
+		tintR = 80;  tintG = 230; tintB = 255;
+	} else {
+		int owner = cent->currentState.otherEntityNum;
+		tintR = 255; tintG = 150; tintB = 40;		// default hot amber
+		if ( owner >= 0 && owner < MAX_CLIENTS && cgs.clientinfo[owner].infoValid ) {
+			float *c = cgs.clientinfo[owner].color1;
+			if ( c[0] + c[1] + c[2] > 0.4f ) {		// skip near-black colours
+				tintR = c[0] * 255; tintG = c[1] * 255; tintB = c[2] * 255;
+			}
+		}
+	}
+
+	// sample the linear path backwards; clamp at the bolt's launch time so the
+	// streak never reaches behind where the shot was actually fired
+	trTime = cent->currentState.pos.trTime;
+	for ( i = 0 ; i <= BTRAIL_SEGS ; i++ ) {
+		int t = cg.time - i * BTRAIL_STEP;
+		if ( t < trTime ) {
+			t = trTime;
+		}
+		BG_EvaluateTrajectory( &cent->currentState.pos, t, pts[i] );
+	}
+
+	for ( i = 0 ; i < BTRAIL_SEGS ; i++ ) {
+		polyVert_t	verts[4];
+		vec3_t		a, b;
+		float		al0, al1, w;
+		int			j;
+
+		VectorCopy( pts[i], a );
+		VectorCopy( pts[i + 1], b );
+
+		VectorSubtract( a, b, dir );
+		if ( VectorNormalize( dir ) < 0.1f ) {
+			continue;		// bolt frozen this slice (deep slow-mo) — skip
+		}
+		VectorSubtract( a, cg.refdef.vieworg, toEye );
+		CrossProduct( dir, toEye, right );
+		if ( VectorNormalize( right ) < 0.1f ) {
+			continue;
+		}
+		// taper the ribbon to a point at the tail
+		w = width * ( 1.0f - i / (float)BTRAIL_SEGS );
+		VectorScale( right, w, right );
+
+		// brightest at the head, fading back into nothing
+		al0 = 1.0f - i / (float)BTRAIL_SEGS;
+		al1 = 1.0f - ( i + 1 ) / (float)BTRAIL_SEGS;
+
+		VectorAdd( a, right, verts[0].xyz );
+		VectorSubtract( a, right, verts[1].xyz );
+		VectorSubtract( b, right, verts[2].xyz );
+		VectorAdd( b, right, verts[3].xyz );
+
+		for ( j = 0 ; j < 4 ; j++ ) {
+			float al = ( j < 2 ) ? al0 : al1;
+			verts[j].modulate[0] = (byte)( tintR * al );
+			verts[j].modulate[1] = (byte)( tintG * al );
+			verts[j].modulate[2] = (byte)( tintB * al );
+			verts[j].modulate[3] = 255;
+		}
+		verts[0].st[0] = 0; verts[0].st[1] = 0;
+		verts[1].st[0] = 1; verts[1].st[1] = 0;
+		verts[2].st[0] = 1; verts[2].st[1] = 1;
+		verts[3].st[0] = 0; verts[3].st[1] = 1;
+
+		trap_R_AddPolyToScene( cgs.media.whiteShader, 4, verts );
+	}
+}
+
+/*
+===============
 CG_Missile
 ===============
 */
@@ -478,13 +591,15 @@ static void CG_Missile( centity_t *cent ) {
 	}
 
 	// STRAFE 64: the former hitscan guns now fly as visible, deflectable bolts.
-	// Render them as glowing sprites sized per weapon (rail slug largest).
+	// Render them as glowing sprites sized per weapon (rail slug largest), each
+	// trailing a fading streak so the shot reads as a slow-mo dart you can track.
 	switch ( cent->currentState.weapon ) {
 	case WP_MACHINEGUN:
 	case WP_SHOTGUN:
 #ifdef MISSIONPACK
 	case WP_CHAINGUN:
 #endif
+		CG_BulletTrail( cent );
 		ent.reType = RT_SPRITE;
 		ent.radius = 5;
 		ent.rotation = 0;
@@ -492,6 +607,7 @@ static void CG_Missile( centity_t *cent ) {
 		trap_R_AddRefEntityToScene( &ent );
 		return;
 	case WP_LIGHTNING:
+		CG_BulletTrail( cent );
 		ent.reType = RT_SPRITE;
 		ent.radius = 8;
 		ent.rotation = 0;
@@ -499,6 +615,7 @@ static void CG_Missile( centity_t *cent ) {
 		trap_R_AddRefEntityToScene( &ent );
 		return;
 	case WP_RAILGUN:
+		CG_BulletTrail( cent );
 		ent.reType = RT_SPRITE;
 		ent.radius = 11;
 		ent.rotation = 0;
@@ -821,6 +938,66 @@ static void CG_InterpolateEntityPosition( centity_t *cent ) {
 
 /*
 ===============
+CG_SmoothEntityMotion
+
+In deep bullet-time the world steps at sv_fps but each step advances ~1ms of
+game-time, so a body moves a fraction of a unit per snapshot — and snapshot
+positions are quantised to integers, so the render position stair-steps by whole
+units (visibly "steppy"). This is a REAL-time low-pass on the render origin of
+client entities (bots/players, not our own predicted body) that blurs those
+integer steps into smooth motion. The blend FADES CONTINUOUSLY with timescale —
+full below 0.5x, off at/above 0.95x — instead of a hard gate, so it works at
+EVERY slow-mo depth (the hard 0.85x gate made it 'only work standing still', where
+the dilation is deepest; moving/jumping raises the timescale and it dropped out).
+Real-time time-constant, so the blur is independent of dilation. Snaps on teleport.
+===============
+*/
+static void CG_SmoothEntityMotion( centity_t *cent ) {
+	float	ts, k, realFrame, dist, blend;
+	vec3_t	delta, raw;
+	char	tsbuf[16];
+
+	if ( cent->currentState.number >= MAX_CLIENTS || cent == &cg.predictedPlayerEntity ) {
+		return;		// only other players/bots; our own body is predicted
+	}
+	trap_Cvar_VariableStringBuffer( "timescale", tsbuf, sizeof( tsbuf ) );	// listen server shares it
+	ts = atof( tsbuf );
+	if ( ts <= 0.0f ) {
+		ts = 1.0f;
+	}
+	// how much to smooth: 1 at/below 0.5x, fading to 0 at/above 0.95x (no lag at speed)
+	blend = ( 0.95f - ts ) / 0.45f;
+	if ( blend <= 0.0f ) {
+		VectorCopy( cent->lerpOrigin, cent->smoothOrigin );	// near-normal speed: pass through
+		cent->smoothTime = cg.time;
+		return;
+	}
+	if ( blend > 1.0f ) {
+		blend = 1.0f;
+	}
+	VectorCopy( cent->lerpOrigin, raw );
+	VectorSubtract( raw, cent->smoothOrigin, delta );
+	dist = VectorLength( delta );
+	if ( cent->smoothTime == 0 || dist > 120.0f ) {
+		VectorCopy( raw, cent->smoothOrigin );		// seed / snap on a teleport
+		cent->smoothTime = cg.time;
+		return;
+	}
+	// real frametime = dilated game frametime / timescale; ~90ms real time-constant
+	realFrame = cg.frametime / ( ts > 0.01f ? ts : 0.01f );
+	k = realFrame / 90.0f;
+	if ( k > 1.0f ) k = 1.0f;
+	if ( k < 0.0f ) k = 0.0f;
+	VectorMA( cent->smoothOrigin, k, delta, cent->smoothOrigin );
+	cent->smoothTime = cg.time;
+	// fade the smoothed origin in over the raw one by `blend` (full deep, none at speed)
+	cent->lerpOrigin[0] = raw[0] + ( cent->smoothOrigin[0] - raw[0] ) * blend;
+	cent->lerpOrigin[1] = raw[1] + ( cent->smoothOrigin[1] - raw[1] ) * blend;
+	cent->lerpOrigin[2] = raw[2] + ( cent->smoothOrigin[2] - raw[2] ) * blend;
+}
+
+/*
+===============
 CG_CalcEntityLerpPositions
 
 ===============
@@ -838,27 +1015,25 @@ static void CG_CalcEntityLerpPositions( centity_t *cent ) {
 
 	if ( cent->interpolate && cent->currentState.pos.trType == TR_INTERPOLATE ) {
 		CG_InterpolateEntityPosition( cent );
-		return;
-	}
-
-	// first see if we can interpolate between two snaps for
-	// linear extrapolated clients
-	if ( cent->interpolate && cent->currentState.pos.trType == TR_LINEAR_STOP &&
+	} else if ( cent->interpolate && cent->currentState.pos.trType == TR_LINEAR_STOP &&
 											cent->currentState.number < MAX_CLIENTS) {
+		// interpolate between two snaps for linear extrapolated clients
 		CG_InterpolateEntityPosition( cent );
-		return;
+	} else {
+		// just use the current frame and evaluate as best we can
+		BG_EvaluateTrajectory( &cent->currentState.pos, cg.time, cent->lerpOrigin );
+		BG_EvaluateTrajectory( &cent->currentState.apos, cg.time, cent->lerpAngles );
+
+		// adjust for riding a mover if it wasn't rolled into the predicted
+		// player state
+		if ( cent != &cg.predictedPlayerEntity ) {
+			CG_AdjustPositionForMover( cent->lerpOrigin, cent->currentState.groundEntityNum,
+			cg.snap->serverTime, cg.time, cent->lerpOrigin, cent->lerpAngles, cent->lerpAngles);
+		}
 	}
 
-	// just use the current frame and evaluate as best we can
-	BG_EvaluateTrajectory( &cent->currentState.pos, cg.time, cent->lerpOrigin );
-	BG_EvaluateTrajectory( &cent->currentState.apos, cg.time, cent->lerpAngles );
-
-	// adjust for riding a mover if it wasn't rolled into the predicted
-	// player state
-	if ( cent != &cg.predictedPlayerEntity ) {
-		CG_AdjustPositionForMover( cent->lerpOrigin, cent->currentState.groundEntityNum, 
-		cg.snap->serverTime, cg.time, cent->lerpOrigin, cent->lerpAngles, cent->lerpAngles);
-	}
+	// blur out the integer snapshot stair-step in deep slow-mo
+	CG_SmoothEntityMotion( cent );
 }
 
 /*

@@ -311,6 +311,7 @@ static qboolean G_DeflectMissile( gentity_t *ent, gentity_t *blocker ) {
 	SnapVector( ent->s.pos.trDelta );
 	VectorCopy( origin, ent->r.currentOrigin );
 	ent->s.eFlags &= ~( EF_BOUNCE | EF_BOUNCE_HALF );	// a parried shot flies true
+	ent->s.generic1 = 1;								// flip the trail to "deflected" colour
 	ent->nextthink = level.time + 10000;				// give it time to travel back
 
 	// feedback: blade-clang spark + the same hit-juice a sword connect gives
@@ -636,6 +637,14 @@ gentity_t *fire_bullet( gentity_t *self, vec3_t start, vec3_t dir,
 
 	VectorNormalize( dir );
 
+	// STRAFE 64: g_bulletSpeed scales travel speed so the bolts read as the
+	// slow-mo darts you can see/track/parry. Uniform time-bind already slows
+	// them with the world; this caps the BASE speed so even at full time a
+	// pilot can track the shot. Co-tune live vs the katana guard window.
+	if ( g_bulletSpeed.value > 0.0f && g_bulletSpeed.value != 1.0f ) {
+		speed *= g_bulletSpeed.value;
+	}
+
 	bolt = G_Spawn();
 	bolt->classname = "bullet";
 	bolt->nextthink = level.time + 4000;
@@ -644,6 +653,7 @@ gentity_t *fire_bullet( gentity_t *self, vec3_t start, vec3_t dir,
 	bolt->r.svFlags = SVF_USE_CURRENT_ORIGIN;
 	bolt->s.weapon = weapon;
 	bolt->r.ownerNum = self->s.number;
+	bolt->s.otherEntityNum = self->s.number;	// networked owner → client tints the trail by shooter colour
 	bolt->parent = self;
 	bolt->damage = damage;
 	bolt->splashDamage = 0;

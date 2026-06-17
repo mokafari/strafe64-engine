@@ -895,7 +895,7 @@ void G_SpawnItem (gentity_t *ent, gitem_t *item) {
 
 	// vectorgun mode: the map's weapon/ammo economy doesn't exist.
 	// health, armor and powerups still spawn
-	if ( g_vectorgun.integer &&
+	if ( G_VECTORGUN_ON &&
 		( item->giType == IT_WEAPON || item->giType == IT_AMMO ) ) {
 		return;
 	}

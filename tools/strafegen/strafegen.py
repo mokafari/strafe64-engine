@@ -115,13 +115,16 @@ TEX_CAULK   = "textures/common/caulk"
 TEX_TRIGGER = "textures/common/trigger"
 
 SHADER_SCRIPT = """\
-// STRAFE 64 identity — the geometry is vertex-colored; the section's
-// COLOUR is its identity (N64 clarity) and the detail map only carves
-// tech panels/grid into it. rgbGen exactVertex multiplies the near-white
-// detail texel by the vertex colour, so colour reads through everywhere
-// and the lines just darken it. Detail TGAs are generated procedurally
-// (see build_detail_textures) — a few KB, no hand-painted art. Bundled
-// in every strafegen pk3.
+// STRAFE 64 identity — SOURCE DEV-TEXTURE look. The geometry is still
+// vertex-colored, but the bulk world now wears the Hammer measure-grid
+// palette: orange floors, grey walls (see SRC_ORANGE/SRC_GREY). Mechanic
+// identity lives on the ACCENTS (start/finish/checkpoints/hazards/pads/
+// portals), which keep vivid hues and pop against the neutral dev base.
+// The detail map is a subtle uniform measure grid (16/32/64u); rgbGen
+// exactVertex multiplies the near-white detail texel by the vertex colour,
+// so the palette supplies orange/grey and the grid just darkens it. Detail
+// TGAs are generated procedurally (see build_detail_textures) — a few KB,
+// no hand-painted art. Bundled in every strafegen pk3.
 textures/strafe64/surf
 {
 	surfaceparm nolightmap
@@ -275,38 +278,31 @@ def build_detail_textures():
     n = TEX_SIZE
     noise = [rng.randint(-6, 6) for _ in range(n * n)]
 
-    # --- floor: 32-unit cells, 2px major grid, 16px minor, corner rivets ---
-    floor = []
-    for y in range(n):
-        for x in range(n):
-            v = 238 + noise[y * n + x]
-            # alternating panels read as tech flooring (clarity-safe: a
-            # gentle shade, not a pattern that fights the section colour)
-            if ((x // 32) + (y // 32)) % 2 == 0:
-                v -= 12
-            if x % 32 < 2 or y % 32 < 2:           # major panel seams
-                v -= 104
-            elif x % 16 == 0 or y % 16 == 0:       # minor grid
-                v -= 34
-            # rivet at each 32-cell corner
-            if (x % 32) in (3, 4) and (y % 32) in (3, 4):
-                v -= 66
-            floor.append((_clamp8(v * 1.00), _clamp8(v * 1.02), _clamp8(v * 0.98)))
+    # --- Source measure grid (subtle): a uniform unit grid, pure grayscale so
+    # the section palette supplies the hue. 64px over a 64u tile = 1 texel/unit,
+    # so lines land on real world units — minor 16u, mid 32u, major 64u (the
+    # tile edge) — graded by depth into a clean dev_measuregeneric read. Lines
+    # DARKEN the near-white base ("subtle" = gentle), so orange floors / grey
+    # walls dominate and silhouettes still win at MACH speed. Floors and walls
+    # share one measure map (Source uses the same grid on both); only the brush
+    # palette differs (SRC_ORANGE vs SRC_GREY). ---
+    def _measure_grid(base):
+        out = []
+        for y in range(n):
+            for x in range(n):
+                v = base + noise[y * n + x]
+                if x % 16 == 0 or y % 16 == 0:     # 16u minor lines
+                    v -= 16
+                if x % 32 == 0 or y % 32 == 0:     # 32u mid lines (stack)
+                    v -= 16
+                if x % 64 < 2 or y % 64 < 2:       # 64u major (tile edge)
+                    v -= 30
+                g = _clamp8(v)
+                out.append((g, g, g))
+        return out
 
-    # --- wall: vertical panel seams every 16px, mid horizontal band, scanlines ---
-    wall = []
-    for y in range(n):
-        for x in range(n):
-            v = 228 + noise[y * n + x]
-            if x % 16 < 2:                         # vertical seams
-                v -= 82
-            if x % 32 < 2:                         # major bay seams
-                v -= 28
-            if 30 <= y <= 33:                      # waist band
-                v -= 52
-            if y % 4 == 0:                         # faint scanlines
-                v -= 14
-            wall.append((_clamp8(v * 0.99), _clamp8(v), _clamp8(v * 1.03)))
+    floor = _measure_grid(236)
+    wall  = _measure_grid(230)
 
     # --- accent: near-black with faint vertical conduit lines + nodes,
     # added back as a scrolling, section-tinted glow on walls ---
@@ -536,33 +532,49 @@ def _build_synthsky(n=256):
     return out
 
 
-# section palettes (N64 clarity: read the mechanic from the color at speed)
-PAL_START  = (150, 255, 150)
-PAL_GAPS   = (255, 215, 140)
-PAL_BHOP   = (140, 225, 255)
-PAL_SLIDE  = (255, 150, 150)
-PAL_WALLS  = (225, 150, 255)
-PAL_TOWER  = (255, 255, 150)
-PAL_FINISH = (150, 255, 220)
-PAL_PLAIN  = (205, 205, 205)
-PAL_CHECK  = (120, 240, 255)   # checkpoint pads: bright cyan, reads at speed
+# SOURCE DEV-TEXTURE palette. The bulk world wears the classic Hammer
+# measure-grid look: orange floors, grey walls, lighter-orange trim. Identity
+# no longer lives in rainbow per-mechanic hues — it lives on the ACCENTS
+# (start / finish / checkpoints / hazards / pads / portals), which keep their
+# vivid colours and pop hard against the neutral dev base. The detail TGAs
+# stay near-white grids; rgbGen exactVertex multiplies these palette colours
+# through, so floors read Source-orange and walls Source-grey while the subtle
+# grid carves scale into both. Final on-screen colour ≈ palette × ~0.92 (the
+# texture base), so the constants sit a touch brighter than the rendered hue.
+SRC_ORANGE = (222, 138, 70)    # dev_measuregeneric01b orange — bulk floors/decks
+SRC_GREY   = (152, 152, 158)   # dev_measuregeneric01  grey   — bulk walls/pillars
+SRC_TRIM   = (240, 182, 120)   # lighter orange — ledges / mantle edges
+
+# structural sections -> Source dev base (geometry you run on / along)
+PAL_GAPS   = SRC_ORANGE
+PAL_BHOP   = SRC_ORANGE
+PAL_SLIDE  = SRC_ORANGE
+PAL_TOWER  = SRC_ORANGE
+PAL_PLAIN  = SRC_ORANGE
+PAL_WALLS  = SRC_GREY          # wallrun walls are grey base now (see note)
+
+# gameplay-critical ACCENTS -> keep vivid identity (read the point at speed)
+PAL_START  = (150, 255, 150)   # spawn pad — green "you are here"
+PAL_FINISH = (150, 255, 220)   # goal line — teal
+PAL_CHECK  = (120, 240, 255)   # checkpoint pads — bright cyan
 
 # arena palettes
-PAL_FLOORA = (185, 200, 185)
-PAL_BANK   = (150, 175, 255)
-PAL_WALLA  = (125, 125, 145)
-PAL_CENTER = (255, 215, 140)
-PAL_PILLAR = (225, 150, 255)
-PAL_PAD    = (255, 255, 150)
-PAL_LEDGE  = (150, 255, 220)
-PAL_GATE   = (255, 245, 120)
-PAL_DANGER = (255, 95, 95)
-# killbox arena: a cold futuristic neon set — dark deck, electric-blue walls,
-# cyan portal frames, magenta wall-jump columns
-PAL_KB_DECK   = (70, 80, 110)      # dark blue-grey deck
-PAL_KB_WALL   = (60, 110, 190)     # electric blue containment
-PAL_KB_NEON   = (90, 230, 255)     # cyan: portals, edges, the spire crown
-PAL_KB_COLUMN = (210, 90, 255)     # magenta wall-jump columns
+PAL_FLOORA = SRC_ORANGE
+PAL_BANK   = SRC_ORANGE         # surf banks — floor you ride
+PAL_WALLA  = SRC_GREY
+PAL_CENTER = SRC_ORANGE
+PAL_PILLAR = SRC_GREY
+PAL_LEDGE  = SRC_TRIM           # mantle ledges — lighter-orange trim
+PAL_PAD    = (255, 255, 150)    # jump pads — yellow (accent)
+PAL_GATE   = (255, 245, 120)    # gates / forks / portal frames — yellow (accent)
+PAL_DANGER = (255, 95, 95)      # hazards — red (accent)
+# killbox arena: bulk deck/walls join the Source dev base; the neon portal
+# frames + magenta wall-jump columns stay as accents. (Old cold-neon identity:
+# DECK (70,80,110), WALL (60,110,190) — repoint these two to revert.)
+PAL_KB_DECK   = SRC_ORANGE
+PAL_KB_WALL   = SRC_GREY
+PAL_KB_NEON   = (90, 230, 255)     # cyan: portals, edges, the spire crown (accent)
+PAL_KB_COLUMN = (210, 90, 255)     # magenta wall-jump columns (accent)
 
 # music lanes (see ART_DIRECTION.md) — tracker modules in baseoa/music/.
 # A map's worldspawn "music" key is picked deterministically from its seed so
@@ -2594,6 +2606,75 @@ class Pit:
         return self
 
 
+class LatticeArena:
+    """A 16-pilot LATTICE heat arena. Unlike the tight combat Pit (8 close
+    spawns → 16 bots telefrag-cascade, ~6 elims/window of pure noise), this is a
+    big OPEN sealed box with a SPREAD grid of 24 spawns (300u apart, well past the
+    telefrag bbox) so a full field seats with no spawn kills, plus room to carve
+    long trail-walls a rival actually crosses (the radius sweep showed rival kills
+    rise with carve room). Flat, neutral floor, pit-free, sealed → AAS-friendly."""
+
+    def __init__(self, seed=0, weapons=True):
+        self.rng = random.Random(seed or 64)
+        self.weapons = weapons          # weapons-light variant: the trail is the
+                                        # SOLE decider (purer lattice TTK signal)
+        self.solids = []
+        self.triggers = []
+        self.entities = []
+        self.sections = []
+
+    def place(self, classname, x, y, z, **kw):
+        e = {"classname": classname, "origin": f"{x:g} {y:g} {z:g}"}
+        e.update({k: str(v) for k, v in kw.items()})
+        self.entities.append(e)
+
+    def build(self):
+        W, H, T = 768.0, 512.0, 16.0       # big + open: room to lay long walls
+        self.sections.append(("lattice arena",
+                              {"size": int(2 * W), "spawns": 24,
+                               "weapons": "full" if self.weapons else "light"}))
+        # sealed room: floor, ceiling, four flush walls (flush -> bspc-safe)
+        self.solids.append(make_box((-W, -W, -T), (W, W, 0), palette=PAL_FLOORA))
+        self.solids.append(make_box((-W, -W, H), (W, W, H + T),
+                                    tex=TEX_WALL, palette=PAL_WALLA))
+        self.solids.append(make_box((-W - T, -W, 0), (-W, W, H),
+                                    tex=TEX_WALL, palette=PAL_WALLA))
+        self.solids.append(make_box((W, -W, 0), (W + T, W, H),
+                                    tex=TEX_WALL, palette=PAL_WALLA))
+        self.solids.append(make_box((-W, -W - T, 0), (W, -W, H),
+                                    tex=TEX_WALL, palette=PAL_WALLA))
+        self.solids.append(make_box((-W, W, 0), (W, W + T, H),
+                                    tex=TEX_WALL, palette=PAL_WALLA))
+        # SPARSE cover: 4 thin pillars off-centre, leaving open carve lanes
+        for px, py in ((-360, -360), (360, -360), (-360, 360), (360, 360)):
+            self.solids.append(make_box((px - 40, py - 40, 0), (px + 40, py + 40, 256),
+                                        tex=TEX_WALL, palette=PAL_PILLAR))
+        # 24 SPREAD spawns: 5x5 grid (step 300) minus the centre cell, each facing
+        # the middle. 300u spacing >> telefrag bbox so a 16-bot fill never doubles.
+        step = 300.0
+        for gx in (-2, -1, 0, 1, 2):
+            for gy in (-2, -1, 0, 1, 2):
+                if gx == 0 and gy == 0:
+                    continue            # leave the centre clear (24 spawns)
+                x, y = gx * step, gy * step
+                yaw = math.degrees(math.atan2(-y, -x)) % 360 if (x or y) else 0
+                self.place("info_player_deathmatch", x, y, 40, angle=f"{yaw:.0f}")
+        self.place("info_player_intermission", 0, 0, H - 96, angle="0")
+        if self.weapons:
+            # a few weapons so combat is an OPTION (kills + lattice both end a heat),
+            # but spread thin so the lattice stays the dominant threat
+            for cls, x, y in (("weapon_railgun", -600, 0), ("weapon_rocketlauncher", 600, 0),
+                              ("weapon_shotgun", 0, -600), ("weapon_lightning", 0, 600),
+                              ("item_armor_combat", -600, -600), ("item_armor_combat", 600, 600),
+                              ("item_health_large", 0, 0)):
+                self.place(cls, x, y, 24)
+        # weapons-light: NO guns at all → the trail is the only weapon. (Bots keep
+        # the spawn machinegun but with no ammo pickups it's a non-factor.)
+        self.entities.insert(0, {"classname": "worldspawn",
+                                 "message": "STRAFE64 lattice arena"})
+        return self
+
+
 class SurfLine:
     """The ★ core-loop seed: a CS-surf-style line you flow through. Built from
     steep banked ramps (make_prism tops tilted past the walkable angle, so you
@@ -2800,9 +2881,15 @@ class SurfTurn:
 
 def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
              arena=False, name=None, void=True, voidrise=None,
-             voiddelay=None, dojo=None, surf=False, killbox=False):
+             voiddelay=None, dojo=None, surf=False, killbox=False,
+             latticearena=False):
     os.makedirs(out_dir, exist_ok=True)
-    if killbox:
+    if latticearena:
+        lite = latticearena == "lite"
+        base = "lattice_arena_lite" if lite else "lattice_arena"
+        name = name or (f"{base}_{seed}" if seed else base)
+        course = LatticeArena(seed, weapons=not lite).build()  # 16-pilot heat arena
+    elif killbox:
         name = name or (f"strafe64kb_{seed}"
                         + ("" if difficulty == 1 else f"_d{difficulty}"))
         course = Killbox(seed, difficulty).build()
@@ -2926,6 +3013,13 @@ def main():
     ap.add_argument("--surfturn", action="store_true",
                     help="generate a banked surf-TURN test piece (180deg steep "
                          "banked arc — candidate corner geometry, feel-test by hand)")
+    ap.add_argument("--latticearena", action="store_true",
+                    help="generate the 16-pilot LATTICE heat arena (big open "
+                         "sealed box, 24 SPREAD spawns so a full field has no "
+                         "telefrag cascade, room to carve long trail-walls)")
+    ap.add_argument("--noweapons", action="store_true",
+                    help="with --latticearena: weapons-LIGHT variant (no guns → "
+                         "the trail is the sole decider, purer lattice TTK)")
     ap.add_argument("--difficulty", type=int, default=1, choices=(0, 1, 2))
     ap.add_argument("--length", type=int, default=1,
                     help="course length multiplier (1 = ~6 sections)")
@@ -2980,6 +3074,11 @@ def main():
             generate(s, args.difficulty, 1, args.out, args.map, args.pk3,
                      dojo=d, void=not args.no_void,
                      voidrise=args.voidrise, voiddelay=args.voiddelay)
+        return
+    if args.latticearena:
+        seed = args.seed if args.seed is not None else 64
+        generate(seed, args.difficulty, 1, args.out, args.map, args.pk3,
+                 latticearena="lite" if args.noweapons else True)
         return
     name = None
     length = args.length

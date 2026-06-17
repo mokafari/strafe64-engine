@@ -516,6 +516,10 @@ def t_source_constants(**_):
     return {"constants": engine_api.source_constants()}
 
 
+def t_config_overrides(**_):
+    return {"overrides": engine_api.config_overrides()}
+
+
 def t_set_source_constant(name, value, rebuild=False):
     return engine_api.set_source_constant(name, value, rebuild=bool(rebuild))
 
@@ -874,6 +878,7 @@ TOOLS = [
                 "actions": {"type": "array", "items": {"type": "object"},
                             "description": "movement mode: input steps per value (default: run forward)"},
                 "seconds": {"type": "number", "default": 2.5, "description": "movement mode run length"},
+                "trials": {"type": "integer", "default": 3, "description": "movement mode: runs per value, median taken (scripted air-strafe is noisy)"},
                 "title": {"type": "string"},
             },
             "required": ["cvar", "values"],
@@ -1118,11 +1123,13 @@ TOOLS = [
     },
     {
         "name": "engine_spawn",
-        "description": ("Spawn any entity into the live world to dress/edit a running map (cheat). "
+        "description": ("Spawn an entity into the live world to dress/edit a running map (cheat). "
                         "classname like 'item_health_mega', 'weapon_rocketlauncher', 'item_armor_body', "
-                        "'misc_model' (+ keys={'model':'models/...'}), 'target_push'/'trigger_push', "
-                        "lights, etc. `keys` are entity spawn key/values; defaults to ~96u in front of "
-                        "the view unless you pass keys={'origin':'x y z'}. shoot=true screenshots it."),
+                        "'target_push'/'trigger_push', 'item_quad', lights, etc. `keys` are entity spawn "
+                        "key/values; defaults to ~96u in front of the view unless you pass "
+                        "keys={'origin':'x y z'}. shoot=true screenshots it. NOTE: 'misc_model' does NOT "
+                        "render at runtime (it's compile-time/q3map-only) — to show a custom mesh, make "
+                        "it a player/weapon model (engine_audition_model) or bake it into a map."),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1223,6 +1230,15 @@ TOOLS = [
                         "or rebuild-only (edit the file, then engine_rebuild). The full tunable surface."),
         "inputSchema": {"type": "object", "properties": {}},
         "handler": t_source_constants,
+    },
+    {
+        "name": "engine_config_overrides",
+        "description": ("Show cvars whose startup config (autoexec.cfg / strafe64.cfg) overrides the "
+                        "g_main.c source default — so you see where the running game diverges from "
+                        "documented defaults (live cvars can silently differ from source). File parse, "
+                        "no engine needed."),
+        "inputSchema": {"type": "object", "properties": {}},
+        "handler": t_config_overrides,
     },
     {
         "name": "engine_set_source_constant",

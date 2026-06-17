@@ -1236,7 +1236,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		if ( !(es->eFlags & EF_KAMIKAZE) ) {
 			trap_S_StartSound( NULL, es->number, CHAN_BODY, cgs.media.gibSound );
 		}
-		CG_DismemberPlayer( cent->lerpOrigin, es->origin2, es->angles2, es->eventParm );
+		CG_DismemberPlayer( cent->lerpOrigin, es->origin2, es->angles2, es->eventParm, es->number );
 		break;
 
 	case EV_SWORD_HIT:

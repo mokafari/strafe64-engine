@@ -66,6 +66,12 @@ vmCvar_t	g_timeBindRise;		// ramp-UP rate out of slow-mo when you move — kept
 vmCvar_t	g_timeBindFire;		// intent floor while attacking — the sword swing surges
 								// time forward so a melee strike stays crisp in near-freeze
 vmCvar_t	g_timeBindLog;		// 1 = logarithmic (Matrix) slow-mo curve, 0 = linear
+vmCvar_t	g_timeBindCrouch;	// crouch/slide TIME BRAKE: direct timescale CAP while ducked so a
+								// slide drops into KINETIC bullet-time, not a freeze (1.0 = off,
+								// 0.5 = half-speed slide, lower = slower)
+vmCvar_t	g_bulletSpeed;		// live scale on deflectable-bolt travel speed: lower = the
+								// slow-mo darts you can see/track/parry (co-tune vs the guard window)
+vmCvar_t	g_corpseTime;		// STRAFE 64: seconds a dead body lingers before it's removed
 vmCvar_t	g_strafeAccel;		// live air-strafe tuning -> pm_strafeAccelerate
 vmCvar_t	g_airWishClamp;		// -> pm_wishSpeedClamp (the skill cap; keep ~30)
 vmCvar_t	g_airAccel;			// -> pm_airaccelerate
@@ -86,6 +92,11 @@ vmCvar_t	g_lattice;			// LATTICE: last-pilot-alive, speed-trail lattice is the t
 vmCvar_t	g_latticeHealth;	// pilot health pool (short — a few hits, not one)
 vmCvar_t	g_latticeDamage;	// chip damage per contact tick with a trail segment
 vmCvar_t	g_latticeRadius;	// proximity (u) to a trail segment that counts as contact
+vmCvar_t	g_latticeSelfMs;	// ignore your OWN trail younger than this (ms) — anti self-tangle
+vmCvar_t	g_latticeVoidDelay;	// LATTICE auto-void: grace (s) before the floor starts rising
+vmCvar_t	g_latticeVoidRise;	// LATTICE auto-void: floor rise rate (ups)
+vmCvar_t	g_latticeBracket;	// LATTICE bracket/heat format (sequential FFA-N sub-heats)
+vmCvar_t	g_latticeBracketSize;	// LATTICE pilots per sub-heat
 vmCvar_t	g_cheats;
 vmCvar_t	g_knockback;
 vmCvar_t	g_quadfactor;
@@ -177,6 +188,9 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_timeBindRise, "g_timeBindRise", "30", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_timeBindFire, "g_timeBindFire", "0.8", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_timeBindLog, "g_timeBindLog", "1", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_timeBindCrouch, "g_timeBindCrouch", "0.5", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_bulletSpeed, "g_bulletSpeed", "1.0", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_corpseTime, "g_corpseTime", "15", CVAR_ARCHIVE, 0, qfalse  },	// STRAFE 64: corpse lifetime (s)
 	{ &g_strafeAccel, "pm_strafeAccelerate", "70", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_airWishClamp, "pm_wishSpeedClamp", "30", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_airAccel, "pm_airaccelerate", "1", CVAR_ARCHIVE, 0, qfalse  },
@@ -210,6 +224,11 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_latticeHealth, "g_latticeHealth", "60", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_latticeDamage, "g_latticeDamage", "9", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_latticeRadius, "g_latticeRadius", "40", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_latticeSelfMs, "g_latticeSelfMs", "700", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_latticeVoidDelay, "g_latticeVoidDelay", "15", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_latticeVoidRise, "g_latticeVoidRise", "48", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_latticeBracket, "g_latticeBracket", "0", CVAR_ARCHIVE | CVAR_LATCH, 0, qtrue  },
+	{ &g_latticeBracketSize, "g_latticeBracketSize", "3", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_knockback, "g_knockback", "1000", 0, 0, qtrue  },
 	{ &g_quadfactor, "g_quadfactor", "3", 0, 0, qtrue  },
 	{ &g_weaponRespawn, "g_weaponrespawn", "5", 0, 0, qtrue  },
@@ -495,7 +514,7 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 		qtime_t	now;
 		int		daily;
 		trap_RealTime( &now );
-		daily = ( now.tm_yday % 3 ) + 1;	// 1 LOW-G, 2 RUSH, 3 HEAVY
+		daily = ( now.tm_yday % 4 ) + 1;	// 1 LOW-G, 2 RUSH, 3 HEAVY, 4 VECTORGUN
 		trap_Cvar_Set( "g_mutator", va( "%i", daily ) );
 		trap_Cvar_Update( &g_mutator );
 		G_Printf( "STRAFE 64: daily mutator -> %i (day %i)\n", daily, now.tm_yday );

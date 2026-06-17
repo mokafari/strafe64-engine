@@ -149,18 +149,23 @@ rewards staying in the movement chain. A lethal blow triggers dismemberment.
 #define	SWORD_DMG_MIN		45		// damage at a standstill
 #define	SWORD_DMG_MAX		120		// damage at full chain speed
 #define	SWORD_SPEED_CAP		960.0f	// horizontal speed that pegs max damage
+// STRAFE 64 flow loop — the Slice phase: the cut aligns to where you FLY, not
+// where you look, and a clean kill feeds the chain (enemies as momentum gates).
+#define	SWORD_VEL_ALIGN		500.0f	// speed at which the cut fully aligns to your flight path
+#define	SWORD_RANGE_BONUS	80		// extra reach at full speed so a fast fly-by still connects
+#define	SWORD_KILL_SPEED	140.0f	// forward kick per clean kill — routing THROUGH is the fast line
 
 void Weapon_Sword( gentity_t *ent ) {
 	int			i, t;
 	int			damage;
-	float		speed, frac, arc, combomul;
+	float		speed, frac, arc, combomul, range, blend;
 	int			ntraces, step;
 	qboolean	finisher;
-	vec3_t		angles, dir, end;
+	vec3_t		angles, dir, end, sliceAngles, velDir, viewDir, axis;
 	trace_t		tr;
 	gentity_t	*traceEnt, *tent;
 	int			hit[ SWORD_NUM_TRACES * 2 ];	// entities already damaged this swing
-	int			numHit;
+	int			numHit, kills;
 
 	// --- combo: chained swings within the window ramp damage; every 3rd is a
 	// wide, heavy finisher. The combo decays if you stop swinging. ---
@@ -194,16 +199,38 @@ void Weapon_Sword( gentity_t *ent ) {
 	damage *= s_quadFactor;
 
 	numHit = 0;
+	kills = 0;
+
+	// --- the slice axis: where you LOOK at a standstill, where you FLY at speed.
+	// The faster you move, the more the cut aligns to your flight path, so you
+	// "kill what you fly through" — speed is the targeting computer. View still
+	// biases the centre line, giving the small aim-cone for adjustment. ---
+	AngleVectors( ent->client->ps.viewangles, viewDir, NULL, NULL );
+	VectorCopy( ent->client->ps.velocity, velDir );
+	blend = ( VectorNormalize( velDir ) > 1.0f ) ? ( speed / SWORD_VEL_ALIGN ) : 0.0f;
+	if ( blend > 1.0f ) {
+		blend = 1.0f;
+	}
+	for ( i = 0 ; i < 3 ; i++ ) {
+		axis[i] = viewDir[i] + ( velDir[i] - viewDir[i] ) * blend;
+	}
+	if ( VectorNormalize( axis ) == 0.0f ) {
+		VectorCopy( viewDir, axis );
+	}
+	vectoangles( axis, sliceAngles );
+
+	// reach grows with speed so a fast fly-by still connects the cut
+	range = SWORD_RANGE + frac * SWORD_RANGE_BONUS;
 
 	// sweep the arc, one trace per step, sharing the same muzzle origin
 	for ( t = 0 ; t < ntraces ; t++ ) {
-		VectorCopy( ent->client->ps.viewangles, angles );
-		// fan yaw from -arc to +arc
+		VectorCopy( sliceAngles, angles );
+		// fan yaw from -arc to +arc around the flight line
 		if ( ntraces > 1 ) {
 			angles[YAW] += -arc + ( 2.0f * arc * t ) / ( ntraces - 1 );
 		}
 		AngleVectors( angles, dir, NULL, NULL );
-		VectorMA( muzzle, SWORD_RANGE, dir, end );
+		VectorMA( muzzle, range, dir, end );
 
 		trap_Trace( &tr, muzzle, NULL, NULL, end, ent->s.number, MASK_SHOT );
 		if ( tr.surfaceFlags & SURF_NOIMPACT ) {
@@ -240,9 +267,35 @@ void Weapon_Sword( gentity_t *ent ) {
 			tent->s.weapon = ent->s.weapon;
 		}
 
-		// drive the knockback along the swing so victims are flung off the blade
-		G_Damage( traceEnt, ent, ent, forward, tr.endpos,
+		// drive the knockback along the cut so victims are flung off the blade
+		G_Damage( traceEnt, ent, ent, dir, tr.endpos,
 			damage, 0, MOD_SWORD );
+
+		// a clean kill on an enemy you flew through is a momentum waypoint
+		if ( traceEnt->client && traceEnt->health <= 0 ) {
+			kills++;
+		}
+	}
+
+	// --- enemies are momentum gates: a clean kill at speed FEEDS the chain.
+	// A forward kick along your line keeps the pass-through fast, and refunded
+	// air moves let a mid-air slice stay airborne to chain into the next space —
+	// so routing THROUGH the cluster is the fast line, not an interruption. ---
+	if ( kills > 0 && speed > 1.0f ) {
+		VectorCopy( ent->client->ps.velocity, velDir );
+		velDir[2] = 0;
+		if ( VectorNormalize( velDir ) > 0.0f ) {
+			float add = SWORD_KILL_SPEED * kills * frac;	// gated by entry speed
+			ent->client->ps.velocity[0] += velDir[0] * add;
+			ent->client->ps.velocity[1] += velDir[1] * add;
+		}
+		// refund air mobility + keep the flow chain awake through the kill
+		ent->client->ps.stats[STAT_WALLJUMP_COUNT] = 0;
+		ent->client->ps.stats[STAT_AIRJUMP_COUNT] = 0;
+		ent->client->ps.stats[STAT_GROUND_MS] = 0;
+		if ( ent->client->ps.stats[STAT_BHOP_STREAK] < 1 ) {
+			ent->client->ps.stats[STAT_BHOP_STREAK] = 1;
+		}
 	}
 
 	// blade connected: tell the attacker so the client lands an impact "chunk"

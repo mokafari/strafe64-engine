@@ -45,12 +45,14 @@ MAIN MENU
 #define ID_S64_DAILY			20
 #define ID_S64_TRIAL			21
 #define ID_S64_VECTOR			22
-#define ID_S64_PRACTICE			23
+#define ID_S64_LATTICE			23
+#define ID_S64_PRACTICE			24
 
 // flagship strafegen courses, kept in baseoa as .pk3
 #define S64_MAP_TOWER			"strafe64_1337_x3"
 #define S64_MAP_TRIAL			"strafe64_1337"
 #define S64_MAP_ARENA			"strafe64dm_1337"
+#define S64_MAP_LATTICE			"lattice_arena_64"
 #define S64_MAP_PRACTICE		"strafe64_7"
 
 #define MAIN_BANNER_MODEL				"models/mapobjects/banner/banner5.md3"
@@ -162,6 +164,7 @@ typedef struct {
 	menutext_s		daily;
 	menutext_s		trial;
 	menutext_s		vector;
+	menutext_s		lattice;
 	menutext_s		practice;
 	menutext_s		multiplayer;
 	menutext_s		setup;
@@ -211,12 +214,14 @@ void Main_MenuEvent (void* ptr, int event) {
 	// each sets the latched mode cvars (applied on the map load that
 	// follows) then drops straight into a strafegen course
 	case ID_S64_DAILY:
+		trap_Cvar_SetValue( "g_lattice", 0 );
 		trap_Cvar_SetValue( "g_vectorgun", 0 );
 		trap_Cvar_SetValue( "g_voidRise", 1 );
 		trap_Cmd_ExecuteText( EXEC_APPEND, "map " S64_MAP_TOWER "\n" );
 		break;
 
 	case ID_S64_TRIAL:
+		trap_Cvar_SetValue( "g_lattice", 0 );
 		trap_Cvar_SetValue( "g_vectorgun", 0 );
 		trap_Cvar_SetValue( "g_voidRise", 1 );
 		trap_Cmd_ExecuteText( EXEC_APPEND, "map " S64_MAP_TRIAL "\n" );
@@ -224,14 +229,32 @@ void Main_MenuEvent (void* ptr, int event) {
 
 	case ID_S64_VECTOR:
 		// one gun, no void — speed is the whole weapon. fill with bots
+		trap_Cvar_SetValue( "g_lattice", 0 );
 		trap_Cvar_SetValue( "g_vectorgun", 1 );
 		trap_Cvar_SetValue( "g_voidRise", 0 );
 		trap_Cvar_Set( "bot_minplayers", "3" );
 		trap_Cmd_ExecuteText( EXEC_APPEND, "map " S64_MAP_ARENA "\n" );
 		break;
 
+	case ID_S64_LATTICE:
+		// last pilot standing: every pilot carves a damaging speed-trail, and
+		// the collapsing floor (auto-void) flushes the survivors together. The
+		// full FFA-N bracket plays the field down to one champion. g_lattice /
+		// g_voidRise / g_gametype / g_latticeBracket are latched — they take
+		// effect on the map load queued below.
+		trap_Cvar_SetValue( "g_lattice", 1 );
+		trap_Cvar_SetValue( "g_vectorgun", 0 );
+		trap_Cvar_SetValue( "g_voidRise", 1 );
+		trap_Cvar_SetValue( "g_latticeBracket", 1 );
+		trap_Cvar_SetValue( "g_gametype", 0 );			// FFA
+		trap_Cvar_Set( "bot_enable", "1" );
+		trap_Cvar_Set( "bot_minplayers", "5" );			// seat a real bracket
+		trap_Cmd_ExecuteText( EXEC_APPEND, "map " S64_MAP_LATTICE "\n" );
+		break;
+
 	case ID_S64_PRACTICE:
 		// the course, the timer, the ghost — but the floor won't kill you
+		trap_Cvar_SetValue( "g_lattice", 0 );
 		trap_Cvar_SetValue( "g_vectorgun", 0 );
 		trap_Cvar_SetValue( "g_voidRise", 0 );
 		trap_Cmd_ExecuteText( EXEC_APPEND, "map " S64_MAP_PRACTICE "\n" );
@@ -389,6 +412,17 @@ void UI_MainMenu( void ) {
 	s_main.vector.style						= style;
 
 	y += MAIN_MENU_VERTICAL_SPACING;
+	s_main.lattice.generic.type				= MTYPE_PTEXT;
+	s_main.lattice.generic.flags			= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
+	s_main.lattice.generic.x				= 320;
+	s_main.lattice.generic.y				= y;
+	s_main.lattice.generic.id				= ID_S64_LATTICE;
+	s_main.lattice.generic.callback			= Main_MenuEvent;
+	s_main.lattice.string					= "LATTICE";
+	s_main.lattice.color					= s64_amber;
+	s_main.lattice.style					= style;
+
+	y += MAIN_MENU_VERTICAL_SPACING;
 	s_main.practice.generic.type			= MTYPE_PTEXT;
 	s_main.practice.generic.flags			= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
 	s_main.practice.generic.x				= 320;
@@ -447,6 +481,7 @@ void UI_MainMenu( void ) {
 	Menu_AddItem( &s_main.menu,	&s_main.daily );
 	Menu_AddItem( &s_main.menu,	&s_main.trial );
 	Menu_AddItem( &s_main.menu,	&s_main.vector );
+	Menu_AddItem( &s_main.menu,	&s_main.lattice );
 	Menu_AddItem( &s_main.menu,	&s_main.practice );
 	Menu_AddItem( &s_main.menu,	&s_main.multiplayer );
 	Menu_AddItem( &s_main.menu,	&s_main.setup );

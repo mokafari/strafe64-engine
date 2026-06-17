@@ -87,7 +87,8 @@ typedef enum
 	P_SMOKE_IMPACT,
 	P_BUBBLE,
 	P_BUBBLE_TURBULENT,
-	P_SPRITE
+	P_SPRITE,
+	P_BLOOD_POOL	// STRAFE 64: flat ground puddle that grows, dries (darkens), then fades
 } particle_type_t;
 
 #define	MAX_SHADER_ANIMS		32
@@ -696,8 +697,82 @@ void CG_AddParticleToScene (cparticle_t *p, vec3_t org, float alpha)
 		verts[3].st[1] = 0;	
 		verts[3].modulate[0] = 255 * color[0];	
 		verts[3].modulate[1] = 255 * color[1];	
-		verts[3].modulate[2] = 255 * color[2];	
-		verts[3].modulate[3] = 255;		
+		verts[3].modulate[2] = 255 * color[2];
+		verts[3].modulate[3] = 255;
+	}
+	else if (p->type == P_BLOOD_POOL)
+	{
+		// STRAFE 64: a puddle lying flat on the floor. It spreads from its
+		// start size to its full size (p->start marks when growth completes),
+		// darkens from fresh to dried over its life, then fades out alpha over
+		// the final stretch (after p->startfade).
+		float		sinR, cosR;
+		float		t, growFrac, lifeFrac, a;
+		static const vec3_t	fresh = { 0.62f, 0.05f, 0.04f };
+		static const vec3_t	dried = { 0.26f, 0.0f,  0.0f  };
+		int			mr, mg, mb;
+
+		t = cg.time - p->time;
+
+		growFrac = ( p->start > p->time ) ? t / ( p->start - p->time ) : 1.0f;
+		if ( growFrac > 1.0f ) growFrac = 1.0f;
+		width  = p->width  + growFrac * ( p->endwidth  - p->width );
+		height = p->height + growFrac * ( p->endheight - p->height );
+
+		lifeFrac = t / ( p->endtime - p->time );
+		if ( lifeFrac > 1.0f ) lifeFrac = 1.0f;
+		mr = 255 * ( fresh[0] + lifeFrac * ( dried[0] - fresh[0] ) );
+		mg = 255 * ( fresh[1] + lifeFrac * ( dried[1] - fresh[1] ) );
+		mb = 255 * ( fresh[2] + lifeFrac * ( dried[2] - fresh[2] ) );
+
+		if ( cg.time < p->startfade )
+			a = p->alpha;
+		else
+			a = p->alpha * ( 1.0f - (float)( cg.time - p->startfade ) / (float)( p->endtime - p->startfade ) );
+		if ( a < 0 ) a = 0;
+
+		sinR = height * sin(DEG2RAD(p->roll)) * sqrt(2);
+		cosR = width  * cos(DEG2RAD(p->roll)) * sqrt(2);
+
+		VectorCopy (org, verts[0].xyz);
+		verts[0].xyz[0] -= sinR;
+		verts[0].xyz[1] -= cosR;
+		verts[0].st[0] = 0;
+		verts[0].st[1] = 0;
+		verts[0].modulate[0] = mr;
+		verts[0].modulate[1] = mg;
+		verts[0].modulate[2] = mb;
+		verts[0].modulate[3] = 255 * a;
+
+		VectorCopy (org, verts[1].xyz);
+		verts[1].xyz[0] -= cosR;
+		verts[1].xyz[1] += sinR;
+		verts[1].st[0] = 0;
+		verts[1].st[1] = 1;
+		verts[1].modulate[0] = mr;
+		verts[1].modulate[1] = mg;
+		verts[1].modulate[2] = mb;
+		verts[1].modulate[3] = 255 * a;
+
+		VectorCopy (org, verts[2].xyz);
+		verts[2].xyz[0] += sinR;
+		verts[2].xyz[1] += cosR;
+		verts[2].st[0] = 1;
+		verts[2].st[1] = 1;
+		verts[2].modulate[0] = mr;
+		verts[2].modulate[1] = mg;
+		verts[2].modulate[2] = mb;
+		verts[2].modulate[3] = 255 * a;
+
+		VectorCopy (org, verts[3].xyz);
+		verts[3].xyz[0] += cosR;
+		verts[3].xyz[1] -= sinR;
+		verts[3].st[0] = 1;
+		verts[3].st[1] = 0;
+		verts[3].modulate[0] = mr;
+		verts[3].modulate[1] = mg;
+		verts[3].modulate[2] = mb;
+		verts[3].modulate[3] = 255 * a;
 	}
 	else if (p->type == P_FLAT)
 	{
@@ -925,7 +1000,7 @@ void CG_AddParticles (void)
 		}
 
 
-		if (p->type == P_FLAT_SCALEUP_FADE)
+		if (p->type == P_FLAT_SCALEUP_FADE || p->type == P_BLOOD_POOL)
 		{
 			if (cg.time > p->endtime)
 			{
@@ -1847,6 +1922,159 @@ void CG_ParticleBloodCloud (centity_t *cent, vec3_t origin, vec3_t dir)
 	}
 
 	
+}
+
+/*
+================================================================================
+STRAFE 64 BLOOD
+
+CG_BloodSpurt throws a fan of ballistic blood droplets out of a wound. They
+arc under gravity and read as a pressurised arterial spray. CG_SpawnBloodPool
+grows a flat puddle on the floor that darkens as it dries and then fades out;
+CG_BloodPoolTrace finds the floor below a wound first so blood only pools where
+there is actually ground (not mid-air, not on a moving platform, not on a wall).
+================================================================================
+*/
+
+void CG_SpawnBloodPool( const vec3_t origin, float startSize, float endSize, int lifetime )
+{
+	cparticle_t	*p;
+	float		rnd;
+	int			grow;
+
+	if ( !cg_blood.integer || !cg_bloodPool.integer )
+		return;
+
+	if ( !free_particles )
+		return;
+
+	// gore lingers: stretch the whole life by the longevity multiplier
+	if ( cg_bloodTime.value > 0 )
+		lifetime = (int)( lifetime * cg_bloodTime.value );
+
+	p = free_particles;
+	free_particles = p->next;
+	p->next = active_particles;
+	active_particles = p;
+
+	p->time = cg.time;
+	p->endtime = cg.time + lifetime;
+	// spread quickly (capped) then sit and dry, regardless of total lifetime
+	grow = (int)( lifetime * 0.35f );
+	if ( grow > 2500 )
+		grow = 2500;
+	p->start = cg.time + grow;
+	p->startfade = p->endtime - 2000;		// fade out over the final 2s
+	if ( p->startfade < p->start )
+		p->startfade = p->start;
+
+	rnd = 0.75f + random() * 0.5f;
+	p->width  = startSize * rnd;
+	p->height = startSize * rnd;
+	p->endwidth  = endSize * rnd;
+	p->endheight = endSize * rnd;
+
+	p->type = P_BLOOD_POOL;
+	p->pshader = cgs.media.bloodMarkShader;
+
+	VectorCopy( origin, p->org );
+	p->org[2] += 0.6f;						// lift a hair off the floor (z-fight)
+
+	VectorClear( p->vel );
+	VectorClear( p->accel );
+
+	p->rotate = qfalse;
+	p->roll = rand() % 360;
+	p->alpha = 0.9f;
+	p->alphavel = 0;
+	p->color = BLOODRED;
+}
+
+void CG_BloodPoolTrace( const vec3_t origin, float dropDist, float startSize, float endSize, int lifetime )
+{
+	trace_t	tr;
+	vec3_t	end;
+
+	if ( !cg_blood.integer || !cg_bloodPool.integer )
+		return;
+
+	VectorCopy( origin, end );
+	end[2] -= dropDist;
+	CG_Trace( &tr, origin, NULL, NULL, end, -1, CONTENTS_SOLID );
+
+	if ( tr.startsolid || tr.allsolid || tr.fraction == 1.0f )
+		return;								// no floor within reach
+	if ( tr.entityNum < ENTITYNUM_WORLD )
+		return;								// movers/players don't hold a puddle
+	if ( tr.plane.normal[2] < 0.6f )
+		return;								// too steep: blood runs off
+
+	CG_SpawnBloodPool( tr.endpos, startSize, endSize, lifetime );
+}
+
+void CG_BloodSpurt( const vec3_t origin, const vec3_t dir, int count, float speed )
+{
+	cparticle_t	*p;
+	vec3_t		ndir, vel;
+	int			i;
+	float		intensity;
+
+	if ( !cg_blood.integer || !cg_bloodSpurt.integer )
+		return;
+
+	intensity = cg_bloodSpurt.value;		// doubles as an amount multiplier
+	count = (int)( count * intensity );
+	if ( count < 1 )
+		return;
+
+	VectorCopy( dir, ndir );
+	if ( VectorNormalize( ndir ) == 0 )
+		VectorSet( ndir, 0, 0, 1 );
+
+	for ( i = 0; i < count; i++ )
+	{
+		if ( !free_particles )
+			return;
+
+		p = free_particles;
+		free_particles = p->next;
+		p->next = active_particles;
+		active_particles = p;
+
+		p->time = cg.time;
+		p->endtime = cg.time + 500 + rand() % 700;
+		p->startfade = p->time;
+
+		p->type = P_BLEED;					// camera-facing red quad, honours alpha
+		p->pshader = cgs.media.bloodExplosionShader;
+		p->color = BLOODRED;
+
+		// mostly fine spray, every fifth droplet a fat gout
+		if ( rand() % 5 == 0 )
+			p->width = p->height = 3.0f + random() * 3.0f;
+		else
+			p->width = p->height = 1.0f + random() * 2.0f;
+		p->endwidth = p->width;
+		p->endheight = p->height;
+
+		p->alpha = 1.0f;
+		p->alphavel = -1.0f - random();		// gone in ~0.5-1.0s
+		p->roll = rand() % 360;
+		p->rotate = qtrue;
+
+		VectorCopy( origin, p->org );
+
+		// cone around the spray direction, with a touch of upward bias
+		vel[0] = ndir[0] + crandom() * 0.6f;
+		vel[1] = ndir[1] + crandom() * 0.6f;
+		vel[2] = ndir[2] + 0.3f + crandom() * 0.4f;
+		VectorNormalize( vel );
+		VectorScale( vel, speed * ( 0.5f + random() ), p->vel );
+
+		p->accel[0] = 0;
+		p->accel[1] = 0;
+		p->accel[2] = -700;					// gravity drags the droplets down
+	}
 }
 
 void CG_ParticleSparks (vec3_t org, vec3_t vel, int duration, float x, float y, float speed)

@@ -87,6 +87,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define CS_VOIDINFO				26		// rising void: "<baseZ> <rise ups/s> <startTimeMs>", empty = no void
 
 #define	CS_ITEMS				27		// string of 0's and 1's that tell which items are present
+#define CS_LATTICEHEAT			28		// LATTICE bracket HUD: "<round> <heatSize> <advancers> <pending>", empty = no bracket
 
 #define	CS_MODELS				32
 #define	CS_SOUNDS				(CS_MODELS+MAX_MODELS)
@@ -153,6 +154,7 @@ typedef enum {
 #define	PMF_BACKWARDS_RUN	16		// coast down to backwards run
 #define	PMF_TIME_LAND		32		// pm_time is time before rejump
 #define	PMF_TIME_KNOCKBACK	64		// pm_time is an air-accelerate only time
+#define	PMF_SLIDING			128		// STRAFE 64: in a crouch-slide (ducked + grounded at speed)
 #define	PMF_TIME_WATERJUMP	256		// pm_time is waterjump
 #define	PMF_RESPAWNED		512		// clear after attack and jump buttons come up
 #define	PMF_USE_ITEM_HELD	1024

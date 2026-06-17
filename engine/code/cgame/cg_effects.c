@@ -517,6 +517,23 @@ void CG_Bleed( vec3_t origin, int entityNum ) {
 	if ( entityNum == cg.snap->ps.clientNum ) {
 		ex->refEntity.renderfx |= RF_THIRD_PERSON;
 	}
+
+	// STRAFE 64: the impact flash above now squirts and pools. Add a
+	// pressurised arterial fan plus a puddle forming on the floor beneath the
+	// wound. The in-your-face spray is suppressed for the local player's own
+	// first-person view (the floor pool still forms).
+	{
+		vec3_t	spray;
+
+		if ( entityNum != cg.snap->ps.clientNum ) {
+			spray[0] = crandom();
+			spray[1] = crandom();
+			spray[2] = 0.7f + random() * 0.5f;		// rides up and outward
+			CG_BloodSpurt( origin, spray, 14, 200 );
+		}
+
+		CG_BloodPoolTrace( origin, 320, 5, 18, 9000 );
+	}
 }
 
 
@@ -661,7 +678,7 @@ static void CG_LaunchSeveredLimb( vec3_t origin, vec3_t cut, qhandle_t model ) {
 	CG_LaunchGib( origin, velocity, model );
 }
 
-void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, vec3_t cutNormal, int cutType ) {
+void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, vec3_t cutNormal, int cutType, int entityNum ) {
 	vec3_t	cut, wound, normal, fwd;
 	float	woundZ;
 
@@ -701,6 +718,25 @@ void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, vec3_t cutNormal, int 
 	// arterial spray at the wound
 	CG_Bleed( wound, ENTITYNUM_NONE );
 	CG_Bleed( wound, ENTITYNUM_NONE );
+
+	// STRAFE 64: the slice opens an artery -- an instant gout at the cut, then a
+	// geyser that keeps pumping while riding the severed stump(s) as the ragdoll
+	// (or each sliced half) tumbles and falls. With cg_ragdoll 0 there is no
+	// corpse to track, so the geysers simply stay put at the wound.
+	CG_BloodSpurt( wound, fwd, 28, 280 );
+	if ( cutType >= 2 ) {
+		// bisection: both halves bleed from the waist seam
+		CG_LaunchBloodSpurt( wound, fwd, cg_bloodSpurtTime.integer, entityNum, RAG_PART_PELVIS );
+		CG_LaunchBloodSpurt( wound, fwd, cg_bloodSpurtTime.integer, entityNum, RAG_PART_CHEST );
+	} else if ( cutType == 1 ) {
+		// decapitation: a hard jet from the neck stump + the head's own drip
+		CG_LaunchBloodSpurt( wound, fwd, cg_bloodSpurtTime.integer, entityNum, RAG_PART_CHEST );
+		CG_LaunchBloodSpurt( wound, fwd, cg_bloodSpurtTime.integer / 2, entityNum, RAG_PART_HEAD );
+	} else {
+		// single limb: the body stays whole, bleeding from the torso
+		CG_LaunchBloodSpurt( wound, fwd, cg_bloodSpurtTime.integer, entityNum, RAG_PART_CHEST );
+	}
+	CG_BloodPoolTrace( wound, 400, 12, 36, 16000 );
 
 	if ( !cg_gibs.integer ) {
 		return;

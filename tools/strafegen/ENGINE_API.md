@@ -140,6 +140,7 @@ Code runs in this repo (approve it once when prompted). Tools:
 | `engine_selftest` | exercise the whole API end-to-end → pass/fail per capability |
 | `engine_reload` | vid_restart / snd_restart so freshly-deployed assets show up |
 | `engine_source_constants` | list all source-tier movement constants (live vs rebuild-only) |
+| `engine_config_overrides` | show cvars where autoexec/strafe64.cfg overrides the source default |
 | `engine_set_source_constant` | edit a rebuild-only constant in place (optionally rebuild) |
 | `engine_rebuild` | source tier: rebuild + redeploy the native mod |
 
@@ -271,7 +272,10 @@ run (not a plain forward run) under each value and measures peak speed — so it
 actually exercises the speed-building tech and can tune `pm_strafeAccelerate` /
 `pm_airControlAmount` / `pm_wishSpeedClamp` / bhop boost. (`engine_input` supports
 a `{"strafe": secs}` step for this pattern; note bhop needs *pulsed* jumps —
-held jump just runs at the ground cap.)
+held jump just runs at the ground cap.) Scripted air-strafe is noisy run-to-run,
+so movement mode runs `trials` (default 3) per value and takes the **median** —
+the result also reports each trial + spread. Kill leftover engines first
+(`engine_kill_orphans`); a stale instance can starve the measurement.
 
 **Sweep & decide.** `engine_compare(cvar, values)` tries several values in one
 call. `mode="visual"` frames a subject and screenshots each value → a labelled
@@ -378,6 +382,13 @@ movement-quality metrics bots actually exercise (flow, stuck, moveset). Bots als
 tend to cluster/telefrag near spawn in dedicated runs, which depresses flow; for
 clean course-traversal numbers a human run is more representative.
 
+## Measured findings
+
+See [FINDINGS.md](FINDINGS.md) for data gathered with these tools — air-strafe
+tuning (the shipped constants are well-tuned), the bhop-ceiling experiment, and
+the bullet-time response curve (incl. an `autoexec.cfg` freeze-floor inconsistency
+worth a decision).
+
 ## Health check
 
 `engine_selftest` (lib: `selftest()`) spins its own client engine and exercises
@@ -385,6 +396,10 @@ the whole surface — cvars, movement, effects, state, spawn/clear, presets,
 framing, screenshot, demo — returning pass/fail per capability. Run it after a
 rebuild or whenever something seems off; an all-green result means the engine and
 every layer of the tooling are working.
+
+`python3 test_engine_api.py` is the fast, **offline** companion: stdlib-only unit
+tests for the pure logic (parsing, geometry, aggregation, collage, config
+diagnostics) — no engine needed, catches regressions in the module quickly.
 
 ## Requirements
 

@@ -148,12 +148,15 @@ vmCvar_t	cg_fov;
 vmCvar_t	cg_drawSpeed;
 vmCvar_t	cg_speedFov;
 vmCvar_t	cg_flowColor;
+vmCvar_t	cg_stillVignette;
 vmCvar_t	cg_glitch;
 vmCvar_t	cg_glitchAmount;
 vmCvar_t	cg_speedLines;
 vmCvar_t	cg_strafeHelper;
 vmCvar_t	cg_ghost;
 vmCvar_t	cg_ghostAlpha;
+vmCvar_t	cg_bulletTrail;
+vmCvar_t	cg_bulletTrailWidth;
 vmCvar_t	cg_latticeGlitch;
 vmCvar_t	cg_latticeAudio;	// 0-2: how hard the lattice pulses to the music bands
 vmCvar_t	cg_ragdoll;				// 1: dead bodies ragdoll; 0: stock death animation
@@ -177,6 +180,10 @@ vmCvar_t 	cg_buildScript;
 vmCvar_t 	cg_forceModel;
 vmCvar_t	cg_paused;
 vmCvar_t	cg_blood;
+vmCvar_t	cg_bloodSpurt;	// STRAFE 64: arterial spray amount
+vmCvar_t	cg_bloodPool;	// STRAFE 64: ground pooling
+vmCvar_t	cg_bloodTime;	// STRAFE 64: gore longevity multiplier
+vmCvar_t	cg_bloodSpurtTime;	// STRAFE 64: dismember geyser duration (ms)
 vmCvar_t	cg_predictItems;
 vmCvar_t	cg_deferPlayers;
 vmCvar_t	cg_drawTeamOverlay;
@@ -241,12 +248,15 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_drawSpeed, "cg_drawSpeed", "1", CVAR_ARCHIVE },
 	{ &cg_speedFov, "cg_speedFov", "1", CVAR_ARCHIVE },
 	{ &cg_flowColor, "cg_flowColor", "0", CVAR_ARCHIVE },
+	{ &cg_stillVignette, "cg_stillVignette", "0", CVAR_ARCHIVE },
 	{ &cg_glitch, "cg_glitch", "1", CVAR_ARCHIVE },
 	{ &cg_glitchAmount, "cg_glitchAmount", "0.6", CVAR_ARCHIVE },
 	{ &cg_speedLines, "cg_speedLines", "1", CVAR_ARCHIVE },
 	{ &cg_strafeHelper, "cg_strafeHelper", "1", CVAR_ARCHIVE },
 	{ &cg_ghost, "cg_ghost", "1", CVAR_ARCHIVE },
 	{ &cg_ghostAlpha, "cg_ghostAlpha", "0.55", CVAR_ARCHIVE },
+	{ &cg_bulletTrail, "cg_bulletTrail", "1", CVAR_ARCHIVE },
+	{ &cg_bulletTrailWidth, "cg_bulletTrailWidth", "3", CVAR_ARCHIVE },
 	{ &cg_latticeGlitch, "cg_latticeGlitch", "1", CVAR_ARCHIVE },
 	{ &cg_latticeAudio, "cg_latticeAudio", "1", CVAR_ARCHIVE },
 	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },
@@ -335,6 +345,10 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_buildScript, "com_buildScript", "0", 0 },	// force loading of all possible data amd error on failures
 	{ &cg_paused, "cl_paused", "0", CVAR_ROM },
 	{ &cg_blood, "com_blood", "1", CVAR_ARCHIVE },
+	{ &cg_bloodSpurt, "cg_bloodSpurt", "1", CVAR_ARCHIVE },	// STRAFE 64: spray amount (0 = off)
+	{ &cg_bloodPool, "cg_bloodPool", "1", CVAR_ARCHIVE },	// STRAFE 64: ground pooling (0 = off)
+	{ &cg_bloodTime, "cg_bloodTime", "2", CVAR_ARCHIVE },	// STRAFE 64: gore lingers this much longer
+	{ &cg_bloodSpurtTime, "cg_bloodSpurtTime", "4000", CVAR_ARCHIVE },	// STRAFE 64: dismember geyser duration (ms)
 	{ &cg_synchronousClients, "g_synchronousClients", "0", CVAR_SYSTEMINFO },
 #ifdef MISSIONPACK
 	{ &cg_redTeamName, "g_redteam", DEFAULT_REDTEAM_NAME, CVAR_ARCHIVE | CVAR_SERVERINFO | CVAR_USERINFO },
@@ -1959,6 +1973,13 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 	Com_sprintf( cg.mapRecordName, sizeof( cg.mapRecordName ), "cgr_%s",
 		Info_ValueForKey( CG_ConfigString( CS_SERVERINFO ), "mapname" ) );
 	trap_Cvar_Register( &cg.mapSpeedRecord, cg.mapRecordName, "0", CVAR_ARCHIVE );
+
+	// per-map PAR (best-bot calibration, from tools/strafegen/par_calibrate.py):
+	// the MISSION REPORT grades its rank against this so a tight map's S-rank is
+	// earned at a lower speed than a fast one's. 0 = uncalibrated -> absolute rank.
+	Com_sprintf( cg.mapParName, sizeof( cg.mapParName ), "cgp_%s",
+		Info_ValueForKey( CG_ConfigString( CS_SERVERINFO ), "mapname" ) );
+	trap_Cvar_Register( &cg.mapPar, cg.mapParName, "0", CVAR_ARCHIVE );
 
 	// load the new map
 	CG_LoadingString( "collision map" );

@@ -389,28 +389,33 @@ static void CG_OffsetFirstPersonView( void ) {
 	// make sure the bob is visible even at low speeds
 	speed = cg.xyspeed > 200 ? cg.xyspeed : 200;
 
-	delta = cg.bobfracsin * cg_bobpitch.value * speed;
-	if (cg.predictedPlayerState.pm_flags & PMF_DUCKED)
-		delta *= 3;		// crouching
-	angles[PITCH] += delta;
-	delta = cg.bobfracsin * cg_bobroll.value * speed;
-	if (cg.predictedPlayerState.pm_flags & PMF_DUCKED)
-		delta *= 3;		// crouching accentuates roll
-	if (cg.bobcycle & 1)
-		delta = -delta;
-	angles[ROLL] += delta;
+	// NO view bob during a slide — a slide is a smooth glide, not footfalls.
+	// (Bob reads as "walking", which is exactly what a slide must not feel like.)
+	// Outside a slide, crouching still accentuates the bob x3 as before.
+	if ( !( cg.predictedPlayerState.pm_flags & PMF_SLIDING ) ) {
+		float	bobScale = ( cg.predictedPlayerState.pm_flags & PMF_DUCKED ) ? 3.0f : 1.0f;
 
-	// wall run: lean the camera into the wall, eased so attach/detach
-	// reads as a roll rather than a snap (STAT_WALLRUN sign = wall side)
+		delta = cg.bobfracsin * cg_bobpitch.value * speed * bobScale;
+		angles[PITCH] += delta;
+		delta = cg.bobfracsin * cg_bobroll.value * speed * bobScale;
+		if (cg.bobcycle & 1)
+			delta = -delta;
+		angles[ROLL] += delta;
+	}
+
+	// wall run: bank the camera so it reads as running along the wall, eased so
+	// attach/detach rolls rather than snaps (STAT_WALLRUN sign = wall side:
+	// + right / - left). Rolls AWAY from the wall (wall on the right -> lean left)
+	// — the opposite of the air-strafe "into the turn" lean.
 	{
 		static float	wallRoll = 0;
 		float			target = 0;
 		int				wr = cg.predictedPlayerState.stats[STAT_WALLRUN];
 
 		if ( wr > 0 ) {
-			target = 12.0f;		// wall on the right
+			target = -12.0f;	// wall on the right
 		} else if ( wr < 0 ) {
-			target = -12.0f;	// wall on the left
+			target = 12.0f;		// wall on the left
 		}
 		wallRoll += ( target - wallRoll ) * 0.18f;
 		angles[ROLL] += wallRoll;
@@ -441,6 +446,26 @@ static void CG_OffsetFirstPersonView( void ) {
 		angles[ROLL] += airRoll;
 	}
 
+	// crouch-slide lean: bank low INTO the slide so it reads as a ground slide
+	// rather than a crouch-walk. A straight slide stays level; carving banks the
+	// camera toward the turn (lateral velocity), eased in/out via PMF_SLIDING.
+	{
+		static float	slideRoll = 0;
+		float			target = 0;
+
+		if ( cg.predictedPlayerState.pm_flags & PMF_SLIDING ) {
+			float	side = DotProduct( predictedVelocity, cg.refdef.viewaxis[1] );
+			target = -side * 0.045f;		// bank harder into the carve (Titanfall)
+			if ( target > 16.0f ) {
+				target = 16.0f;
+			} else if ( target < -16.0f ) {
+				target = -16.0f;
+			}
+		}
+		slideRoll += ( target - slideRoll ) * 0.16f;
+		angles[ROLL] += slideRoll;
+	}
+
 	// FLOW juice: screen shake from hard landings, hits and big tricks
 	if ( cg.viewShake > 0.0f ) {
 		angles[PITCH] += crandom() * cg.viewShake;
@@ -460,13 +485,14 @@ static void CG_OffsetFirstPersonView( void ) {
 			* (DUCK_TIME - timeDelta) / DUCK_TIME;
 	}
 
-	// add bob height
-	bob = cg.bobfracsin * cg.xyspeed * cg_bobup.value;
-	if (bob > 6) {
-		bob = 6;
+	// add bob height — none while sliding, so the slide camera stays glued steady
+	if ( !( cg.predictedPlayerState.pm_flags & PMF_SLIDING ) ) {
+		bob = cg.bobfracsin * cg.xyspeed * cg_bobup.value;
+		if (bob > 6) {
+			bob = 6;
+		}
+		origin[2] += bob;
 	}
-
-	origin[2] += bob;
 
 
 	// add fall height

@@ -7,6 +7,23 @@ procedural course generator and design docs.
 > This is the native-engine line of the project. A separate Godot
 > reimplementation lives at `~/strafe64` and is unrelated to this tree.
 
+## Gameplay
+
+A melee/slow-mo bullet-time arena: a katana, deflectable projectiles, parries,
+and the **LATTICE** mode — damaging speed-trail walls (the magenta slabs) that
+the third "player" weaves across the floor as a last-pilot-alive hazard. Time
+slows when you're still and surges when you swing.
+
+![Katana duel across a lattice wall, bullet-time](docs/screenshots/hero.jpg)
+
+| | |
+|---|---|
+| ![Pilot crossing a lattice wall](docs/screenshots/pilot-lattice.jpg) | ![Blood-spray impact and gibs](docs/screenshots/blood-impact.jpg) |
+| ![Airborne katana strike](docs/screenshots/combat-katana.jpg) | ![A lattice speed-trail wall](docs/screenshots/lattice-wall.jpg) |
+
+A 5-second bullet-time hero clip lives at
+[`docs/screenshots/bullet-time.mp4`](docs/screenshots/bullet-time.mp4).
+
 ## Layout
 
 ```

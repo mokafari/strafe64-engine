@@ -2428,6 +2428,15 @@ static void CG_DrawAmmoWarning( void ) {
 		return;
 	}
 
+	// no ammo nag for the melee kit (sword/gauntlet) or any infinite-ammo weapon —
+	// it's not "out of ammo", it's the blade. Keeps the slow-mo melee frame clean.
+	{
+		int wp = cg.snap->ps.weapon;
+		if ( wp == WP_GAUNTLET || wp == WP_SWORD || cg.snap->ps.ammo[wp] < 0 ) {
+			return;
+		}
+	}
+
 	if ( cg.lowAmmoWarning == 2 ) {
 		s = "OUT OF AMMO";
 	} else {
@@ -2662,12 +2671,13 @@ static vec4_t nerv_orange = { 1.00f, 0.42f, 0.05f, 1.00f };	// elevated
 static vec4_t nerv_red    = { 1.00f, 0.12f, 0.16f, 1.00f };	// alert
 static vec4_t nerv_green  = { 0.40f, 1.00f, 0.50f, 1.00f };	// nominal/go
 static vec4_t nerv_dim    = { 0.55f, 0.42f, 0.20f, 1.00f };	// idle
+static vec4_t nerv_cyan   = { 0.32f, 0.86f, 1.00f, 1.00f };	// MAGI teal — nominal readouts
 static vec4_t nerv_fill   = { 0.02f, 0.03f, 0.04f, 0.55f };	// panel plate
 
 static void CG_NervPanel( float x, float y, float w, float h, const float *accent ) {
-	// minimal HUD (Mirror's Edge style): the bracket frames are gone — HUD
-	// text floats with a drop shadow instead. Kept as a no-op so the call
-	// sites stay put and panels can be dialled back in by feel if wanted.
+	// No borders, no plates — the HUD is clean floating LED text (the matrix font
+	// carries a 1px drop shadow for legibility). Kept as a no-op so the call sites
+	// stay put. (Gustav's call 2026-06-16: good font, no frames — keep it minimal.)
 	(void)x; (void)y; (void)w; (void)h; (void)accent;
 }
 
@@ -2733,26 +2743,70 @@ static const unsigned char cg_matrixGlyph[45][7] = {
 	{0x10,0x08,0x04,0x02,0x04,0x08,0x10}	// >
 };
 
-/* The HUD readouts now render through Share Tech Mono (fonts/strafe64.ttf,
-   OFL), baked to a glyph atlas by the engine's TrueType support. These keep
-   their old names and the `cell` size argument so the call sites are
-   unchanged — `cell` scales the glyphs to about the height the dot-matrix
-   gave (~7*cell px). Lazy-registered on first use. The cg_matrix* tables
-   above are now unused fallback data. */
+/* HUD text. PRIMARY: the Share Tech Mono TrueType font (fonts/strafe64.ttf, OFL)
+   via the engine's FreeType atlas — clean anti-aliased mono, the NERV terminal look
+   as designed (needs the renderer built with USE_FREETYPE=ON). FALLBACK: if the
+   build has no FreeType (trap_R_RegisterFont returns an empty font), the procedural
+   5x7 LED dot-matrix from the cg_matrixGlyph tables above, so the HUD can never go
+   invisible. `cell` scales both to ~the same height. */
+static int CG_MatrixGlyphIndex( char c ) {
+	int i;
+	if ( c >= 'a' && c <= 'z' ) {
+		c -= 32;
+	}
+	for ( i = 0; cg_matrixOrder[i]; i++ ) {
+		if ( cg_matrixOrder[i] == c ) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+static void CG_LedDrawString( float x, float y, const char *s, float cell, const float *color ) {
+	const char	*p;
+	float		lit = cell * 0.82f, cx = x;
+	vec4_t		shadow;
+
+	shadow[0] = shadow[1] = shadow[2] = 0.0f;
+	shadow[3] = ( color ? color[3] : 1.0f ) * 0.7f;
+	for ( p = s; *p; p++ ) {
+		int idx = CG_MatrixGlyphIndex( *p ), row, col;
+		if ( idx < 0 ) {
+			cx += 6.0f * cell;
+			continue;
+		}
+		for ( row = 0; row < 7; row++ ) {
+			unsigned char bits = cg_matrixGlyph[idx][row];
+			for ( col = 0; col < 5; col++ ) {
+				if ( bits & ( 0x10 >> col ) ) {
+					float lx = cx + col * cell, ly = y + row * cell;
+					CG_FillRect( lx + 1.0f, ly + 1.0f, lit, lit, shadow );
+					CG_FillRect( lx, ly, lit, lit, color );
+				}
+			}
+		}
+		cx += 6.0f * cell;
+	}
+}
+
 static fontInfo_t	cg_hudFont;
 static qboolean		cg_hudFontReg = qfalse;
 
-static void CG_HudFont( void ) {
+static qboolean CG_HudFontReady( void ) {
 	if ( !cg_hudFontReg ) {
 		trap_R_RegisterFont( "fonts/strafe64.ttf", 48, &cg_hudFont );
 		cg_hudFontReg = qtrue;
 	}
+	return cg_hudFont.glyphScale > 0.0f;		// 0 => no FreeType -> LED fallback
 }
 
 int CG_MatrixStringWidth( const char *s, float cell ) {
 	float	scale, w = 0.0f;
 
-	CG_HudFont();
+	if ( !CG_HudFontReady() ) {
+		int n = 0; while ( s[n] ) n++;
+		return (int)( n * 6.0f * cell );
+	}
 	scale = cell * 0.16f * cg_hudFont.glyphScale;
 	while ( *s ) {
 		w += cg_hudFont.glyphs[ *s & 255 ].xSkip * scale;
@@ -2768,17 +2822,16 @@ void CG_DrawMatrixString( float x, float y, const char *s, float cell, const flo
 	int					pass;
 	vec4_t				shadow;
 
-	CG_HudFont();
+	if ( !CG_HudFontReady() ) {
+		CG_LedDrawString( x, y, s, cell, color );		// no FreeType -> LED dots
+		return;
+	}
 	scale = cell * 0.16f * cg_hudFont.glyphScale;
 	y += 6.0f * cell;		// call sites pass the top edge; TrueType y is the baseline
-
-	// minimal HUD: no panels — a 1px drop shadow keeps floating text legible
 	shadow[0] = shadow[1] = shadow[2] = 0.0f;
-	shadow[3] = color[3] * 0.7f;
-
+	shadow[3] = ( color ? color[3] : 1.0f ) * 0.7f;
 	for ( pass = 0; pass < 2; pass++ ) {
-		float off = pass ? 0.0f : 1.0f;		// pass 0 = shadow (offset down-right)
-
+		float off = pass ? 0.0f : 1.0f;		// pass 0 = drop shadow
 		trap_R_SetColor( pass ? color : shadow );
 		cx = x;
 		for ( p = s; *p; p++ ) {
@@ -2876,7 +2929,10 @@ static void CG_DrawStillness( void ) {
 	static const float bandW[3] = { 16.0f, 46.0f, 96.0f };
 	static const float bandA[3] = { 0.55f, 0.28f, 0.12f };
 
-	if ( !cg_flowColor.integer ) {
+	// the cold edge vignette read as a heavy black border framing the screen
+	// (constant in bullet-time, where you're often still) — OFF by default for the
+	// clean full-bleed look; `cg_stillVignette 1` brings it back.
+	if ( !cg_stillVignette.integer || !cg_flowColor.integer ) {
 		return;
 	}
 
@@ -3441,37 +3497,40 @@ static void CG_UpdateCombo( void ) {
 
 static void CG_DrawCombo( void ) {
 	char			str[32];
-	int				x, w, age;
+	int				w, age;
 	float			*color;
+	float			y = 56.0f;		// top-right stack, off the crosshair
 
-	// the big multiplier, center under the crosshair, colour climbing
+	// live chain multiplier — cyan nominal, heating amber→orange→red as it climbs
 	if ( cg.comboMult >= 1.05f ) {
-		if ( cg.comboMult < 2.0f )      color = nerv_amber;
+		if      ( cg.comboMult < 1.6f ) color = nerv_cyan;
+		else if ( cg.comboMult < 2.5f ) color = nerv_amber;
 		else if ( cg.comboMult < 4.0f ) color = nerv_orange;
 		else                            color = nerv_red;
 
 		Com_sprintf( str, sizeof( str ), "X%.1f", cg.comboMult );
-		w = CG_MatrixStringWidth( str, 3.5f );
-		x = 320 - w / 2;
-		CG_DrawMatrixString( x, 196, str, 3.5f, color );
+		w = CG_MatrixStringWidth( str, 2.2f );
+		CG_DrawMatrixString( 632 - w, y, str, 2.2f, color );
+		y += 22.0f;
 	}
 
-	// the trick callout, flashing under the multiplier
+	// run style score — cyan readout under the multiplier
+	if ( cg.styleScore > 0.0f ) {
+		Com_sprintf( str, sizeof( str ), "STYLE %i", (int)cg.styleScore );
+		w = CG_MatrixStringWidth( str, 1.4f );
+		CG_DrawMatrixString( 632 - w, y, str, 1.4f, nerv_cyan );
+		y += 18.0f;
+	}
+
+	// trick callout — momentary, flashing green, under the group
 	age = cg.time - cg.trickTime;
 	if ( age >= 0 && age < 700 && cg.trickName[0] ) {
 		vec4_t	tc;
 
 		Vector4Copy( nerv_green, tc );
 		tc[3] = 1.0f - age / 700.0f;
-		w = CG_MatrixStringWidth( cg.trickName, 1.6f );
-		CG_DrawMatrixString( 320 - w / 2, 226, cg.trickName, 1.6f, tc );
-	}
-
-	// the run style score, small, just under the race timer area
-	if ( cg.styleScore > 0.0f ) {
-		Com_sprintf( str, sizeof( str ), "STYLE %i", (int)cg.styleScore );
-		w = CG_MatrixStringWidth( str, 1.4f );
-		CG_DrawMatrixString( 632 - w, 72, str, 1.4f, nerv_amber );
+		w = CG_MatrixStringWidth( cg.trickName, 1.2f );
+		CG_DrawMatrixString( 632 - w, y, cg.trickName, 1.2f, tc );
 	}
 }
 
@@ -3534,13 +3593,15 @@ static void CG_DrawSpeedMeter( void ) {
 		}
 	}
 
-	// NERV ops color: amber at nominal, escalating to red as the
-	// speed-damage multiplier climbs ("move or die")
+	// cyan at nominal, escalating amber→orange→red as the speed-damage multiplier
+	// climbs ("move or die" — warm = the hot zone)
 	if ( scale < 0.999f ) {
 		color = nerv_dim;
 	} else if ( scale < 1.3f ) {
+		color = nerv_cyan;
+	} else if ( scale < 1.6f ) {
 		color = nerv_amber;
-	} else if ( scale < 1.7f ) {
+	} else if ( scale < 1.9f ) {
 		color = nerv_orange;
 	} else {
 		color = nerv_red;
@@ -3600,10 +3661,10 @@ static void CG_DrawRaceTimer( void ) {
 		ms / 60000, ( ms / 1000 ) % 60, ( ms % 1000 ) / 100 );
 	w = CG_MatrixStringWidth( str, 3.0f );
 	x = 320 - w / 2;
-	CG_NervPanel( x - 14, 24, w + 28, 7 * 3.0f + 22, nerv_amber );
+	CG_NervPanel( x - 14, 24, w + 28, 7 * 3.0f + 22, nerv_cyan );
 	CG_DrawMatrixString( 320 - CG_MatrixStringWidth( lbl, 1.4f ) / 2, 28,
-		lbl, 1.4f, nerv_amber );
-	CG_DrawMatrixString( x, 40, str, 3.0f, nerv_amber );
+		lbl, 1.4f, nerv_cyan );
+	CG_DrawMatrixString( x, 40, str, 3.0f, nerv_cyan );
 
 	best = CG_GhostBestMs();
 	if ( best ) {
@@ -3695,11 +3756,11 @@ static void CG_DrawVitals( void ) {
 	wp = ps->weapon;
 	ammo = ps->ammo[wp];
 
-	// health — small, bottom-left, a tinted cross beside it; reddens as it drops
+	// health — cyan nominal, heating to amber→red as it drops (alert = warm)
 	if ( hp > maxhp / 2 ) {
-		hc = nerv_amber;
+		hc = nerv_cyan;
 	} else if ( hp > maxhp / 4 ) {
-		hc = nerv_orange;
+		hc = nerv_amber;
 	} else {
 		hc = ( ( cg.time / 200 ) & 1 ) ? nerv_red : nerv_orange;
 	}
@@ -3709,19 +3770,19 @@ static void CG_DrawVitals( void ) {
 	Com_sprintf( num, sizeof( num ), "%i", hp );
 	CG_DrawMatrixString( 44, 452, num, 2.0f, hc );
 
-	// armor — only when you actually have some
+	// armor — cyan nominal, only when you actually have some
 	if ( ar > 0 ) {
-		trap_R_SetColor( nerv_amber );
+		trap_R_SetColor( nerv_cyan );
 		CG_DrawPic( 104, 451, 15, 15, cg_icoArmor );
 		trap_R_SetColor( NULL );
 		Com_sprintf( num, sizeof( num ), "%i", ar );
-		CG_DrawMatrixString( 124, 452, num, 2.0f, nerv_amber );
+		CG_DrawMatrixString( 124, 452, num, 2.0f, nerv_cyan );
 	}
 
-	// ammo — only for finite weapons (grapple/vectorgun carry no counter, so
-	// the corner stays clean)
+	// ammo — cyan nominal, flashing red when low (alert). finite weapons only
+	// (grapple/vectorgun carry no counter, so the corner stays clean)
 	if ( ammo >= 0 ) {
-		amc = ( ammo <= 5 && ( ( cg.time / 200 ) & 1 ) ) ? nerv_red : nerv_amber;
+		amc = ( ammo <= 5 && ( ( cg.time / 200 ) & 1 ) ) ? nerv_red : nerv_cyan;
 		Com_sprintf( num, sizeof( num ), "%i", ammo );
 		w = CG_MatrixStringWidth( num, 2.0f );
 		CG_DrawMatrixString( 616 - w, 452, num, 2.0f, amc );
@@ -3761,10 +3822,49 @@ static void CG_DrawMutator( void ) {
 	case 1:  name = "LOW GRAVITY"; col = nerv_green; break;
 	case 2:  name = "RUSH";        col = nerv_amber; break;
 	case 3:  name = "HEAVY";       col = nerv_red;   break;
+	case 4:  name = "VECTORGUN";   col = nerv_amber; break;
 	default: return;
 	}
 	w = CG_MatrixStringWidth( name, 1.1f );
 	CG_DrawMatrixString( 320 - w / 2, 30, name, 1.1f, col );
+}
+
+/*
+==================
+CG_DrawLatticeBracket
+
+Persistent top-left readout of the LATTICE bracket state (round + this-heat /
+advanced / still-queued counts), from CS_LATTICEHEAT. The server centerprints the
+transitions ("NEXT HEAT" / "FINAL"); this is the always-on tournament scoreboard.
+==================
+*/
+static void CG_DrawLatticeBracket( void ) {
+	char	line[64];
+	vec4_t	col;
+	int		w;
+
+	if ( !cgs.lattice || cgs.latticeRound <= 0 ) {
+		return;		// not a bracket match (single heat or mode off)
+	}
+	// top-RIGHT (the top-left column is the obituary notify feed). NB: the LED
+	// matrix font (CG_DrawMatrixString) renders nothing in this build, so this
+	// uses the stock big/small string draws. The final = one heat, nobody queued
+	// and nobody yet advanced this round.
+	if ( cgs.latticeLeft == 0 && cgs.latticeAdv == 0 ) {
+		Q_strncpyz( line, "FINAL", sizeof( line ) );
+		Vector4Copy( nerv_amber, col );
+	} else {
+		Com_sprintf( line, sizeof( line ), "ROUND %i", cgs.latticeRound );
+		Vector4Copy( nerv_green, col );
+	}
+	w = CG_DrawStrlen( line ) * BIGCHAR_WIDTH;
+	CG_DrawBigStringColor( 632 - w, 6, line, col );
+
+	Com_sprintf( line, sizeof( line ), "HEAT %i  ADV %i  LEFT %i",
+		cgs.latticeHeatSize, cgs.latticeAdv, cgs.latticeLeft );
+	w = CG_DrawStrlen( line ) * SMALLCHAR_WIDTH;
+	Vector4Copy( nerv_amber, col );
+	CG_DrawSmallStringColor( 632 - w, 26, line, col );
 }
 
 // mirrors g_shop[] in g_cmds.c — kept in sync by hand (cgame has no game header)
@@ -3792,11 +3892,19 @@ static void CG_DrawMissionReport( void ) {
 	score  = cg.snap->ps.persistant[PERS_SCORE];
 	wpns   = cg.snap->ps.stats[STAT_WEAPONS];
 
-	// rank graded on this run's top speed
-	if      ( peak >= 900 ) { rank = "S RANK"; Vector4Copy( nerv_green,  accent ); }
-	else if ( peak >= 700 ) { rank = "A RANK"; Vector4Copy( nerv_amber,  accent ); }
-	else if ( peak >= 500 ) { rank = "B RANK"; Vector4Copy( nerv_orange, accent ); }
-	else                    { rank = "C RANK"; Vector4Copy( nerv_dim,    accent ); }
+	// rank graded against this map's PAR (best-bot calibration, cgp_<map>) when set,
+	// so a tight map's S-rank is earned at a lower speed than a fast one's; falls
+	// back to absolute thresholds when uncalibrated (par 0). S = beat par.
+	{
+		int par = cg.mapPar.integer;
+		int sThr = par > 0 ? par              : 900;
+		int aThr = par > 0 ? (int)(par*0.85f) : 700;
+		int bThr = par > 0 ? (int)(par*0.70f) : 500;
+		if      ( peak >= sThr ) { rank = "S RANK"; Vector4Copy( nerv_green,  accent ); }
+		else if ( peak >= aThr ) { rank = "A RANK"; Vector4Copy( nerv_amber,  accent ); }
+		else if ( peak >= bThr ) { rank = "B RANK"; Vector4Copy( nerv_orange, accent ); }
+		else                     { rank = "C RANK"; Vector4Copy( nerv_dim,    accent ); }
+	}
 
 	// backing plate + accent rule (the targeting-frame look)
 	CG_FillRect( 320 - 152, 104, 304, 324, plate );
@@ -3822,6 +3930,15 @@ static void CG_DrawMissionReport( void ) {
 	w = CG_MatrixStringWidth( line, 1.4f );
 	CG_DrawMatrixString( 320 - w/2, cy, line, 1.4f, nerv_dim );
 	cy += 20;
+
+	// PAR (best-bot calibration) — the rank target; only shown once calibrated
+	if ( cg.mapPar.integer > 0 ) {
+		Com_sprintf( line, sizeof(line), "PAR        %i UPS", cg.mapPar.integer );
+		w = CG_MatrixStringWidth( line, 1.4f );
+		CG_DrawMatrixString( 320 - w/2, cy, line, 1.4f,
+			peak >= cg.mapPar.integer ? nerv_green : nerv_dim );
+		cy += 20;
+	}
 
 	// best lap time this map (the speedrun currency), from the saved ghost
 	bestlap = CG_GhostBestMs();
@@ -3901,6 +4018,7 @@ static void CG_Draw2D(stereoFrame_t stereoFrame)
 			CG_DrawCrosshair();
 
 		CG_DrawCrosshairNames();
+		CG_DrawLatticeBracket();	// benched pilots watch the bracket too
 	} else {
 		// don't draw any status if dead or the scoreboard is being explicitly shown
 		if ( !cg.showScores && cg.snap->ps.stats[STAT_HEALTH] > 0 ) {
@@ -3948,6 +4066,7 @@ static void CG_Draw2D(stereoFrame_t stereoFrame)
 			CG_DrawVoidWarning();
 			CG_DrawCombo();
 			CG_DrawMutator();
+			CG_DrawLatticeBracket();
 		}
 	}
 

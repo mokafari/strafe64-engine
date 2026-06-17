@@ -341,6 +341,16 @@ static void CG_ConfigStringModified( void ) {
 		cgs.levelStartTime = atoi( str );
 	} else if ( num == CS_VOIDINFO ) {
 		CG_ParseVoidInfo();
+	} else if ( num == CS_LATTICEHEAT ) {
+		const char *b = str;
+		if ( !b[0] ) {
+			cgs.latticeRound = 0;
+		} else {
+			cgs.latticeRound    = atoi( COM_Parse( (char **)&b ) );
+			cgs.latticeHeatSize = atoi( COM_Parse( (char **)&b ) );
+			cgs.latticeAdv      = atoi( COM_Parse( (char **)&b ) );
+			cgs.latticeLeft     = atoi( COM_Parse( (char **)&b ) );
+		}
 	} else if ( num == CS_VOTE_TIME ) {
 		cgs.voteTime = atoi( str );
 		cgs.voteModified = qtrue;

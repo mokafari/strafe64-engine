@@ -51,13 +51,19 @@ typedef struct {
 static cgRagdoll_t	cg_ragdolls[MAX_GENTITIES];
 
 // spine constraints: neighbours hold length, skip-links keep the body from
-// folding flat into a point (cheap bending stiffness without real joints)
+// folding flat into a point (cheap bending stiffness without real joints).
+// REST LENGTHS = the seed-distance between particles (ragSeedZ deltas — all
+// particles seed at the same x,y so the distance is purely the z gap). v1 left
+// these at 0, so the solver pulled every particle toward distance ZERO and the
+// corpse collapsed into a flat puddle; with the real lengths the chain holds a
+// ~52u body that topples and lies OUT like a slumped body instead. Keep in sync
+// with ragSeedZ {2,24,40,52} below.
 static const ragConstraint_t ragConstraints[] = {
-	{ RP_FEET,   RP_PELVIS, 0, 1.0f },
-	{ RP_PELVIS, RP_CHEST,  0, 1.0f },
-	{ RP_CHEST,  RP_HEAD,   0, 1.0f },
-	{ RP_FEET,   RP_CHEST,  0, 0.4f },		// stiffener
-	{ RP_PELVIS, RP_HEAD,   0, 0.4f },		// stiffener
+	{ RP_FEET,   RP_PELVIS, 22.0f, 1.0f },	// 24-2
+	{ RP_PELVIS, RP_CHEST,  16.0f, 1.0f },	// 40-24
+	{ RP_CHEST,  RP_HEAD,   12.0f, 1.0f },	// 52-40
+	{ RP_FEET,   RP_CHEST,  38.0f, 0.4f },	// 40-2  stiffener
+	{ RP_PELVIS, RP_HEAD,   28.0f, 0.4f },	// 52-24 stiffener
 };
 #define RAG_NUM_CONSTRAINTS ( (int)( sizeof( ragConstraints ) / sizeof( ragConstraints[0] ) ) )
 
@@ -291,10 +297,13 @@ static void CG_RagdollSeed( cgRagdoll_t *rag, centity_t *cent, int cut ) {
 CG_RagdollCollide
 
 Trace a small box along a particle's step and stop it at the first solid,
-killing most of the velocity (heavy friction) so corpses don't skate.
+killing most of the velocity (heavy friction) so corpses don't skate. Returns
+qtrue when the particle is resting on an upward-facing surface (i.e. actually
+supported against gravity) -- the step uses this to decide whether the corpse
+may settle, so a body can't latch "settled" at a toss apex and freeze midair.
 ===============
 */
-static void CG_RagdollCollide( vec3_t pos, vec3_t prev ) {
+static qboolean CG_RagdollCollide( vec3_t pos, vec3_t prev ) {
 	trace_t	tr;
 	vec3_t	mins, maxs, vel;
 	float	into;
@@ -306,12 +315,14 @@ static void CG_RagdollCollide( vec3_t pos, vec3_t prev ) {
 
 	if ( tr.startsolid || tr.allsolid ) {
 		// wedged in geometry -- freeze in place rather than letting the solver
-		// pop it out explosively (the old behaviour's "spasm")
+		// pop it out explosively (the old behaviour's "spasm"). NOT counted as
+		// ground support: a particle flung into a wall must not let the body
+		// settle in the air.
 		VectorCopy( prev, pos );
-		return;
+		return qfalse;
 	}
 	if ( tr.fraction >= 1.0f ) {
-		return;								// free flight, no contact
+		return qfalse;						// free flight, no contact
 	}
 
 	// rest at the contact point and rebuild the implied velocity (pos - prev):
@@ -325,6 +336,9 @@ static void CG_RagdollCollide( vec3_t pos, vec3_t prev ) {
 	}
 	VectorScale( vel, 0.5f, vel );						// surface friction
 	VectorSubtract( pos, vel, prev );
+
+	// supported only if the surface can hold the body up (a floor, not a wall)
+	return ( tr.plane.normal[2] > 0.3f );
 }
 
 /*
@@ -341,6 +355,7 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 	vec3_t	temp, delta;
 	float	dist, diff;
 	float	maxVel2;
+	qboolean	grounded;
 
 	dt = ( cg.time - rag->lastTime ) * 0.001f;
 	rag->lastTime = cg.time;
@@ -404,12 +419,18 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 
 	// one collision pass after the constraints are satisfied, so particles
 	// end the frame resting out of solids
+	grounded = qfalse;
 	for ( i = 0 ; i < RP_COUNT ; i++ ) {
-		CG_RagdollCollide( rag->pos[i], rag->prev[i] );
+		if ( CG_RagdollCollide( rag->pos[i], rag->prev[i] ) ) {
+			grounded = qtrue;
+		}
 	}
 
-	// rest detection: once everything is nearly stationary, stop simulating so
-	// settled corpses cost nothing
+	// rest detection: once everything is nearly stationary AND the body is
+	// actually resting on the ground, stop simulating so settled corpses cost
+	// nothing. The ground requirement is what stops a corpse from latching
+	// "settled" at the apex of a toss (vertical velocity passes through zero)
+	// and freezing in midair.
 	maxVel2 = 0;
 	for ( i = 0 ; i < RP_COUNT ; i++ ) {
 		float v2;
@@ -419,7 +440,7 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 			maxVel2 = v2;
 		}
 	}
-	if ( maxVel2 < RAG_SETTLE_VEL2 && cg.time - rag->startTime > 400 ) {
+	if ( grounded && maxVel2 < RAG_SETTLE_VEL2 && cg.time - rag->startTime > 400 ) {
 		rag->settled = qtrue;
 	}
 }
@@ -557,5 +578,32 @@ qboolean CG_RagdollAdd( centity_t *cent, int renderfx, float shadowPlane ) {
 		CG_RagdollSegment( rag, ci->headModel,  ci->headSkin,  RP_HEAD,   RP_CHEST,  RP_HEAD,  cent, renderfx, shadowPlane );
 	}
 
+	return qtrue;
+}
+
+/*
+===============
+CG_RagdollWound
+
+STRAFE 64: live world position of one spine particle of an active corpse, so a
+blood geyser can ride a severed stump as the body (or each sliced half) tumbles
+and falls. `part` is a RAG_PART_* index. Returns qfalse if no corpse is
+simulating on that entity slot (caller keeps its last origin).
+===============
+*/
+qboolean CG_RagdollWound( int entnum, int part, vec3_t out ) {
+	cgRagdoll_t	*rag;
+
+	if ( entnum < 0 || entnum >= MAX_GENTITIES ) {
+		return qfalse;
+	}
+	if ( part < 0 || part >= RP_COUNT ) {
+		return qfalse;
+	}
+	rag = &cg_ragdolls[ entnum ];
+	if ( !rag->active ) {
+		return qfalse;
+	}
+	VectorCopy( rag->pos[ part ], out );
 	return qtrue;
 }

@@ -909,6 +909,7 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 	if ( ( ucmd->buttons & BUTTON_ATTACK ) && g_timeBindFire.value > intent ) {
 		intent = g_timeBindFire.value;
 	}
+
 	if ( intent > 1.0f ) intent = 1.0f;
 
 	if ( g_timeBindLog.integer ) {
@@ -919,6 +920,19 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 	} else {
 		// linear interpolation of the shaped intent
 		target = tmin + ( tmax - tmin ) * pow( intent, curve );
+	}
+
+	// crouch/slide TIME BRAKE: while ducked, CAP the clock at a KINETIC slow-mo —
+	// and scale it with speed so a fast slide RIPS near-realtime (Titanfall feel)
+	// while a slow slide keeps more dilation. g_timeBindCrouch is the slow-end
+	// floor (at slide-min speed); a full-speed slide eases up toward ~0.92, so the
+	// ground rushes past when you commit hard. Caps only (never speeds up), so a
+	// still crouch stays at its already-lower freeze. 1.0 = brake off entirely.
+	if ( ( ent->client->ps.pm_flags & PMF_DUCKED ) && g_timeBindCrouch.value < 1.0f ) {
+		float slideTs = g_timeBindCrouch.value
+					  + ( 0.92f - g_timeBindCrouch.value ) * speedFrac;
+		if ( slideTs > 0.92f ) slideTs = 0.92f;
+		if ( target > slideTs ) target = slideTs;
 	}
 
 	// smooth toward target so the world eases in/out instead of snapping.
@@ -1070,6 +1084,8 @@ void ClientThink_real( gentity_t *ent ) {
 		client->ps.gravity = client->ps.gravity * 135 / 100;
 		client->ps.speed = client->ps.speed * 115 / 100;
 		break;
+	case 4:		// VECTORGUN-ONLY — the speed-scaled rail is the only gun (G_VECTORGUN_ON
+		break;	// handles the loadout at spawn + item economy); no physics twist
 	default:
 		break;
 	}
@@ -1152,7 +1168,7 @@ void ClientThink_real( gentity_t *ent ) {
 
 	pm.pmove_fixed = pmove_fixed.integer | client->pers.pmoveFixed;
 	pm.pmove_msec = pmove_msec.integer;
-	pm.vectorgun = g_vectorgun.integer;
+	pm.vectorgun = G_VECTORGUN_ON;
 	// SUPERHOT: current world timescale so pmove can keep the player time-invariant
 	pm.timeScale = g_timeBind.integer ? trap_Cvar_VariableValue( "timescale" ) : 1.0f;
 	if ( pm.timeScale <= 0.01f ) {

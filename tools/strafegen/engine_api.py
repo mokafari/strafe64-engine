@@ -189,20 +189,39 @@ class EngineError(RuntimeError):
     pass
 
 
-def deploy_dylibs(oa: str = DEFAULT_OA, cfgs: bool = True) -> list[str]:
+def deploy_dylibs(oa: str = DEFAULT_OA, cfgs: bool = True, force: bool = False) -> list[str]:
     """Copy the freshly-built modded dylibs into <oa>/baseoa and re-sign them.
 
     Mirrors run.sh: the three dylibs share networked headers, so they must be
     deployed together. Apple Silicon SIGKILLs an invalidly-signed dylib on
     dlopen, hence the ad-hoc re-sign.
+
+    All-or-nothing guard: if any deployed dylib is NEWER than our build output, a
+    concurrent build deployed it — don't regress it (or mix a stale set with a
+    fresh one). Skip the deploy and use what's there. `force=True` overrides.
     """
+    import sys
     dest = Path(oa) / GAME
     dest.mkdir(parents=True, exist_ok=True)
+    srcs = {n: BUILD_BASEQ3 / f"{n}.dylib" for n in DYLIBS
+            if (BUILD_BASEQ3 / f"{n}.dylib").exists()}
+    if not force:
+        for name, src in srcs.items():
+            dst = dest / f"{name}.dylib"
+            if dst.exists() and dst.stat().st_mtime > src.stat().st_mtime + 1:
+                sys.stderr.write(
+                    f"deploy_dylibs: deployed {name}.dylib is newer than the build output "
+                    f"(concurrent build?) — keeping the deployed set, skipping deploy "
+                    f"(force=True to override).\n")
+                done = []
+                if cfgs:
+                    for cfg in ("strafe64.cfg", "psx.cfg"):
+                        s = STRAFEGEN / cfg
+                        if s.exists():
+                            shutil.copy2(s, dest / cfg)
+                return done
     done = []
-    for name in DYLIBS:
-        src = BUILD_BASEQ3 / f"{name}.dylib"
-        if not src.exists():
-            continue
+    for name, src in srcs.items():
         dst = dest / f"{name}.dylib"
         shutil.copy2(src, dst)
         subprocess.run(["codesign", "-f", "-s", "-", str(dst)],
@@ -1902,6 +1921,33 @@ _SRC_DEF_KW = re.compile(r"JUMP|WALL|SLIDE|BHOP|DOUBLE|AIR|DASH|GRAPPLE|STEP|"
                          r"CROUCH|WALK|OVERCLIP|GRAVITY|FRICTION|ACCEL", re.I)
 
 
+def config_overrides(oa: str = DEFAULT_OA) -> list[dict]:
+    """Report cvars whose live config (autoexec.cfg / strafe64.cfg, exec'd at
+    startup) overrides their g_main.c source default — so you can see at a glance
+    where the running game diverges from the documented defaults (e.g. the
+    g_timeBindMin 0.05→0.2 override). Pure file parse, no engine needed."""
+    gmain = ROOT / "engine" / "code" / "game" / "g_main.c"
+    defaults = {}
+    if gmain.exists():
+        for m in re.finditer(r'\{\s*&\w+,\s*"([^"]+)",\s*"([^"]*)"', gmain.read_text(errors="replace")):
+            defaults[m.group(1)] = m.group(2)
+    out = []
+    cfg_re = re.compile(r'^\s*seta?\s+(\w+)\s+"?([^"\s/]+)"?')
+    for cfg in ("autoexec.cfg", "strafe64.cfg"):
+        p = Path(oa) / GAME / cfg
+        if not p.exists():
+            continue
+        for line in p.read_text(errors="replace").splitlines():
+            m = cfg_re.match(line)
+            if not m:
+                continue
+            name, val = m.group(1), m.group(2)
+            if name in defaults and val != defaults[name]:
+                out.append({"cvar": name, "source_default": defaults[name],
+                            "config_value": val, "from": cfg})
+    return out
+
+
 def source_constants() -> list[dict]:
     """Enumerate the source-tier movement constants in bg_pmove.c / bg_local.h —
     the compile-time tunables (most NOT cvar-backed). Each entry says whether it's
@@ -1948,8 +1994,17 @@ def set_source_constant(name: str, value, rebuild: bool = False) -> dict:
     old = lines[idx]
     vstr = str(value)
     if c["kind"] == "float":
-        if "." not in vstr and "e" not in vstr.lower():
-            vstr += ".0"   # keep float constants float-formatted
+        # preserve the original token's decimal precision so edits/reverts stay
+        # byte-clean (e.g. setting 1.10's value to 1.1 still writes "1.10",
+        # 75.0 → 90 writes "90.0") — Python's str() would otherwise drop zeros.
+        old_dec = len(c["value"].split(".")[1]) if "." in str(c["value"]) else 0
+        try:
+            fv = float(value)
+            nat = repr(fv)
+            nat_dec = len(nat.split(".")[1]) if "." in nat else 0
+            vstr = f"{fv:.{max(old_dec, nat_dec, 1)}f}"
+        except (TypeError, ValueError):
+            pass
         pat = re.compile(r"(float\s+" + re.escape(name) + r"\s*=\s*)-?[\d.]+(f?\s*;)")
     else:
         pat = re.compile(r"(#define\s+" + re.escape(name) + r"\s+)-?[\d.]+(f?)")

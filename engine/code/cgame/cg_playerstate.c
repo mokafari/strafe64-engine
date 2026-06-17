@@ -636,5 +636,11 @@ void CG_TransitionPlayerState( playerState_t *ps, playerState_t *ops ) {
 		cg.duckChange = ps->viewheight - ops->viewheight;
 		cg.duckTime = cg.time;
 	}
+
+	// slide ENTRY: a quick FOV punch the instant you commit to a slide, so the
+	// drop-and-go snaps wider and reads as a kinetic ground slide.
+	if ( ( ps->pm_flags & PMF_SLIDING ) && !( ops->pm_flags & PMF_SLIDING ) ) {
+		cg.fovPunch = 7.0f;
+	}
 }
 
