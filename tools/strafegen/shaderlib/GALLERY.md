@@ -121,4 +121,19 @@ and lifting with the music.
   scroll` at different scales; the second layer's brightness is `rgbGen wave level`
   so the whole sky lifts with the mix. Tiles (no fit).
 
+### 06 · Neon Fire — `shaderlib/fire`
+
+![Neon Fire](previews/06_fire.jpg)
+
+Rising synthwave flames — embers through purple and magenta to an orange/white
+core (on the kick), licking upward and dying at the top.
+
+- **Ports:** Shadertoy — the classic procedural [fire/flame family (e.g. MdKfDh)](https://www.shadertoy.com/view/MdKfDh).
+- **Technique:** seamless 2×-fBm noise baked through a fire palette (ember→purple→
+  magenta→orange→white) **tiles and scrolls up** with `tcMod turb` to lick; a single
+  `%FIT%` + `clampMap` vertical gradient is **multiplied** over it (`blendFunc
+  GL_DST_COLOR GL_ZERO`) so the flames brighten at the base and die at the top —
+  mixing a tiling effect with one fit fade layer. `rgbGen wave bass` flares the core
+  on the kick.
+
 <!-- next entries appended here by the shader loop -->

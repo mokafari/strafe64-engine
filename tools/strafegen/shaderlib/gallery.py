@@ -461,6 +461,75 @@ shaderlib/aurora
 """
 
 
+# --- #6 : Neon Fire --------------------------------------------------------
+def _fire_textures():
+    n = 128
+    f1 = tileable_fbm(n, 5, 0xF18E)
+    f2 = tileable_fbm(n, 4, 0x3C0A)
+    flame = [
+        (0.00, (4, 0, 14)),       # ember dark
+        (0.30, (95, 12, 90)),     # purple
+        (0.55, (215, 35, 95)),    # magenta
+        (0.78, (255, 120, 45)),   # orange
+        (0.93, (255, 215, 120)),  # yellow
+        (1.00, (255, 255, 220)),  # white core
+    ]
+    fire = []
+    grad = []
+    for y in range(n):
+        vy = y / n
+        # vertical fade mask, bright at the flame BASE -> dark at the top. The panel's
+        # t maps inverted (see the sun), so white-at-image-top renders at panel-bottom.
+        gm = ((1.0 - vy) ** 0.95)
+        gv = int(255 * gm)
+        for x in range(n):
+            i = y * n + x
+            v = 0.6 * f1[i] + 0.4 * f2[i]
+            v = (v if v < 1 else 1.0) ** 1.2
+            fire.append(tuple(int(c) for c in ramp(flame, v)))
+            grad.append((gv, gv, gv))
+    return {
+        "textures/shaderlib/fire.tga": _tga32(n, n, fire),
+        "textures/shaderlib/firegrad.tga": _tga32(n, n, grad),
+    }
+
+
+def _fire_shader():
+    # tiling flame noise scrolling UP + turb to lick, then a single fit+clamped
+    # vertical gradient MULTIPLIED over it so the flames brighten at the base and
+    # die toward the top (the fade maps once; the noise tiles).
+    return """
+shaderlib/fire
+{
+\tnopicmip
+\t{
+\t\tmap textures/shaderlib/bezel.tga
+\t\trgbGen identity
+\t}
+\t{
+\t\tmap textures/shaderlib/fire.tga
+\t\tblendFunc GL_ONE GL_ONE
+\t\ttcMod scroll 0.012 -0.34
+\t\ttcMod turb 0 0.06 0 0.4
+\t\trgbGen wave bass 0.95 0.5 0 0
+\t}
+\t{
+\t\tmap textures/shaderlib/fire.tga
+\t\tblendFunc GL_ONE GL_ONE
+\t\ttcMod scale 1.7 1.4
+\t\ttcMod scroll -0.018 -0.55
+\t\ttcMod turb 0.5 0.05 0 0.5
+\t\trgbGen wave sin 0.72 0.2 0 0.2
+\t}
+\t{
+\t\tclampMap textures/shaderlib/firegrad.tga
+\t\tblendFunc GL_DST_COLOR GL_ZERO
+\t\t%FIT%
+\t}
+}
+"""
+
+
 SHADERS = [
     {
         "key": "plasma",
@@ -539,6 +608,23 @@ SHADERS = [
                      "the whole sky lifts with the mix. Tiles (no fit).",
         "textures": _aurora_textures,
         "shader": _aurora_shader,
+    },
+    {
+        "key": "fire",
+        "title": "Neon Fire",
+        "ref": ("Shadertoy — classic procedural 'fire'/'flame' family (e.g. "
+                "MdKfDh)", "https://www.shadertoy.com/view/MdKfDh"),
+        "blurb": "Rising synthwave flames — embers through purple, magenta and "
+                 "orange to a white core, licking and flaring on the kick.",
+        "technique": "Seamless 2x-fBm noise baked through a fire palette (ember→"
+                     "purple→magenta→orange→white) tiles and scrolls UP with tcMod "
+                     "turb to lick; a single fit+clampMap vertical gradient is "
+                     "MULTIPLIED over it (GL_DST_COLOR GL_ZERO) so the flames "
+                     "brighten at the base and die at the top. rgbGen wave bass "
+                     "flares them on the kick. Mixes a tiling effect with one fit "
+                     "fade layer.",
+        "textures": _fire_textures,
+        "shader": _fire_shader,
     },
 ]
 
@@ -628,10 +714,11 @@ def build():
     _, rects = _panel_layout(len(SHADERS))
     for s, rect in zip(SHADERS, rects):
         textures.update(s["textures"]())
-        # single-image shaders carry a %FIT% token on the stages that must map
-        # the texture once onto the gallery panel; tiling shaders have no token.
-        fit = _fit_tcmod(rect) if s.get("fit") else ""
-        shader_text += "\n" + s["shader"]().strip().replace("%FIT%", fit) + "\n"
+        # any stage carrying a %FIT% token gets a per-panel tcMod transform that maps
+        # the texture once onto the panel (single-image discs, or a fade mask layered
+        # over a tiling effect); stages without the token tile by world UV as usual.
+        shader_text += ("\n" + s["shader"]().strip()
+                        .replace("%FIT%", _fit_tcmod(rect)) + "\n")
 
     scripts = os.path.join(BASEOA, "scripts")
     tex_dir = os.path.join(BASEOA, "textures", "shaderlib")
