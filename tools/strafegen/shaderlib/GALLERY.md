@@ -83,4 +83,19 @@ trailing into blue — raining harder on the hats.
   layer's brightness is `rgbGen wave high`, so hats/snares burst the rain. Seamless,
   so it tiles across the panel (no fit).
 
+### 04 · Neon Vortex — `shaderlib/vortex`
+
+![Neon Vortex](previews/04_vortex.jpg)
+*(far-right panel — the spinning spiral; the center HUD is the run report, not part of the shader)*
+
+A spinning spiral tunnel pulling toward a white-hot throat — STRAFE 64's
+momentum-portal / bullet-time warp, flaring on the kick.
+
+- **Ports:** Shadertoy — neon [swirl/tunnel family (e.g. Xsl3zX)](https://www.shadertoy.com/view/Xsl3zX).
+- **Technique:** baked spiral rings + radial spokes through a center-out
+  white→cyan→magenta→void palette. Two counter-rotating additive layers
+  (`tcMod rotate`) spin it; **`clampMap`** stops the rotation wrapping neighbouring
+  tiles into the corners, `%FIT%` maps it once onto the panel, and `rgbGen wave
+  bass` flares the throat on the kick.
+
 <!-- next entries appended here by the shader loop -->

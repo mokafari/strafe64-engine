@@ -346,6 +346,67 @@ shaderlib/rain
 """
 
 
+# --- #4 : Neon Vortex ------------------------------------------------------
+def _vortex_textures():
+    n = 128
+    cx = cy = n * 0.5
+    tau = 2.0 * math.pi
+    RINGS, SWIRL, SPOKES = 5.0, 2.0, 8.0
+    stops = [
+        (0.00, (225, 255, 255)),  # white-hot throat
+        (0.22, (90, 215, 255)),   # cyan
+        (0.50, (150, 45, 210)),   # violet
+        (0.78, (225, 45, 135)),   # magenta
+        (1.00, (12, 0, 26)),      # void edge
+    ]
+    px = []
+    for y in range(n):
+        for x in range(n):
+            dx = (x - cx) / (n * 0.5)
+            dy = (y - cy) / (n * 0.5)
+            r = math.hypot(dx, dy)
+            ang = math.atan2(dy, dx)
+            spiral = 0.5 + 0.5 * math.sin(r * RINGS * tau - ang * SWIRL)
+            spokes = 0.5 + 0.5 * math.sin(ang * SPOKES)
+            fade = 1.0 - r
+            if fade < 0:
+                fade = 0.0
+            v = spiral * fade * (0.55 + 0.45 * spokes)
+            v = (v if v < 1 else 1.0) ** 1.4
+            c = ramp(stops, r if r < 1 else 1.0)
+            px.append(tuple(int(ch * v) for ch in c))
+    return {"textures/shaderlib/vortex.tga": _tga32(n, n, px)}
+
+
+def _vortex_shader():
+    # clampMap (not map) so the rotation never wraps neighbouring tiles into the
+    # corners — outside 0..1 clamps to the black edge.
+    return """
+shaderlib/vortex
+{
+\tnopicmip
+\t{
+\t\tmap textures/shaderlib/bezel.tga
+\t\trgbGen identity
+\t}
+\t{
+\t\tclampMap textures/shaderlib/vortex.tga
+\t\tblendFunc GL_ONE GL_ONE
+\t\t%FIT%
+\t\ttcMod rotate 16
+\t\trgbGen wave bass 0.6 0.5 0 0
+\t}
+\t{
+\t\tclampMap textures/shaderlib/vortex.tga
+\t\tblendFunc GL_ONE GL_ONE
+\t\t%FIT%
+\t\ttcMod rotate -9
+\t\trgbGen wave sin 0.28 0.16 0 0.11
+\t}
+}
+"""
+
+
 SHADERS = [
     {
         "key": "plasma",
@@ -392,6 +453,22 @@ SHADERS = [
                      "so hats/snares burst the rain. Tiles (no fit).",
         "textures": _rain_textures,
         "shader": _rain_shader,
+    },
+    {
+        "key": "vortex",
+        "title": "Neon Vortex",
+        "ref": ("Shadertoy — neon 'tunnel/vortex' family (e.g. Xsl3zX swirl "
+                "tunnels)", "https://www.shadertoy.com/view/Xsl3zX"),
+        "blurb": "A spinning spiral tunnel pulling toward a white-hot throat — the "
+                 "momentum-portal / bullet-time warp, pumping on the kick.",
+        "technique": "Baked spiral rings + radial spokes through a center-out "
+                     "white->cyan->magenta->void palette. Two counter-rotating "
+                     "additive layers (tcMod rotate) spin it; clampMap stops the "
+                     "rotation wrapping the corners, %FIT% maps it once to the "
+                     "panel, and rgbGen wave bass flares the throat on the kick.",
+        "textures": _vortex_textures,
+        "shader": _vortex_shader,
+        "fit": True,
     },
 ]
 
