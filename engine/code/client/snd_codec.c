@@ -132,6 +132,10 @@ void S_CodecInit(void)
 	S_CodecRegister(&ogg_codec);
 #endif
 
+#ifdef USE_CODEC_MP3
+	S_CodecRegister(&mp3_codec);
+#endif
+
 #ifdef USE_CODEC_MOD
 	S_CodecRegister(&mod_codec_it);
 	S_CodecRegister(&mod_codec_xm);
@@ -182,17 +186,40 @@ S_CodecOpenStream
 */
 snd_stream_t *S_CodecOpenStream(const char *filename)
 {
-	return S_CodecGetSound(filename, NULL);
+	snd_stream_t *stream = S_CodecGetSound(filename, NULL);
+
+	// fresh track, fresh band envelopes (this path is background music only)
+	if( stream )
+		S_AudioAnalyzeReset();
+
+	return stream;
 }
 
 void S_CodecCloseStream(snd_stream_t *stream)
 {
 	stream->codec->close(stream);
+
+	// music gone — collapse the warp so the world settles instead of
+	// freezing at whatever the last envelope happened to be
+	S_AudioAnalyzeReset();
 }
 
 int S_CodecReadStream(snd_stream_t *stream, int bytes, void *buffer)
 {
-	return stream->codec->read(stream, bytes, buffer);
+	int read = stream->codec->read(stream, bytes, buffer);
+
+	// ride the beat: feed the decoded PCM to the band analyser so any
+	// audio-reactive shader warps in time, regardless of codec. This is the
+	// single point both the DMA and OpenAL music backends pull samples through.
+	if( read > 0 )
+	{
+		int frameBytes = stream->info.width * stream->info.channels;
+		if( frameBytes > 0 )
+			S_AudioAnalyze( buffer, read / frameBytes, stream->info.rate,
+				stream->info.width, stream->info.channels );
+	}
+
+	return read;
 }
 
 //=======================================================================

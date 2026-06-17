@@ -79,6 +79,11 @@ int S_CodecReadStream(snd_stream_t *stream, int bytes, void *buffer);
 snd_stream_t *S_CodecUtilOpen(const char *filename, snd_codec_t *codec);
 void S_CodecUtilClose(snd_stream_t **stream);
 
+// Audio-reactive analysis -- drives au_bass/au_mid/au_high/au_level cvars from
+// the decoded background-music PCM, for any codec. See snd_analyzer.c.
+void S_AudioAnalyze(const void *pcm, int frames, int rate, int width, int channels);
+void S_AudioAnalyzeReset(void);
+
 // WAV Codec
 extern snd_codec_t wav_codec;
 void *S_WAV_CodecLoad(const char *filename, snd_info_t *info);
@@ -103,6 +108,15 @@ snd_stream_t *S_OggOpus_CodecOpenStream(const char *filename);
 void S_OggOpus_CodecCloseStream(snd_stream_t *stream);
 int S_OggOpus_CodecReadStream(snd_stream_t *stream, int bytes, void *buffer);
 #endif // USE_CODEC_OPUS
+
+// MP3 codec (libmpg123)
+#ifdef USE_CODEC_MP3
+extern snd_codec_t mp3_codec;
+void *S_MP3_CodecLoad(const char *filename, snd_info_t *info);
+snd_stream_t *S_MP3_CodecOpenStream(const char *filename);
+void S_MP3_CodecCloseStream(snd_stream_t *stream);
+int S_MP3_CodecReadStream(snd_stream_t *stream, int bytes, void *buffer);
+#endif // USE_CODEC_MP3
 
 // Tracker module codec (libopenmpt) — .it/.xm/.s3m/.mod/.mptm
 #ifdef USE_CODEC_MOD
