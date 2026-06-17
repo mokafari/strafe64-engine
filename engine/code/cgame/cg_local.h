@@ -1244,6 +1244,7 @@ extern	vmCvar_t		cg_bulletTrail;
 extern	vmCvar_t		cg_bulletTrailWidth;
 extern	vmCvar_t		cg_latticeGlitch;
 extern	vmCvar_t		cg_latticeAudio;
+extern	vmCvar_t		cg_latticeWave;
 extern	vmCvar_t		au_bass;
 extern	vmCvar_t		au_mid;
 extern	vmCvar_t		au_high;

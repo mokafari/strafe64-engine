@@ -159,6 +159,7 @@ vmCvar_t	cg_bulletTrail;
 vmCvar_t	cg_bulletTrailWidth;
 vmCvar_t	cg_latticeGlitch;
 vmCvar_t	cg_latticeAudio;	// 0-2: how hard the lattice pulses to the music bands
+vmCvar_t	cg_latticeWave;		// 0-2: how hard the wall-top rides the music amplitude (waveform drawn as you run)
 vmCvar_t	cg_ragdoll;				// 1: dead bodies ragdoll; 0: stock death animation
 vmCvar_t	cg_ragdollDamp;			// Verlet velocity retention per step (0..1)
 vmCvar_t	cg_ragdollIterations;	// constraint relaxation passes per frame
@@ -257,8 +258,9 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_ghostAlpha, "cg_ghostAlpha", "0.55", CVAR_ARCHIVE },
 	{ &cg_bulletTrail, "cg_bulletTrail", "1", CVAR_ARCHIVE },
 	{ &cg_bulletTrailWidth, "cg_bulletTrailWidth", "3", CVAR_ARCHIVE },
-	{ &cg_latticeGlitch, "cg_latticeGlitch", "1", CVAR_ARCHIVE },
+	{ &cg_latticeGlitch, "cg_latticeGlitch", "0.35", CVAR_ARCHIVE },
 	{ &cg_latticeAudio, "cg_latticeAudio", "1", CVAR_ARCHIVE },
+	{ &cg_latticeWave, "cg_latticeWave", "1", CVAR_ARCHIVE },
 	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },
 	{ &cg_ragdollDamp, "cg_ragdollDamp", "0.97", CVAR_ARCHIVE },
 	{ &cg_ragdollIterations, "cg_ragdollIterations", "6", CVAR_ARCHIVE },

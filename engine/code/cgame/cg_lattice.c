@@ -20,9 +20,17 @@
 #define LAT_SAMPLE_MS	33		// sample cadence (~30 Hz), independent of render rate
 #define LAT_STEP		20.0f	// min carve distance between stored points (u)
 #define LAT_TRAIL_SEGS	64		// how many tail segments to actually draw
-#define LAT_WALL_LO		-22.0f	// wall extends from here (below the pilot origin)...
-#define LAT_WALL_HI		56.0f	// ...up to here -- a vertical light-wall you must read
-#define LAT_ALPHA		0.82f	// head opacity (wall presence)
+// The wall is a band CENTRED on the pilot that fattens symmetrically with the music --
+// it emanates from the player: a thin line at the centre when quiet, growing equally up
+// and down, and at the loudest peak it reaches exactly the PLAYER BOX -- bottom at the
+// feet (floor), top at the head. Sized to the box (feet origin-24, head origin+32) so it
+// never towers past the pilot, and started thin so only the loudest hits reach the floor
+// (quiet passages stay well clear of the deck instead of clipping it).
+#define LAT_WALL_MID		4.0f	// vertical centre = player box centre, so the wall comes FROM the pilot
+#define LAT_WALL_MIN_HALF	2.0f	// quiet half-height -- a thin centred line emanating from the player
+#define LAT_WALL_MAX_HALF	28.0f	// LOUD CAP = player half-height (centre+28 = head, centre-28 = feet/floor)
+#define LAT_ALPHA			0.82f	// head opacity (wall presence)
+#define LAT_WAVE_HALF		26.0f	// amplitude->half-height gain (clamped at MAX_HALF), * cg_latticeWave
 
 // Distinct per-pilot wall colours so three carving trails read apart at speed,
 // regardless of the players' chosen model colours. Indexed by client number.
@@ -48,10 +56,12 @@ static unsigned latHash( unsigned a, unsigned b ) {
 }
 
 static vec3_t	latPts[MAX_CLIENTS][LAT_PTS];
+static float	latAmp[MAX_CLIENTS][LAT_PTS];	// music amplitude captured AS each point was laid -> the wall-top waveform
 static int		latCount[MAX_CLIENTS];
 static int		latHead[MAX_CLIENTS];
 static int		latLastSample;
 static int		latLastTime;
+static float	latWaveNow;		// current frame's amplitude sample, frozen into latAmp on each push
 
 // Animation is driven by a REAL-time clock (trap_Milliseconds, unscaled) instead
 // of cg.time, so the pulse/glitch/flow stay alive when g_timeBind dilates the
@@ -105,6 +115,9 @@ static void CG_LatticePush( int client, const vec3_t origin ) {
 		}
 	}
 	VectorCopy( origin, latPts[client][latHead[client]] );
+	// freeze the music amplitude into this point so the wall remembers how loud
+	// the track was where the pilot ran — the crest traces the waveform in space
+	latAmp[client][latHead[client]] = latWaveNow;
 	latHead[client] = ( latHead[client] + 1 ) % LAT_PTS;
 	if ( latCount[client] < LAT_PTS ) {
 		latCount[client]++;
@@ -152,14 +165,24 @@ static void CG_LatticeVert( polyVert_t *v, const vec3_t xyz, float s, float t,
 // index ib), tinted by col, faded by aMul. Used for the base wall and for the
 // offset chromatic-split ghosts.
 static void CG_LatticeQuad( qhandle_t shader, const vec3_t a, const vec3_t b,
-		const byte *col, int ia, int ib, int n, float scroll, float aMul, float slow ) {
+		const byte *col, int ia, int ib, int n, float scroll, float aMul, float slow,
+		float riseA, float riseB ) {
 	polyVert_t	verts[4];
 	vec3_t		at, ab, bt, bb;
 
-	VectorCopy( a, at ); at[2] += LAT_WALL_HI;
-	VectorCopy( a, ab ); ab[2] += LAT_WALL_LO;
-	VectorCopy( b, bt ); bt[2] += LAT_WALL_HI;
-	VectorCopy( b, bb ); bb[2] += LAT_WALL_LO;
+	// half-height = quiet base + music amplitude (riseA/riseB), capped at the player
+	// half-height. The top rises and the bottom drops by the SAME amount, so the wall
+	// fattens symmetrically around the pilot's centre -- a thin line when quiet, and at
+	// the loudest peak bottom = feet (floor), top = head (exactly player height).
+	float	halfA = LAT_WALL_MIN_HALF + riseA;
+	float	halfB = LAT_WALL_MIN_HALF + riseB;
+	if ( halfA > LAT_WALL_MAX_HALF ) halfA = LAT_WALL_MAX_HALF;
+	if ( halfB > LAT_WALL_MAX_HALF ) halfB = LAT_WALL_MAX_HALF;
+
+	VectorCopy( a, at ); at[2] += LAT_WALL_MID + halfA;
+	VectorCopy( a, ab ); ab[2] += LAT_WALL_MID - halfA;
+	VectorCopy( b, bt ); bt[2] += LAT_WALL_MID + halfB;
+	VectorCopy( b, bb ); bb[2] += LAT_WALL_MID - halfB;
 
 	CG_LatticeVert( &verts[0], at, 0, 0, col, ia, n, scroll, qtrue,  aMul, slow );
 	CG_LatticeVert( &verts[1], ab, 0, 1, col, ia, n, scroll, qfalse, aMul, slow );
@@ -182,6 +205,8 @@ static void CG_LatticeDraw( int client ) {
 	float		scroll, glitch;
 	unsigned	tbucket;
 
+	float		waveScale;
+
 	n = latCount[client];
 	if ( n < 2 ) {
 		return;
@@ -189,6 +214,9 @@ static void CG_LatticeDraw( int client ) {
 	if ( n > LAT_TRAIL_SEGS + 1 ) {
 		n = LAT_TRAIL_SEGS + 1;
 	}
+
+	// amplitude -> half-height gain (clamped to the player half-height per segment)
+	waveScale = cg_latticeWave.value * LAT_WAVE_HALF;
 
 	// alpha-blended wall shader; fall back to the additive white shader if a
 	// map/build lacks strafe64/lattice (it still reads on dark surfaces)
@@ -208,12 +236,18 @@ static void CG_LatticeDraw( int client ) {
 		float		aMul = 1.0f;
 		qboolean	torn = qfalse;
 		float		split = 0.0f;
+		float		riseA, riseB;
 
 		// idx0 = newer point, idx1 = older; walk back from the head
 		idx0 = ( latHead[client] - 1 - i + LAT_PTS * 2 ) % LAT_PTS;
 		idx1 = ( latHead[client] - 2 - i + LAT_PTS * 2 ) % LAT_PTS;
 		VectorCopy( latPts[client][idx0], a );
 		VectorCopy( latPts[client][idx1], b );
+
+		// wall-top rise = the amplitude frozen at each endpoint -> the crest
+		// interpolates into a continuous waveform along the trail
+		riseA = latAmp[client][idx0] * waveScale;
+		riseB = latAmp[client][idx1] * waveScale;
 
 		// lateral normal of this segment in the floor plane (the tear axis)
 		VectorSubtract( b, a, dir );
@@ -228,7 +262,7 @@ static void CG_LatticeDraw( int client ) {
 		// corrupted framebuffer. cg_latticeGlitch scales the intensity (0 = off).
 		if ( glitch > 0 ) {
 			unsigned h = latHash( idx0 * 2654435761u + client, tbucket );
-			unsigned gmask = ( latHigh > 0.45f ) ? 3 : 7;	// loud highs glitch ~2x the segments
+			unsigned gmask = ( latHigh > 0.7f ) ? 7 : 15;	// sparse tears (~1/16 segs); only very loud highs double it
 			if ( ( h & gmask ) == 0 ) {				// glitch this segment this tick
 				float lateral = ( (int)( ( h >> 3 ) & 63 ) - 32 ) * 0.55f * glitch;
 				torn  = qtrue;
@@ -253,12 +287,12 @@ static void CG_LatticeDraw( int client ) {
 		if ( torn && split > 0 ) {
 			vec3_t ra, rb;
 			VectorMA( a,  split, perp, ra ); VectorMA( b,  split, perp, rb );
-			CG_LatticeQuad( shader, ra, rb, latGlitchRed, i, i + 1, n, scroll, aMul * 0.6f, latSlow );
+			CG_LatticeQuad( shader, ra, rb, latGlitchRed, i, i + 1, n, scroll, aMul * 0.6f, latSlow, riseA, riseB );
 			VectorMA( a, -split, perp, ra ); VectorMA( b, -split, perp, rb );
-			CG_LatticeQuad( shader, ra, rb, latGlitchBlue, i, i + 1, n, scroll, aMul * 0.6f, latSlow );
+			CG_LatticeQuad( shader, ra, rb, latGlitchBlue, i, i + 1, n, scroll, aMul * 0.6f, latSlow, riseA, riseB );
 		}
 
-		CG_LatticeQuad( shader, a, b, segCol, i, i + 1, n, scroll, aMul, latSlow );
+		CG_LatticeQuad( shader, a, b, segCol, i, i + 1, n, scroll, aMul, latSlow, riseA, riseB );
 	}
 
 	// the head index is reused by the dynamic lights below. NOTE: the billboarded
@@ -344,6 +378,11 @@ void CG_LatticeFrame( void ) {
 		latHigh  = au_high.value  * a;
 		latLevel = au_level.value * a;
 	}
+
+	// the wall-top waveform sample: overall loudness for the body of the curve,
+	// with the kick punching extra peaks. Captured into each point as it's laid
+	// (CG_LatticePush) so the height is locked to WHERE you were, not when it draws.
+	latWaveNow = latLevel * 0.6f + latBass * 0.7f;
 
 	doSample = ( cg.time - latLastSample >= LAT_SAMPLE_MS );
 	if ( doSample ) {
