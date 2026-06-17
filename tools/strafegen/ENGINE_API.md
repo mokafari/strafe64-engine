@@ -103,6 +103,7 @@ Code runs in this repo (approve it once when prompted). Tools:
 | `engine_close` | quit a persistent engine (by name) |
 | `engine_list` | list all persistent engines running across sessions |
 | `engine_shutdown` | release the session (persistent engine keeps running) |
+| `engine_doctor` | provenance/freshness: is the deployed engine my latest build + right assets? |
 | `engine_processes` / `engine_kill_orphans` | list running engines; clean up orphaned session windows |
 | `engine_command` | fire a console command (no reply) |
 | `engine_console` | run a command, return its console output |
@@ -125,6 +126,7 @@ Code runs in this repo (approve it once when prompted). Tools:
 | `engine_spawn` | spawn any entity (items, props, jump pads, lights) into the live map |
 | `engine_clear` | remove live-spawned entities (map's own entities untouched) |
 | `engine_spectate` | follow a bot/player (chase cam) to film their gameplay |
+| `engine_capture_death` | trigger + frame a death/ragdoll/gib/blood/dismember sequence on cue |
 | `engine_clip_video` | capture a real-time mp4 of the current view |
 | `engine_cinematic` | bullet-time hero shot: slow-mo + orbiting camera → mp4 |
 | `engine_record_demo` / `engine_play_demo` / `engine_render_demo` | record/replay a `.dm_71` demo; render it to mp4 |
@@ -388,6 +390,16 @@ See [FINDINGS.md](FINDINGS.md) for data gathered with these tools — air-strafe
 tuning (the shipped constants are well-tuned), the bhop-ceiling experiment, and
 the bullet-time response curve (incl. an `autoexec.cfg` freeze-floor inconsistency
 worth a decision).
+
+## "Is this my latest build?" — engine_doctor
+
+The single most common trap (across many sessions) is **silently testing a stale
+binary** or the wrong assets. `engine_doctor` (lib: `doctor()`) answers it in one
+read-only call: engine binaries, **build-output vs deployed dylib mtimes** (flags
+"built but not deployed" = stale, and concurrent-session deploys), whether the
+qagame/cgame/ui trio is in sync (they must deploy together), the classic old-path
+traps (`~/ioquake3`, `~/openarena-0.8.8`), and what's running. Run it whenever a
+change "isn't showing up."
 
 ## Health check
 

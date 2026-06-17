@@ -1592,6 +1592,55 @@ class EngineSession:
                 "orbit_deg": orbit_deg, "target": [round(v) for v in target],
                 "bytes": Path(out).stat().st_size if out and Path(out).exists() else 0}
 
+    def capture_death(self, name: str = "death", pre: int = 3, post: int = 7,
+                      interval: float = 0.22, at=None, out: str | None = None) -> dict:
+        """Capture a death/ragdoll/gib/blood/dismember sequence on cue — the
+        hardest 'right thing' to frame (transient + you must trigger it). Frames
+        the player's own body in third person, snaps a pre-buffer, kills, then
+        snaps the gore as it plays out. Returns a labelled collage of the moment.
+        Best for iterating on gore/ragdoll/blood/dismember effects.
+
+        `at` = [x,y,z] open vantage to teleport the body to first (default tries
+        the sandbox arena centre) — avoids the third-person camera clipping into
+        nearby geometry, which buries the shot. Pass an open point from
+        engine_state for other maps."""
+        if not self.cheats:
+            raise EngineError("capture_death needs cheats (client mode / devmap)")
+        self.set_cvar("g_timeBind", 0, confirm=False)   # don't freeze the death
+        self.set_cvar("g_forceRespawn", 0, confirm=False)  # let the body lie so we can film it
+        self.play_mode()
+        # teleport to open space so the third-person cam isn't jammed into a wall
+        spot = at if at is not None else (0, 0, 80)
+        self.setviewpos(spot[0], spot[1], spot[2], 90)
+        time.sleep(0.3)
+        self.third_person(True, range=140, angle=18)
+        time.sleep(0.6)
+        self.cinematic(True)
+        time.sleep(0.2)
+        frames = []
+        try:
+            for _ in range(max(1, pre)):
+                p = self.screenshot()
+                if p:
+                    frames.append(p)
+                time.sleep(interval)
+            n_pre = len(frames)
+            self.command("kill")                        # the on-cue gore trigger
+            for _ in range(max(1, post)):
+                time.sleep(interval)
+                p = self.screenshot()
+                if p:
+                    frames.append(p)
+        finally:
+            self.cinematic(False)
+        labels = ([f"-{n_pre - i}" for i in range(n_pre)] +
+                  ["KILL"] + [f"+{i+1}" for i in range(len(frames) - n_pre - 1)]
+                  if len(frames) > n_pre else [f"-{n_pre - i}" for i in range(n_pre)])
+        sheet = self.collage(frames, out=out, title=f"death sequence ({name})",
+                             labels=labels[:len(frames)])
+        return {"collage": sheet, "frames": frames, "pre": n_pre,
+                "post": len(frames) - n_pre}
+
     def clip_collage(self, frames: int = 9, interval: float = 0.4, cols: int = 3,
                      out: str | None = None, title: str | None = None,
                      fps: int | None = None, clean: bool = True) -> dict:
@@ -2020,6 +2069,71 @@ def set_source_constant(name: str, value, rebuild: bool = False) -> dict:
         res["rebuilt"] = rb.get("returncode") == 0
         res["rebuild_stderr"] = rb.get("stderr", "")[-300:]
     return res
+
+
+def doctor(oa: str = DEFAULT_OA) -> dict:
+    """One-call answer to 'am I about to test my LATEST build with the RIGHT
+    assets?' — the trap sessions hit most (stale binary / wrong OA path / built
+    but not deployed). Read-only: checks binaries, build-output vs deployed dylib
+    mtimes, dylib-trio sync, the classic old-path traps, and running engines.
+    Returns {ok, warnings[], ...}."""
+    def info(p):
+        p = Path(p)
+        return {"path": str(p), "exists": p.exists(),
+                "mtime": (__import__("time").strftime("%Y-%m-%d %H:%M",
+                          __import__("time").localtime(p.stat().st_mtime)) if p.exists() else None),
+                "_m": p.stat().st_mtime if p.exists() else 0}
+    warn = []
+    rep = {"engine_dir": str(ENGINE_DIR),
+           "app_bin": info(APP_BIN), "ded_bin": info(DED_BIN), "oa": oa}
+    if not Path(APP_BIN).exists() and not Path(DED_BIN).exists():
+        warn.append("engine not built — run scripts/build.sh")
+    if not (Path(oa) / GAME).exists():
+        warn.append(f"OA assets not found at {oa}/{GAME}")
+
+    # build-output vs deployed dylibs
+    dylibs = {}
+    for d in DYLIBS:
+        b, dep = info(BUILD_BASEQ3 / f"{d}.dylib"), info(Path(oa) / GAME / f"{d}.dylib")
+        if not dep["exists"]:
+            status = "NOT DEPLOYED"
+        elif not b["exists"]:
+            status = "deployed (no local build output)"
+        elif b["_m"] > dep["_m"] + 2:
+            status = "BUILD NEWER — you rebuilt but haven't deployed (a launch will deploy it)"
+        elif dep["_m"] > b["_m"] + 2:
+            status = "DEPLOYED NEWER — someone else built/deployed (concurrent session)"
+        else:
+            status = "in sync"
+        dylibs[d] = {"build": b["mtime"], "deployed": dep["mtime"], "status": status}
+    rep["dylibs"] = dylibs
+    statuses = {v["status"] for v in dylibs.values()}
+    if any("BUILD NEWER" in s for s in statuses):
+        warn.append("a fresh build isn't deployed yet — the running/next engine may be STALE "
+                    "until a launch (or rebuild) deploys it")
+    # the trio must deploy together (shared networked headers)
+    dep_m = [info(Path(oa) / GAME / f"{d}.dylib")["_m"] for d in DYLIBS
+             if (Path(oa) / GAME / f"{d}.dylib").exists()]
+    if len(dep_m) == len(DYLIBS) and (max(dep_m) - min(dep_m)) > 5:
+        warn.append("deployed qagame/cgame/ui have differing mtimes — they MUST deploy together "
+                    "(shared headers); a mismatched trio crashes the client on load")
+
+    # classic wrong-path traps (the old pre-in-tree dirs)
+    for old in ("/Users/gustav/ioquake3/build/Release", "/Users/gustav/openarena-0.8.8"):
+        if Path(old).exists():
+            warn.append(f"stale path still on disk: {old} — make sure tools point at the in-tree "
+                        f"engine ({ENGINE_DIR}) / assets ({oa}), not this")
+
+    # what's actually running
+    procs = list_processes()
+    rep["running"] = procs
+    for p in procs:
+        if str(ENGINE_DIR) not in str(Path(p["home"])) and "s64api_" not in p["home"] \
+           and not p["home"].startswith(str(Path(LIVE_BASE))):
+            pass  # home is just the writable dir; not a path-trap signal by itself
+    rep["warnings"] = warn
+    rep["ok"] = not warn
+    return rep
 
 
 def list_processes() -> list[dict]:

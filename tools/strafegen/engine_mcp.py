@@ -456,6 +456,12 @@ def t_clip_video(seconds=5.0, name="clip"):
     return _require().clip_video(seconds=float(seconds), name=name)
 
 
+def t_capture_death(name="death", pre=3, post=7):
+    res = _require().capture_death(name=name, pre=int(pre), post=int(post))
+    return {"_mcp_content": _image_content(res["collage"],
+            f"death sequence: {res['pre']} pre + {res['post']} post frames")}
+
+
 def t_cinematic(subject=None, seconds=5.0, slowmo=0.3, orbit_deg=140, name="cinematic"):
     return _require().cinematic_clip(subject=subject, seconds=float(seconds),
                                      slowmo=float(slowmo), orbit_deg=float(orbit_deg), name=name)
@@ -555,6 +561,10 @@ def t_playtest_report(map=None, bots=5, seconds=30, skill=4):
 def t_selftest(**_):
     # spins its own client engine; verifies the whole API surface
     return engine_api.selftest()
+
+
+def t_doctor(**_):
+    return engine_api.doctor()
 
 
 def t_processes(**_):
@@ -1077,6 +1087,23 @@ TOOLS = [
         "handler": t_render_demo,
     },
     {
+        "name": "engine_capture_death",
+        "description": ("Capture a death/ragdoll/gib/blood/dismember sequence ON CUE — the hardest "
+                        "'right thing' to screenshot (transient + must be triggered + framed). Frames "
+                        "the player's body in third person, snaps a pre-buffer, kills, then captures the "
+                        "gore as it plays → a labelled before/KILL/after collage. Use when iterating on "
+                        "gore/ragdoll/blood/dismember effects."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "default": "death"},
+                "pre": {"type": "integer", "default": 3, "description": "frames before the kill"},
+                "post": {"type": "integer", "default": 7, "description": "frames after (the gore)"},
+            },
+        },
+        "handler": t_capture_death,
+    },
+    {
         "name": "engine_capture_clip",
         "description": ("Film the current view over time and bake the frames into a single collage "
                         "(contact sheet) image, returned so you can see it. Great for capturing a bot's "
@@ -1332,6 +1359,17 @@ TOOLS = [
                         "or to confirm the engine + tooling are working. Opens a window briefly."),
         "inputSchema": {"type": "object", "properties": {}},
         "handler": t_selftest,
+    },
+    {
+        "name": "engine_doctor",
+        "description": ("Provenance/freshness check — answers 'am I about to test my LATEST build with "
+                        "the RIGHT assets?' in one call. Reports engine binaries, build-output vs "
+                        "deployed dylib mtimes (flags 'built but not deployed' = stale, and concurrent "
+                        "deploys), whether the qagame/cgame/ui trio is in sync, classic old-path traps, "
+                        "and running engines. Run it when a change 'isn't showing up' — the most common "
+                        "session trap is silently testing a stale binary."),
+        "inputSchema": {"type": "object", "properties": {}},
+        "handler": t_doctor,
     },
     {
         "name": "engine_processes",

@@ -238,13 +238,16 @@ void Main_MenuEvent (void* ptr, int event) {
 
 	case ID_S64_LATTICE:
 		// last pilot standing: every pilot carves a damaging speed-trail, and
-		// the collapsing floor (auto-void) flushes the survivors together. The
-		// full FFA-N bracket plays the field down to one champion. g_lattice /
-		// g_voidRise / g_gametype / g_latticeBracket are latched — they take
-		// effect on the map load queued below.
+		// the full FFA-N bracket plays the field down to one champion. The
+		// collapsing floor (auto-void) is OFF here — the trails are the whole
+		// pressure. SUPERHOT bullet-time is ON: stand still and the heat
+		// near-freezes, carve and time returns — so dodging a wall is a
+		// slow-mo read. g_lattice / g_voidRise / g_gametype / g_latticeBracket
+		// are latched — they take effect on the map load queued below.
 		trap_Cvar_SetValue( "g_lattice", 1 );
 		trap_Cvar_SetValue( "g_vectorgun", 0 );
-		trap_Cvar_SetValue( "g_voidRise", 1 );
+		trap_Cvar_SetValue( "g_voidRise", 0 );			// no void collapse in LATTICE
+		trap_Cvar_SetValue( "g_timeBind", 1 );			// SUPERHOT bullet-time
 		trap_Cvar_SetValue( "g_latticeBracket", 1 );
 		trap_Cvar_SetValue( "g_gametype", 0 );			// FFA
 		trap_Cvar_Set( "bot_enable", "1" );
