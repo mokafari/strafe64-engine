@@ -33,6 +33,14 @@ generator, this doc, and the preview thumbnails are versioned.
 
 ## Shaders
 
+![The gallery](previews/00_gallery.jpg)
+*All shaders as glowing panels in the `shaderlib_gallery` room.*
+
+> **Engine note:** after `engine_close` + `engine_open`, the persistent engine can
+> boot to its default course — force the gallery with a console `map shaderlib_gallery`
+> (it needs the loose `strafe64_shaderlib.shader` + `textures/shaderlib/` + the bsp,
+> all deployed by `gallery.py`).
+
 ### 01 · Neon Plasma Flow — `shaderlib/plasma`
 
 ![Neon Plasma Flow](previews/01_plasma.jpg)
@@ -97,5 +105,20 @@ momentum-portal / bullet-time warp, flaring on the kick.
   (`tcMod rotate`) spin it; **`clampMap`** stops the rotation wrapping neighbouring
   tiles into the corners, `%FIT%` maps it once onto the panel, and `rgbGen wave
   bass` flares the throat on the kick.
+
+### 05 · Aurora Curtains — `shaderlib/aurora`
+
+![Aurora Curtains](previews/05_aurora.jpg)
+*(right panel — vortex and rain alongside)*
+
+Waving neon light curtains — a green base rising through cyan to violet, rippling
+and lifting with the music.
+
+- **Ports:** Shadertoy — [*Auroras* by nimitz](https://www.shadertoy.com/view/XtGGRt).
+- **Technique:** baked tileable vertical curtains (sum-of-sines density, sharpened,
+  with a green→cyan→violet vertical gradient and a soft top/bottom fade) on black
+  for additive blend. Two layers ripple via `tcMod turb` and drift via `tcMod
+  scroll` at different scales; the second layer's brightness is `rgbGen wave level`
+  so the whole sky lifts with the mix. Tiles (no fit).
 
 <!-- next entries appended here by the shader loop -->

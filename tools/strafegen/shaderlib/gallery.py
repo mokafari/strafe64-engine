@@ -407,6 +407,60 @@ shaderlib/vortex
 """
 
 
+# --- #5 : Aurora Curtains --------------------------------------------------
+def _aurora_textures():
+    n = 128
+    tau = 2.0 * math.pi
+    cols = [(2, 0.0, 0.55), (3, 1.7, 0.30), (5, 3.3, 0.22), (7, 5.1, 0.16)]
+    norm = sum(a for _, _, a in cols)
+    stops = [
+        (0.00, (150, 35, 210)),   # top: violet
+        (0.42, (60, 110, 255)),   # blue
+        (0.70, (40, 230, 210)),   # cyan
+        (1.00, (110, 255, 120)),  # base: green
+    ]
+    px = []
+    for y in range(n):
+        vy = y / n
+        env = math.sin(math.pi * (vy if vy < 1 else 1.0))   # fade top+bottom, bright mid
+        c = ramp(stops, vy)
+        for x in range(n):
+            u = x / n
+            ci = sum(a * (0.5 + 0.5 * math.sin(tau * f * u + ph))
+                     for f, ph, a in cols) / norm
+            b = (ci ** 1.7) * env                # sharpen into curtains
+            px.append(tuple(int(ch * b) for ch in c))
+    return {"textures/shaderlib/aurora.tga": _tga32(n, n, px)}
+
+
+def _aurora_shader():
+    return """
+shaderlib/aurora
+{
+\tnopicmip
+\t{
+\t\tmap textures/shaderlib/bezel.tga
+\t\trgbGen identity
+\t}
+\t{
+\t\tmap textures/shaderlib/aurora.tga
+\t\tblendFunc GL_ONE GL_ONE
+\t\trgbGen wave sin 0.7 0.18 0 0.04
+\t\ttcMod turb 0 0.05 0 0.05
+\t\ttcMod scroll 0.011 0
+\t}
+\t{
+\t\tmap textures/shaderlib/aurora.tga
+\t\tblendFunc GL_ONE GL_ONE
+\t\trgbGen wave level 0.18 0.7 0 0
+\t\ttcMod scale 1.7 1.0
+\t\ttcMod turb 0.4 0.045 0 0.035
+\t\ttcMod scroll -0.015 0
+\t}
+}
+"""
+
+
 SHADERS = [
     {
         "key": "plasma",
@@ -469,6 +523,22 @@ SHADERS = [
         "textures": _vortex_textures,
         "shader": _vortex_shader,
         "fit": True,
+    },
+    {
+        "key": "aurora",
+        "title": "Aurora Curtains",
+        "ref": ("Shadertoy — 'Auroras' by nimitz (NdfyRM)",
+                "https://www.shadertoy.com/view/XtGGRt"),
+        "blurb": "Waving neon light curtains — green base rising through cyan to "
+                 "violet, rippling and lifting with the music.",
+        "technique": "Baked tileable vertical curtains (sum-of-sines density, "
+                     "sharpened, with a green->cyan->violet vertical gradient and a "
+                     "soft top/bottom fade) on black for additive blend. Two layers "
+                     "ripple via tcMod turb and drift via tcMod scroll at different "
+                     "scales; the second layer's brightness is rgbGen wave level so "
+                     "the whole sky lifts with the mix. Tiles (no fit).",
+        "textures": _aurora_textures,
+        "shader": _aurora_shader,
     },
 ]
 
