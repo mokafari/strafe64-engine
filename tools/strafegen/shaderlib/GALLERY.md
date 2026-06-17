@@ -68,4 +68,19 @@ that swells and pumps on the kick.
 > reuse a `fit` shader on a real map surface, size/scale the surface to taste —
 > the transform is gallery-panel-specific.
 
+### 03 · Digital Rain — `shaderlib/rain`
+
+![Digital Rain](previews/03_rain.jpg)
+*(right panel — plasma and sun shown for scale)*
+
+The dissolving digital world: columns of falling data — bright white-cyan heads
+trailing into blue — raining harder on the hats.
+
+- **Ports:** Shadertoy — the classic [Matrix digital-rain family (e.g. ldjBW1)](https://www.shadertoy.com/view/ldjBW1).
+- **Technique:** seamless column streaks baked into a texture (white-cyan heads,
+  fading cyan tails, per-cell glyph flicker, vertically wrapped so it tiles), then
+  two additive layers scroll downward at different scales for parallax. The near
+  layer's brightness is `rgbGen wave high`, so hats/snares burst the rain. Seamless,
+  so it tiles across the panel (no fit).
+
 <!-- next entries appended here by the shader loop -->

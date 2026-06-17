@@ -287,6 +287,65 @@ shaderlib/sun
 """
 
 
+# --- #3 : Digital Rain -----------------------------------------------------
+def _rain_textures():
+    n = 128
+    rng = random.Random(0x4A1B7)
+    r = [0.0] * (n * n)
+    g = [0.0] * (n * n)
+    b = [0.0] * (n * n)
+
+    def put(x, y, cr, cg, cb):           # additive-max into the wrapped buffer
+        i = (y % n) * n + (x % n)
+        if cr > r[i]:
+            r[i] = cr
+        if cg > g[i]:
+            g[i] = cg
+        if cb > b[i]:
+            b[i] = cb
+
+    for x in range(n):
+        for _ in range(rng.randint(1, 4)):   # falling streaks per column
+            hy = rng.randrange(n)
+            tail = rng.randint(14, 50)
+            for k in range(tail):
+                f = (1.0 - k / tail) ** 1.6  # bright head -> dim tail (upward)
+                v = f * (0.6 + 0.4 * rng.random())     # per-cell glyph flicker
+                if k < 3:                    # white-cyan head (hot)
+                    put(x, hy - k, 0.9 * v + 0.1, v, 0.97 * v)
+                else:                        # cyan-blue tail
+                    put(x, hy - k, 0.2 * v, 0.9 * v, v)
+    px = [(int(min(1.0, r[i]) * 255), int(min(1.0, g[i]) * 255),
+           int(min(1.0, b[i]) * 255)) for i in range(n * n)]
+    return {"textures/shaderlib/rain.tga": _tga32(n, n, px)}
+
+
+def _rain_shader():
+    return """
+shaderlib/rain
+{
+\tnopicmip
+\t{
+\t\tmap textures/shaderlib/bezel.tga
+\t\trgbGen identity
+\t}
+\t{
+\t\tmap textures/shaderlib/rain.tga
+\t\tblendFunc GL_ONE GL_ONE
+\t\trgbGen wave sin 1.0 0.22 0 0.4
+\t\ttcMod scroll 0 0.32
+\t}
+\t{
+\t\tmap textures/shaderlib/rain.tga
+\t\tblendFunc GL_ONE GL_ONE
+\t\trgbGen wave high 0.35 0.9 0 0
+\t\ttcMod scale 0.5 0.7
+\t\ttcMod scroll 0.0 0.55
+\t}
+}
+"""
+
+
 SHADERS = [
     {
         "key": "plasma",
@@ -318,6 +377,21 @@ SHADERS = [
         "textures": _sun_textures,
         "shader": _sun_shader,
         "fit": True,
+    },
+    {
+        "key": "rain",
+        "title": "Digital Rain",
+        "ref": ("Shadertoy — 'Matrix rain' family (e.g. ldjBW1) / the classic "
+                "digital-rain effect", "https://www.shadertoy.com/view/ldjBW1"),
+        "blurb": "Falling cyan data-streaks — the dissolving digital world; bright "
+                 "white-cyan heads trailing into blue, raining harder on the hats.",
+        "technique": "Baked seamless column streaks (white-cyan heads, fading cyan "
+                     "tails, per-cell glyph flicker, vertically wrapped to tile) "
+                     "then two additive layers scroll downward at different scales "
+                     "for parallax; the near layer's brightness is rgbGen wave high "
+                     "so hats/snares burst the rain. Tiles (no fit).",
+        "textures": _rain_textures,
+        "shader": _rain_shader,
     },
 ]
 
