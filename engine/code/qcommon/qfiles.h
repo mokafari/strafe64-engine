@@ -28,7 +28,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //
 
 // surface geometry should not exceed these limits
-#define	SHADER_MAX_VERTEXES	1000
+// STRAFE 64: raised from 1000 so skeletal (IQM) characters can have surfaces
+// above the old Q3 per-mesh tess cap. The static `tess` arrays and the IQM
+// skinning influence stack arrays scale with this — 4000 stays small (~MB).
+#define	SHADER_MAX_VERTEXES	4000
 #define	SHADER_MAX_INDEXES	(6*SHADER_MAX_VERTEXES)
 
 

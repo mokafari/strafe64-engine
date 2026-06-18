@@ -1248,6 +1248,17 @@ void ClientSpawn(gentity_t *ent) {
 		}
 	}
 
+	// STRAFE 64: bot sword-only. Strip a bot's loadout down to just the katana
+	// so the field is a pure blade duel (the spawn weapon-select below then
+	// auto-picks WP_SWORD, the highest weapon owned). Humans keep their kit.
+	if ( g_botSwordOnly.integer && ( ent->r.svFlags & SVF_BOT ) ) {
+		for ( i = 0 ; i < WP_NUM_WEAPONS ; i++ ) {
+			client->ps.ammo[i] = 0;
+		}
+		client->ps.stats[STAT_WEAPONS] = ( 1 << WP_SWORD );
+		client->ps.ammo[WP_SWORD] = -1;
+	}
+
 	// STRAFE 64: announce the active run mutator on (re)spawn
 	if ( g_mutator.integer >= 1 && g_mutator.integer <= 4 ) {
 		static const char *mutName[] = { "", "LOW GRAVITY", "RUSH", "HEAVY", "VECTORGUN" };

@@ -249,6 +249,7 @@ class EngineSession:
                  deploy: bool = True, extra: list[str] | None = None,
                  cheats: bool | None = None, detached: bool = False,
                  name: str | None = None, bots=0, bot_skill: int = 4,
+                 hot_floor: bool = False,
                  width: int | None = None, height: int | None = None,
                  pipename: str = "s64api.pipe", logname: str = "engine_console.log"):
         if mode not in ("client", "dedicated"):
@@ -282,6 +283,10 @@ class EngineSession:
         # +addbot at launch is dropped as an unknown command.
         self.bots = bots
         self.bot_skill = bot_skill
+        # the "hot floor" idle-burn (g_hotFloor: stand still on the ground → take
+        # escalating burn damage) ruins static auditions/captures — off by default
+        # for this inspection environment; pass hot_floor=True to keep gameplay.
+        self.hot_floor = hot_floor
         self.pipename = pipename
         self.logname = logname
         self._pid: int | None = None
@@ -355,6 +360,10 @@ class EngineSession:
         self._pid = self.proc.pid
         self._log_fp = open(self.log_path, "rb")
         self._await_ready(timeout)
+        # disable the stand-still idle-burn unless explicitly wanted — set live
+        # (post-config) so autoexec.cfg / strafe64.cfg can't re-enable it.
+        if not self.hot_floor:
+            self.command("set g_hotFloor 0")
         self._write_state()
         return self
 
@@ -1854,9 +1863,9 @@ class EngineSession:
         """Generate a course with strafegen.py, deploy it into THIS instance's
         game dir, and (by default) load it live — author + play in one call.
 
-        kind: course | arena | surf | killbox.  Loose .bsp/.aas are dropped in
-        maps/ (found at open time even mid-session); the .pk3 (full shaders) is
-        copied too for the next fresh launch.
+        kind: course | combat | arena | surf | killbox.  Loose .bsp/.aas are
+        dropped in maps/ (found at open time even mid-session); the .pk3 (full
+        shaders) is copied too for the next fresh launch.
         """
         import sys
         out_dir = STRAFEGEN / "generated"
@@ -1865,7 +1874,7 @@ class EngineSession:
         if seed is not None:
             args.append(str(seed))
         flag = {"course": None, "arena": "--arena", "surf": "--surf",
-                "killbox": "--killbox"}.get(kind)
+                "killbox": "--killbox", "combat": "--combat"}.get(kind)
         if kind not in (None, "course") and flag is None:
             raise EngineError(f"unknown map kind: {kind}")
         if flag:

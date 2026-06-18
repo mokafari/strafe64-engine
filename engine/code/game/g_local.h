@@ -51,6 +51,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define FL_NO_BOTS				0x00002000	// spawn point not for bot use
 #define FL_NO_HUMANS			0x00004000	// spawn point just for bots
 #define FL_FORCE_GESTURE		0x00008000	// force gesture on client
+#define FL_SLICE_GATE			0x00010000	// sliceable flow-gate enemy: a sword
+											// pass counts it as a kill so the
+											// momentum-feed fires (slice_drone)
 
 // movers are things like doors, plats, buttons, etc
 typedef enum {
@@ -577,6 +580,7 @@ void trigger_teleporter_touch (gentity_t *self, gentity_t *other, trace_t *trace
 // g_misc.c
 //
 void TeleportPlayer( gentity_t *player, vec3_t origin, vec3_t angles );
+void G_RearmSliceGates( void );		// re-arm all slice_drone gates on lap restart
 #ifdef MISSIONPACK
 void DropPortalSource( gentity_t *ent );
 void DropPortalDestination( gentity_t *ent );
@@ -782,6 +786,8 @@ extern	vmCvar_t	g_timeBindFire;
 extern	vmCvar_t	g_timeBindLog;
 extern	vmCvar_t	g_timeBindCrouch;	// crouch/slide time-brake: intent scale while ducked
 extern	vmCvar_t	g_bulletSpeed;		// live scale on deflectable-bolt travel speed
+extern	vmCvar_t	g_swordKnockback;	// live scale on the katana cleave-launch (multi-hit / finisher fling)
+extern	vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field)
 extern	vmCvar_t	g_corpseTime;		// STRAFE 64: seconds a dead body lingers before removal
 extern	vmCvar_t	g_strafeAccel;		// live air-strafe tuning cvars
 extern	vmCvar_t	g_airWishClamp;

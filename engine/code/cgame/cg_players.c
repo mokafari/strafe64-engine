@@ -2235,6 +2235,117 @@ int CG_LightVerts( vec3_t normal, int numVerts, polyVert_t *verts )
 
 /*
 ===============
+CG_AxisRoll
+
+Roll an MD3 axis triad about one of its own axes by `degrees`. about=0 rolls
+about forward (bank left/right), 1 about left (pitch fwd/back), 2 about up (yaw).
+The two perpendicular axes are rotated in place; the spin axis is untouched.
+===============
+*/
+static void CG_AxisRoll( vec3_t axis[3], int about, float degrees ) {
+	vec3_t	a1, a2;
+	int		i1 = ( about + 1 ) % 3;
+	int		i2 = ( about + 2 ) % 3;
+
+	RotatePointAroundVector( a1, axis[about], axis[i1], degrees );
+	RotatePointAroundVector( a2, axis[about], axis[i2], degrees );
+	VectorCopy( a1, axis[i1] );
+	VectorCopy( a2, axis[i2] );
+}
+
+/*
+===============
+CG_WallGripDetect
+
+Cosmetic, client-side wall detection for the grip pose. Independent of the
+server's STAT_WALLRUN (which isn't networked for remote players), so it lights
+up for bots and other clients too. Returns a signed target: + wall on the
+right, - wall on the left, 0 = no grip. Magnitude scales with proximity.
+===============
+*/
+static float CG_WallGripDetect( centity_t *cent ) {
+	vec3_t		angles, forward, right, start, end, vel;
+	vec3_t		mins = { -6, -6, -6 }, maxs = { 6, 6, 6 };
+	trace_t		tr;
+	float		speed;
+	int			i;
+
+	if ( !cg_wallGrip.integer ) {
+		return 0;
+	}
+	// only airborne bodies grip a wall
+	if ( cent->currentState.groundEntityNum != ENTITYNUM_NONE ) {
+		return 0;
+	}
+
+	// horizontal speed gate (authoritative for self, networked velocity for others)
+	if ( cent->currentState.number == cg.snap->ps.clientNum ) {
+		VectorCopy( cg.predictedPlayerState.velocity, vel );
+	} else {
+		VectorCopy( cent->currentState.pos.trDelta, vel );
+	}
+	vel[2] = 0;
+	speed = VectorLength( vel );
+	if ( speed < 200.0f ) {
+		return 0;
+	}
+
+	// probe left and right of the body's facing for a near-vertical wall
+	VectorClear( angles );
+	angles[YAW] = cent->lerpAngles[YAW];
+	AngleVectors( angles, forward, right, NULL );
+
+	VectorCopy( cent->lerpOrigin, start );
+	start[2] += 24.0f;	// mid-torso height
+
+	for ( i = 0; i < 2; i++ ) {
+		float	s = i ? -1.0f : 1.0f;	// +1 right first, then left
+
+		VectorMA( start, s * 30.0f, right, end );
+		CG_Trace( &tr, start, mins, maxs, end, cent->currentState.number, MASK_PLAYERSOLID );
+
+		if ( tr.fraction < 1.0f && !tr.allsolid
+			&& fabs( tr.plane.normal[2] ) < 0.3f ) {
+			return s * ( 1.0f - tr.fraction );	// closer wall -> stronger lean
+		}
+	}
+	return 0;
+}
+
+/*
+===============
+CG_WallGripPose
+
+Lean the whole body onto a gripped wall: bank the legs into it, hunch and bank
+the torso a touch harder, keep the head a little more upright. Layered on the
+MD3 axes from CG_PlayerAngles before the tag chain composes them, so torso and
+head inherit the legs bank and add their own. Eased per-entity so attach and
+release roll smoothly rather than snap.
+===============
+*/
+static void CG_WallGripPose( centity_t *cent, vec3_t legs[3], vec3_t torso[3], vec3_t head[3] ) {
+	float	target, g, k;
+
+	target = CG_WallGripDetect( cent );
+	cent->pe.wallGrip += ( target - cent->pe.wallGrip ) * 0.2f;
+	g = cent->pe.wallGrip;
+	if ( g > -0.01f && g < 0.01f ) {
+		return;
+	}
+
+	k = cg_wallGripScale.value;
+
+	// bank the body toward the wall (g>0 = wall on right -> top leans right).
+	// legs carry the whole-body lean; torso/head inherit it through the tag
+	// chain and add their own. head banks less so the gaze stays readable.
+	CG_AxisRoll( legs,  0, -14.0f * g * k );			// roll about forward
+	CG_AxisRoll( torso, 0,  -8.0f * g * k );			// extra torso bank
+	CG_AxisRoll( torso, 1,   7.0f * fabs( g ) * k );	// hunch forward into the run
+	CG_AxisRoll( head,  0,   6.0f * g * k );			// counter-roll: head stays upright
+}
+
+/*
+===============
 CG_Player
 ===============
 */
@@ -2297,7 +2408,11 @@ void CG_Player( centity_t *cent ) {
 
 	// get the rotation information
 	CG_PlayerAngles( cent, legs.axis, torso.axis, head.axis );
-	
+
+	// STRAFE 64: procedural wall-grip lean, layered on the MD3 axes before the
+	// tag chain composes torso/head onto the legs.
+	CG_WallGripPose( cent, legs.axis, torso.axis, head.axis );
+
 	// get the animation state (after rotation, to allow feet shuffle)
 	CG_PlayerAnimation( cent, &legs.oldframe, &legs.frame, &legs.backlerp,
 		 &torso.oldframe, &torso.frame, &torso.backlerp );

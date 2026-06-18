@@ -346,6 +346,12 @@ void race_start_touch( gentity_t *self, gentity_t *other, trace_t *trace ) {
 	// can't shrink your lap time (cheat the speedrun). STAT_RACE_START stays a
 	// game-time deciseconds stamp — it serves only as the client's restamp
 	// edge signal now, the cgame ghost times the run off its own real clock.
+	// fresh-start edge (was not racing): re-arm every slice gate so each lap
+	// begins with a clean, full set to cut — continuous rerun after a finish
+	// teleports you here, re-stamps, and the course resets in one touch.
+	if ( !other->client->raceStartTime ) {
+		G_RearmSliceGates();
+	}
 	other->client->raceStartTime = trap_Milliseconds();
 	other->client->ps.stats[STAT_RACE_START] =
 		( level.time - level.startTime ) / 100 + 1;

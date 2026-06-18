@@ -153,6 +153,11 @@ typedef struct {
 	float			barrelAngle;
 	int				barrelTime;
 	qboolean		barrelSpinning;
+
+	// STRAFE 64: procedural wall-grip pose. Signed, eased toward a target each
+	// frame: 0 = free, magnitude -> how fully the body leans onto the wall,
+	// sign = wall side (+ right / - left), matching STAT_WALLRUN's convention.
+	float			wallGrip;
 } playerEntity_t;
 
 //=================================================
@@ -1252,6 +1257,8 @@ extern	vmCvar_t		au_level;
 extern	vmCvar_t		cg_ragdoll;
 extern	vmCvar_t		cg_ragdollDamp;
 extern	vmCvar_t		cg_ragdollIterations;
+extern	vmCvar_t		cg_wallGrip;		// STRAFE 64: procedural wall-grip body lean (0 off)
+extern	vmCvar_t		cg_wallGripScale;	// overall strength multiplier on the grip pose
 extern	vmCvar_t		cg_zoomFov;
 extern	vmCvar_t		cg_thirdPersonRange;
 extern	vmCvar_t		cg_thirdPersonAngle;
@@ -1478,6 +1485,7 @@ void CG_AddPacketEntities( void );
 // cg_lattice.c -- LATTICE speed-trail rendering
 //
 void CG_LatticeFrame( void );
+void CG_LatticeTrailWall( const vec3_t *pts, int n, const byte *col, float aMul );
 
 //
 // cg_ragdoll.c -- client-side Verlet ragdoll for dead bodies

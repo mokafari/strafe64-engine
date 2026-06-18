@@ -1584,11 +1584,11 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 	// view, hilt low and inboard, so a raised katana reads as "deflecting".
 	if ( ps->weapon == WP_SWORD
 			&& ( cg.predictedPlayerState.eFlags & EF_BLOCKING ) ) {
-		angles[PITCH] -= 32.0f;		// tip up
-		angles[YAW]   += 18.0f;
-		angles[ROLL]  -= 38.0f;		// lay the blade across the screen
-		VectorMA( hand.origin,  4.0f, cg.refdef.viewaxis[0], hand.origin );	// forward
-		VectorMA( hand.origin,  3.0f, cg.refdef.viewaxis[2], hand.origin );	// up
+		angles[PITCH] -= 14.0f;		// modest tip-up; blade stays in front of the eyes
+		angles[YAW]   += 14.0f;
+		angles[ROLL]  -= 30.0f;		// lay the blade diagonally across the screen
+		VectorMA( hand.origin,  5.0f, cg.refdef.viewaxis[0], hand.origin );	// forward, toward the threat
+		VectorMA( hand.origin, -1.5f, cg.refdef.viewaxis[2], hand.origin );	// slightly down, hilt rides low
 		VectorMA( hand.origin, -2.0f, cg.refdef.viewaxis[1], hand.origin );	// inboard
 	}
 

@@ -71,6 +71,8 @@ vmCvar_t	g_timeBindCrouch;	// crouch/slide TIME BRAKE: direct timescale CAP whil
 								// 0.5 = half-speed slide, lower = slower)
 vmCvar_t	g_bulletSpeed;		// live scale on deflectable-bolt travel speed: lower = the
 								// slow-mo darts you can see/track/parry (co-tune vs the guard window)
+vmCvar_t	g_swordKnockback;	// live scale on the katana cleave-launch (multi-hit / finisher fling)
+vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field)
 vmCvar_t	g_corpseTime;		// STRAFE 64: seconds a dead body lingers before it's removed
 vmCvar_t	g_strafeAccel;		// live air-strafe tuning -> pm_strafeAccelerate
 vmCvar_t	g_airWishClamp;		// -> pm_wishSpeedClamp (the skill cap; keep ~30)
@@ -189,7 +191,9 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_timeBindFire, "g_timeBindFire", "0.8", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_timeBindLog, "g_timeBindLog", "1", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_timeBindCrouch, "g_timeBindCrouch", "0.5", CVAR_ARCHIVE, 0, qfalse  },
-	{ &g_bulletSpeed, "g_bulletSpeed", "1.0", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_bulletSpeed, "g_bulletSpeed", "0.45", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordKnockback, "g_swordKnockback", "1.0", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_botSwordOnly, "g_botSwordOnly", "0", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_corpseTime, "g_corpseTime", "15", CVAR_ARCHIVE, 0, qfalse  },	// STRAFE 64: corpse lifetime (s)
 	{ &g_strafeAccel, "pm_strafeAccelerate", "70", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_airWishClamp, "pm_wishSpeedClamp", "30", CVAR_ARCHIVE, 0, qfalse  },

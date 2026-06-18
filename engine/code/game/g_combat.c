@@ -24,6 +24,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "g_local.h"
 
+#define	SWORD_PARRY_KICK	280.0f	// ups the attacker is shoved back when their melee is parried
+
 
 /*
 ============
@@ -994,10 +996,9 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		VectorNormalize(dir);
 	}
 
-	// STRAFE 64: a raised katana guard soaks frontal damage. Projectiles are
+	// STRAFE 64: a raised katana guard stops frontal damage. Projectiles are
 	// parried (deflected) earlier in the missile code; this catches the sword,
-	// the gauntlet and explosions that wash over the guard. Reducing damage
-	// here also softens the knockback below, so a blocked blow barely budges you.
+	// the gauntlet and explosions that wash over the guard.
 	if ( client && ( client->ps.eFlags & EF_BLOCKING ) && targ != attacker
 			&& dir && !( dflags & DAMAGE_NO_PROTECTION ) ) {
 		vec3_t	vf;
@@ -1005,8 +1006,28 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		AngleVectors( client->ps.viewangles, vf, NULL, NULL );
 		// dir is the hit's travel direction; a frontal hit drives into the guard
 		if ( DotProduct( dir, vf ) < 0.2f ) {
-			damage = (int)( damage * 0.2f );		// 80% mitigated head-on
-			G_AddEvent( targ, EV_SWORD_HIT, 0 );	// blade-clang feedback
+			if ( mod == MOD_SWORD || mod == MOD_GAUNTLET ) {
+				// CLEAN PARRY: a guarded blade vs blade fully stops the cut and
+				// CLASHES — the attacker is shoved back off the guard, staggered
+				// and open for the riposte. This is what makes the duel read.
+				damage = 0;
+				G_AddEvent( targ, EV_SWORD_HIT, 0 );		// clang on the defender
+				if ( attacker->client ) {
+					vec3_t	push;
+
+					VectorCopy( dir, push );				// blow travel: attacker -> targ
+					push[2] = 0.0f;
+					if ( VectorNormalize( push ) > 0.0f ) {
+						attacker->client->ps.velocity[0] -= push[0] * SWORD_PARRY_KICK;
+						attacker->client->ps.velocity[1] -= push[1] * SWORD_PARRY_KICK;
+						attacker->client->ps.velocity[2] += SWORD_PARRY_KICK * 0.3f;
+					}
+					G_AddEvent( attacker, EV_SWORD_HIT, 0 );	// clang on the attacker too
+				}
+			} else {
+				damage = (int)( damage * 0.2f );			// blast/other: 80% soak, not a full stop
+				G_AddEvent( targ, EV_SWORD_HIT, 0 );
+			}
 		}
 	}
 

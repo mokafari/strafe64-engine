@@ -910,7 +910,8 @@ typedef struct {
 static ghostRun_t	ghostBest;		// best saved run for this map
 static ghostRun_t	ghostRec;		// run being recorded
 static qboolean		ghostRacing;
-static int			ghostRaceStartMs;	// REAL (trap_Milliseconds) clock the run started — see CG_RaceFrame
+static int			ghostRaceStartMs;	// REAL (trap_Milliseconds) clock the run started — for the saved/scored finish time
+static int			ghostRaceStartTime;	// SCALED game clock (cg.time) the run started — for record+replay so the ghost dilates with slow-mo
 static int			ghostLastStat;
 
 static void CG_GhostFilename( char *buf, int bufSize ) {
@@ -1104,80 +1105,35 @@ map asset and never clobbers the flow/glitch HUD layer.
 #define GHOST_TRAIL_WIDTH	2.0f	// base half-width (u)
 
 static void CG_GhostTrail( int idx, float frac ) {
-	vec3_t	cur, seg, right, dir, toEye;
-	int		i, first, n;
-	float	speed, width, baseAlpha;
+	vec3_t	pts[GHOST_TRAIL_SEGS + 2];
+	vec3_t	seg, cur;
+	byte	col[3];
+	int		i, count;
 
 	if ( !cg_ghost.integer || !ghostBest.valid || ghostBest.numSamples < 3 ) {
 		return;
 	}
 
-	// the ghost's interpolated position this frame is the head of the trail
+	// head of the trail = the ghost's interpolated position this frame
 	VectorSubtract( ghostBest.origins[idx + 1], ghostBest.origins[idx], seg );
-	speed = VectorLength( seg ) * GHOST_HZ;		// u/s between 20Hz samples
 	VectorMA( ghostBest.origins[idx], frac, seg, cur );
 
-	width = GHOST_TRAIL_WIDTH + speed * 0.004f;	// faster run → fatter ribbon
-	if ( width > 12.0f ) {
-		width = 12.0f;
-	}
-	baseAlpha = cg_ghostAlpha.value * 0.6f;
-
-	first = idx - GHOST_TRAIL_SEGS;
-	if ( first < 0 ) {
-		first = 0;
-	}
-	n = idx - first;
-	if ( n < 1 ) {
-		return;
+	// build a NEWEST-FIRST list of the recent samples (head, then back along
+	// the recorded path) for the lattice wall to stitch through
+	count = 0;
+	VectorCopy( cur, pts[count++] );
+	for ( i = idx ; i >= 0 && count <= GHOST_TRAIL_SEGS ; i-- ) {
+		VectorCopy( ghostBest.origins[i], pts[count++] );
 	}
 
-	for ( i = first ; i < idx ; i++ ) {
-		polyVert_t	verts[4];
-		vec3_t		a, b;
-		float		age0, age1, al0, al1;
-		int			j;
+	col[0] = GHOST_TINT_R;
+	col[1] = GHOST_TINT_G;
+	col[2] = GHOST_TINT_B;
 
-		VectorCopy( ghostBest.origins[i], a );
-		VectorCopy( ghostBest.origins[i + 1], b );
-
-		// billboard the segment: width axis = seg × (eye→seg)
-		VectorSubtract( b, a, dir );
-		if ( VectorNormalize( dir ) < 0.1f ) {
-			continue;
-		}
-		VectorSubtract( a, cg.refdef.vieworg, toEye );
-		CrossProduct( dir, toEye, right );
-		if ( VectorNormalize( right ) < 0.1f ) {
-			continue;
-		}
-		VectorScale( right, width, right );
-
-		// fade with how far back the segment is from the ghost head
-		age0 = ( i - first ) / (float)( n );
-		age1 = ( i + 1 - first ) / (float)( n );
-		al0 = baseAlpha * age0;
-		al1 = baseAlpha * age1;
-
-		VectorAdd( a, right, verts[0].xyz );
-		VectorSubtract( a, right, verts[1].xyz );
-		VectorSubtract( b, right, verts[2].xyz );
-		VectorAdd( b, right, verts[3].xyz );
-
-		for ( j = 0 ; j < 4 ; j++ ) {
-			float al = ( j < 2 ) ? al0 : al1;
-			verts[j].modulate[0] = (byte)( GHOST_TINT_R * al );
-			verts[j].modulate[1] = (byte)( GHOST_TINT_G * al );
-			verts[j].modulate[2] = (byte)( GHOST_TINT_B * al );
-			verts[j].modulate[3] = 255;
-		}
-		verts[0].st[0] = 0; verts[0].st[1] = 0;
-		verts[1].st[0] = 1; verts[1].st[1] = 0;
-		verts[2].st[0] = 1; verts[2].st[1] = 1;
-		verts[3].st[0] = 0; verts[3].st[1] = 1;
-
-		trap_R_AddPolyToScene( cgs.media.whiteShader, 4, verts );
-	}
+	// the cool lattice speed-trail: the same vertical light-wall the LATTICE
+	// pilots leave, now stitched behind the racing ghost (clean overlay — no
+	// audio glitch/chip layer)
+	CG_LatticeTrailWall( pts, count, col, cg_ghostAlpha.value );
 }
 
 /*
@@ -1266,18 +1222,19 @@ void CG_RaceFrame( void ) {
 		ghostRacing = qfalse;
 	}
 
-	// Ghost record/replay AND the saved finish time run off the REAL clock
-	// (trap_Milliseconds), not cg.time. cg.time is the timescale-SCALED server
-	// clock, so under g_timeBind slow-mo a run would log a bogus (cheated)
-	// finish time and the replay would drift out of sync with the recording.
-	// STAT_RACE_START is still only an edge/restamp SIGNAL (its value is the
-	// server's deciseconds stamp); the actual timing is this local real clock,
-	// consistent with the server's real-time race payout and the "void stays
-	// real" rule. trap_Milliseconds matches the server's on a listen server.
+	// Ghost record + replay run off the SCALED game clock (cg.time) so the ghost
+	// DILATES with the world: dip into g_timeBind slow-mo and your past self slows
+	// down right alongside you, staying in visual sync instead of speed-cheating
+	// ahead. Record and replay share this one clock, so there's no record/replay
+	// drift. The SAVED/SCORED finish time still runs off the REAL clock
+	// (trap_Milliseconds, ghostRaceStartMs) so slow-mo can't shrink a lap time —
+	// same "timing stays real" rule as the void and the server payout.
+	// STAT_RACE_START remains just the edge/restamp signal.
 	if ( stat && stat != ghostLastStat ) {
 		// (re)stamped on the start pad: the run begins now
 		ghostRacing = qtrue;
 		ghostRaceStartMs = trap_Milliseconds();
+		ghostRaceStartTime = cg.time;
 		ghostRec.numSamples = 0;
 		ghostRec.valid = qfalse;
 	} else if ( !stat && ghostRacing ) {
@@ -1304,7 +1261,7 @@ void CG_RaceFrame( void ) {
 		return;
 	}
 
-	t = trap_Milliseconds() - ghostRaceStartMs;
+	t = cg.time - ghostRaceStartTime;	// SCALED game time: dilates with slow-mo
 	if ( t < 0 ) {
 		t = 0;
 	}
@@ -1319,8 +1276,10 @@ void CG_RaceFrame( void ) {
 		ghostRec.numSamples++;
 	}
 
-	// replay the best run alongside
-	if ( cg_ghost.integer && ghostBest.valid && t < ghostBest.finishMs ) {
+	// replay the best run alongside. Bound by the recorded SAMPLE span (game-time
+	// duration), not finishMs (real ms), since t is now the scaled game clock.
+	if ( cg_ghost.integer && ghostBest.valid
+		&& t < ( ghostBest.numSamples - 1 ) * GHOST_INTERVAL ) {
 		idx = t / GHOST_INTERVAL;
 		if ( idx >= ghostBest.numSamples - 1 ) {
 			idx = ghostBest.numSamples - 2;
@@ -1423,6 +1382,62 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	// finish up the rest of the refdef
 	if ( cg.testModelEntity.hModel ) {
 		CG_AddTestModel();
+	}
+
+	// STRAFE 64 DEBUG: skeletal (IQM) render-proof harness. `cg_iqmTest 1`
+	// registers a known-good IQM and drops it as a world entity in front of the
+	// player, cycling its animation frames so it can be orbited and confirmed.
+	// Scaffolding for the skeletal-animation work — implicit cvars, one file.
+	{
+		char	ibuf[32];
+
+		trap_Cvar_VariableStringBuffer( "cg_iqmTest", ibuf, sizeof( ibuf ) );
+		if ( atof( ibuf ) ) {
+		static qhandle_t	iqmTest = -1;
+		refEntity_t			ent;
+		vec3_t				fwd;
+		float				scale, yaw;
+		int					nf;
+
+		if ( iqmTest == -1 ) {
+			iqmTest = trap_R_RegisterModel( "models/test/mrfixit.iqm" );
+		}
+		if ( iqmTest ) {
+			memset( &ent, 0, sizeof( ent ) );
+
+			trap_Cvar_VariableStringBuffer( "cg_iqmTestScale", ibuf, sizeof( ibuf ) );
+			scale = atof( ibuf );
+			if ( scale <= 0 ) {
+				scale = 24.0f;
+			}
+			// slow turntable spin (deg) so every side can be inspected
+			yaw = ( cg.time / 30 ) % 360;
+			VectorSet( ent.axis[0], cos( DEG2RAD( yaw ) ) * scale, sin( DEG2RAD( yaw ) ) * scale, 0 );
+			VectorSet( ent.axis[1], -sin( DEG2RAD( yaw ) ) * scale, cos( DEG2RAD( yaw ) ) * scale, 0 );
+			VectorSet( ent.axis[2], 0, 0, scale );
+			ent.nonNormalizedAxes = qtrue;
+
+			// fixed world point on the arena floor (independent of the player)
+			VectorSet( ent.origin, 0, 0, 26 );
+			(void)fwd;
+			VectorCopy( ent.origin, ent.lightingOrigin );
+
+			ent.hModel = iqmTest;
+			ent.renderfx = RF_MINLIGHT;
+
+			// cycle frames (~25 fps); the IQM loader wraps frame % num_frames
+			trap_Cvar_VariableStringBuffer( "cg_iqmTestFrames", ibuf, sizeof( ibuf ) );
+			nf = atoi( ibuf );
+			if ( nf <= 0 ) {
+				nf = 30;
+			}
+			ent.frame = ( cg.time / 40 ) % nf;
+			ent.oldframe = ( ent.frame + nf - 1 ) % nf;
+			ent.backlerp = 0;
+
+			trap_R_AddRefEntityToScene( &ent );
+		}
+		}
 	}
 	cg.refdef.time = cg.time;
 	memcpy( cg.refdef.areamask, cg.snap->areamask, sizeof( cg.refdef.areamask ) );

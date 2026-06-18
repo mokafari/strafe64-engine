@@ -823,11 +823,13 @@ DOJO_RECIPES = {
 
 class Course:
     def __init__(self, seed, difficulty, length, void=True,
-                 voidrise=None, voiddelay=None, recipe=None):
+                 voidrise=None, voiddelay=None, recipe=None, combat=False):
         self.rng = random.Random(seed)
         self.seed = seed
         self.diff = difficulty
         self.recipe = recipe        # dojo section sequence, or None for normal
+        self.combat = combat        # True = lace the arc with slice-gate enemies
+                                    # (the COMBAT recipe); False = pure movement
         # gap scale: easy courses shrink jumps, hard ones stretch them
         self.scale = (0.85, 1.0, 1.12)[difficulty]
         self.length = length
@@ -898,6 +900,57 @@ class Course:
             f"(speed {assumed_speed:.0f}, dz {dz:.0f})")
         self.advance(dist, dz=dz)
 
+    def place_drone(self, fwd=0.0, side=0.0, up=56.0, health=1, wait=3):
+        """Drop a slice_drone on the line — a momentum gate you cut THROUGH.
+        It's CONTENTS_CORPSE: the sword cleaves it but a running player passes
+        clean through, so an un-sliced gate never breaks the line (you just
+        miss the speed feed). Placed relative to the cursor's heading; faces
+        back at the incoming runner so it reads as a thing to cut."""
+        d, r = self.dir, self.right()
+        x = self.pos[0] + d[0] * fwd + r[0] * side
+        y = self.pos[1] + d[1] * fwd + r[1] * side
+        z = self.pos[2] + up
+        self.entities.append({
+            "classname": "slice_drone",
+            "origin": f"{x:g} {y:g} {z:g}",
+            "angle": str((self.yaw() + 180) % 360),
+            "health": str(health),
+            "wait": str(wait),
+        })
+
+    def enemy_phrase(self, n=3, step=72.0, spread=64.0, up=64.0):
+        """A short 2-3 enemy 'phrase': a cluster of slice-gates fanned across the
+        lane and marching down it, so the player cuts the whole group in ONE
+        flowing pass (DOOM/Neon White pulse — cluster then rest, never carpet).
+        Gates are CONTENTS_CORPSE so a missed one never blocks the line; you just
+        forgo the speed feed. Caps at 3 so it never forces a stop."""
+        n = max(1, min(n, 3))
+        for k in range(n):
+            side = (k - (n - 1) / 2.0) * spread     # fan the cluster across the lane
+            self.place_drone(fwd=40.0 + k * step, side=side, up=up)
+        self.sections.append(("enemy phrase", {"count": n}))
+
+    def wall_seg(self, p, q, away_from, top, thick=28.0, height=320.0,
+                 palette=PAL_WALLS):
+        """A thin angled WALL from world point p to q, extruded on the side
+        AWAY from `away_from` so its playable face points back toward the line.
+        make_prism takes an arbitrary footprint, so this builds walls at any
+        angle even though the section cursor only ever runs on the 4-dir grid —
+        the trick that lets a corner be two 45-degree bounce surfaces instead of
+        one speed-dumping square turn."""
+        ux, uy = q[0] - p[0], q[1] - p[1]
+        L = math.hypot(ux, uy) or 1.0
+        nx, ny = -uy / L, ux / L                       # a unit perpendicular
+        mx, my = (p[0] + q[0]) / 2.0, (p[1] + q[1]) / 2.0
+        if (mx - away_from[0]) * nx + (my - away_from[1]) * ny < 0:
+            nx, ny = -nx, -ny                          # point the solid outward
+        foot = [(p[0], p[1]), (q[0], q[1]),
+                (q[0] + nx * thick, q[1] + ny * thick),
+                (p[0] + nx * thick, p[1] + ny * thick)]
+        self.solids.append(make_prism(
+            foot, top - 24, [top + height] * 4,
+            tex=TEX_WALL, palette=palette))
+
     # ---- sections ------------------------------------------------------
     def sec_start(self):
         self.sections.append(("start", {}))
@@ -943,6 +996,8 @@ class Course:
             self.advance(0, side=side)
             size = max(64.0, (96 - 4 * i) * (1.1 - 0.1 * self.diff))
             self.platform(size * 2, size, PAL_GAPS)
+            if self.combat and i % 2 == 1:   # a gate over every other landing:
+                self.place_drone(fwd=-size, up=72.0)   # cut it as you fly the pad
             speed = min(speed + 18, 430)  # chained hops build speed
 
     def sec_bhop(self, n=None):
@@ -1280,17 +1335,40 @@ class Course:
             lr = self.rng.choice((-1, 1))
             self.gap(140 * self.scale, RUN_SPEED + 30, dz=-8)
             d = self.dir
-            # square corner pad starting at the far side of the gap
-            cx = self.pos[0] + d[0] * 112
-            cy = self.pos[1] + d[1] * 112
+            half = 176.0                 # wider pad: room to carry a fast line
+            cx = self.pos[0] + d[0] * half
+            cy = self.pos[1] + d[1] * half
+            top = self.pos[2]
+            r = self.right()
+            f = d
+            o = lr                       # outer side of the turn (see turn(lr))
+            # FLAT corner pad. The velodrome floor-bank read as "banked the wrong
+            # way" and consistently cost flow (43% single-wall -> 35% banked ->
+            # 22-27% on fresh seeds), so the carve now comes purely from bouncing
+            # the two 45-degree walls — no tilted floor to fight.
             self.solids.append(make_box(
-                (cx - 112, cy - 112, self.pos[2] - 24),
-                (cx + 112, cy + 112, self.pos[2]),
+                (cx - half, cy - half, top - 24),
+                (cx + half, cy + half, top),
                 tex=TEX_FLOOR, palette=PAL_PLAIN))
+            # TWO 45-DEGREE BOUNCE WALLS forming an outer chevron: ricochet off
+            # the first (deflect ~45) then the second (complete the 90) — two
+            # shallow revectors that each preserve air-strafe speed. Faces point
+            # back at the line; the inner/exit quadrant stays open for bots.
+            far  = (cx + f[0] * half, cy + f[1] * half)          # far-centre
+            apex = (cx + r[0] * o * half, cy + r[1] * o * half)  # outer-mid
+            back = (cx - f[0] * half, cy - f[1] * half)          # back-centre
+            self.wall_seg(far,  apex, (cx, cy), top, height=320.0)
+            self.wall_seg(apex, back, (cx, cy), top, height=320.0)
             self.pos[0], self.pos[1] = cx, cy
             self.turn(lr)
-            self.advance(112)
-            self.sections.append(("turn", {"dir": "left" if lr > 0 else "right"}))
+            # APEX GATE (combat recipe): a slice_drone right where you carve off
+            # the wall — the kill lands at the revector apex and FEEDS the exit
+            # (speed kick + refreshed air/bhop), so routing through the corner is
+            # the fast line. enemy_offset ≈ corner − 0.7·jump per the design doc.
+            if self.combat:
+                self.place_drone(fwd=40.0, up=64.0)
+            self.advance(half, dz=-16)   # exit a touch downhill: the turn donates speed
+            self.sections.append(("bounce corner", {"dir": "left" if lr > 0 else "right"}))
 
     def build(self):
         self.sec_start()
@@ -1332,6 +1410,11 @@ class Course:
             for sec in deck_secs:
                 sec()
                 self.maybe_turn()
+                # COMBAT recipe: the spice sections are the intensity beats, so
+                # drop a 2-3 enemy phrase there (the "test"); openers + fork +
+                # flow stay enemy-free as the rest beats that build/keep speed.
+                if self.combat and sec in spice:
+                    self.enemy_phrase()
                 self.set_checkpoint()
             if deck < self.length - 1:
                 self.sec_lift(deck)
@@ -2882,7 +2965,7 @@ class SurfTurn:
 def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
              arena=False, name=None, void=True, voidrise=None,
              voiddelay=None, dojo=None, surf=False, killbox=False,
-             latticearena=False):
+             latticearena=False, combat=False):
     os.makedirs(out_dir, exist_ok=True)
     if latticearena:
         lite = latticearena == "lite"
@@ -2911,11 +2994,13 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
                         + ("" if difficulty == 1 else f"_d{difficulty}"))
         course = Arena(seed, difficulty).build()
     else:
-        name = name or (f"strafe64_{seed}"
+        tag = "cb" if combat else ""
+        name = name or (f"strafe64{tag}_{seed}"
                         + ("" if difficulty == 1 else f"_d{difficulty}")
                         + ("" if length == 1 else f"_x{length}"))
         course = Course(seed, difficulty, length, void=void,
-                        voidrise=voidrise, voiddelay=voiddelay).build()
+                        voidrise=voidrise, voiddelay=voiddelay,
+                        combat=combat).build()
     bsp_path = os.path.join(out_dir, f"{name}.bsp")
     stats = BspWriter(course).write(bsp_path)
     check_bsp(bsp_path)
@@ -3007,6 +3092,11 @@ def main():
                     help="futuristic vertical melee arena: wall-jump columns, "
                          "a central spire and momentum portals for the "
                          "hack-and-slash / time-bind game")
+    ap.add_argument("--combat", action="store_true",
+                    help="combat-flow course: the speed->flow->spice arc laced "
+                         "with slice-gate enemies (apex gates + 2-3 enemy "
+                         "phrases at the spice beats); openers/fork/flow stay "
+                         "enemy-free as rest. Dev look, same as the base course")
     ap.add_argument("--surf", action="store_true",
                     help="generate the ★ core-loop surf line (steep banked "
                          "ramps you air-strafe along; finish laps back to start)")
@@ -3095,6 +3185,7 @@ def main():
         ap.error("a seed is required (or use --daily / --check / --selftest)")
     generate(args.seed, args.difficulty, length, args.out,
              args.map, args.pk3, arena=args.arena, killbox=args.killbox,
+             combat=args.combat,
              name=name, void=not args.no_void, voidrise=args.voidrise,
              voiddelay=args.voiddelay)
 

@@ -161,28 +161,37 @@ static void CG_LatticeVert( polyVert_t *v, const vec3_t xyz, float s, float t,
 	v->st[1] = t;
 }
 
+// Per-point ragged edge: break up the otherwise crisp top/bottom silhouette. The
+// offset is keyed on the point's RING INDEX (so the two segments that share a point
+// agree -> the broken edge stays continuous, not torn at every seam) plus a gentle
+// shimmer, and scales with the wall's height + the audio highs, so a tall loud wall
+// crackles more at the crest than a quiet thin line. half = the point's half-height;
+// returns the absolute top/bottom z-offsets from the trail point.
+static void CG_LatticeEdge( int ringIdx, float half, float *top, float *bot ) {
+	float		frac   = 0.45f + half / LAT_WALL_MAX_HALF;		// taller -> more ragged
+	float		ebreak = ( 2.5f + 5.0f * ( latHigh > 1.0f ? 1.0f : latHigh ) ) * frac;
+	unsigned	h      = latHash( (unsigned)ringIdx * 2654435761u, 0x9E37u );
+	float		shim   = 0.6f + 0.4f * sin( ringIdx * 0.7f + latRealMs * 0.004f );
+	float		nt     = ( ( h        & 255 ) / 255.0f ) * shim;
+	float		nb     = ( ( ( h >> 8 ) & 255 ) / 255.0f ) * shim;
+	*top = LAT_WALL_MID + half + ebreak * nt;
+	*bot = LAT_WALL_MID - half - ebreak * nb;
+}
+
 // One upright wall quad between points a (newer, segment index ia) and b (older,
-// index ib), tinted by col, faded by aMul. Used for the base wall and for the
-// offset chromatic-split ghosts.
+// index ib), tinted by col, faded by aMul. topA/botA/topB/botB are the (already
+// broken-up) z-offsets of each end's top and bottom edge from the trail point.
+// Used for the base wall and for the offset chromatic-split ghosts.
 static void CG_LatticeQuad( qhandle_t shader, const vec3_t a, const vec3_t b,
 		const byte *col, int ia, int ib, int n, float scroll, float aMul, float slow,
-		float riseA, float riseB ) {
+		float topA, float botA, float topB, float botB ) {
 	polyVert_t	verts[4];
 	vec3_t		at, ab, bt, bb;
 
-	// half-height = quiet base + music amplitude (riseA/riseB), capped at the player
-	// half-height. The top rises and the bottom drops by the SAME amount, so the wall
-	// fattens symmetrically around the pilot's centre -- a thin line when quiet, and at
-	// the loudest peak bottom = feet (floor), top = head (exactly player height).
-	float	halfA = LAT_WALL_MIN_HALF + riseA;
-	float	halfB = LAT_WALL_MIN_HALF + riseB;
-	if ( halfA > LAT_WALL_MAX_HALF ) halfA = LAT_WALL_MAX_HALF;
-	if ( halfB > LAT_WALL_MAX_HALF ) halfB = LAT_WALL_MAX_HALF;
-
-	VectorCopy( a, at ); at[2] += LAT_WALL_MID + halfA;
-	VectorCopy( a, ab ); ab[2] += LAT_WALL_MID - halfA;
-	VectorCopy( b, bt ); bt[2] += LAT_WALL_MID + halfB;
-	VectorCopy( b, bb ); bb[2] += LAT_WALL_MID - halfB;
+	VectorCopy( a, at ); at[2] += topA;
+	VectorCopy( a, ab ); ab[2] += botA;
+	VectorCopy( b, bt ); bt[2] += topB;
+	VectorCopy( b, bb ); bb[2] += botB;
 
 	CG_LatticeVert( &verts[0], at, 0, 0, col, ia, n, scroll, qtrue,  aMul, slow );
 	CG_LatticeVert( &verts[1], ab, 0, 1, col, ia, n, scroll, qfalse, aMul, slow );
@@ -197,6 +206,83 @@ static const byte latGlitchWhite[3] = { 255, 255, 255 };
 static const byte latGlitchCyan[3]  = {  80, 255, 255 };
 static const byte latGlitchRed[3]   = { 255,  40,  40 };
 static const byte latGlitchBlue[3]  = {  60,  90, 255 };
+
+// MICRO-GLITCH BLOCKS: small datamosh chips scattered over a wall segment, finer
+// than the segment-level tear above. Each candidate flickers in/out on the ~14 Hz
+// time bucket; how many fire (and how bright) rides the audio highs, so hats and
+// snares spray the wall with little corrupted squares — the "alive" detail layer.
+// Chips are pushed a hair toward the camera so they pop off the wall (no z-fight)
+// and read as floating data, not paint.
+#define LAT_BLK_CAND	5		// candidate chips considered per segment
+static void CG_LatticeBlocks( qhandle_t shader, const vec3_t a, const vec3_t b,
+		const vec3_t perp, const byte *col, float zc, float halfH,
+		unsigned key, unsigned tbucket, float glitch, float highs, float age ) {
+	vec3_t	segdir;
+	float	seglen, dense;
+	int		k, j;
+
+	VectorSubtract( b, a, segdir );
+	seglen = VectorNormalize( segdir );
+	if ( seglen < 1.0f || age <= 0.05f ) {
+		return;
+	}
+	// fraction of candidates that fire: sparse when quiet, spraying on loud highs
+	dense = 0.18f + 0.55f * highs;
+	if ( dense > 0.9f ) dense = 0.9f;
+
+	for ( k = 0 ; k < LAT_BLK_CAND ; k++ ) {
+		unsigned	h = latHash( key * 2246822519u + k * 2654435761u, tbucket );
+		float		t, zt, sz, tear, al;
+		const byte	*bc;
+		vec3_t		c, du, toCam;
+		polyVert_t	v[4];
+
+		if ( ( h & 1023 ) / 1023.0f > dense ) {
+			continue;					// this chip is dark this tick
+		}
+		t    = ( ( h >> 4 ) & 255 ) / 255.0f;			// position along the segment
+		zt   = ( ( h >> 12 ) & 255 ) / 255.0f;			// height within the band
+		sz   = 2.0f + ( ( h >> 20 ) & 7 );				// 2..9u — small
+		tear = ( (int)( ( h >> 6 ) & 15 ) - 8 ) * 0.5f * glitch;	// sideways jitter
+
+		VectorMA( a, t * seglen, segdir, c );
+		// cluster the chips toward the centre line (the stream core that flows from
+		// the player) — cube the [-1,1] height so most hug the centre and only a few
+		// reach the edges, instead of spreading evenly up the whole band.
+		{
+			float vt = zt * 2.0f - 1.0f;
+			vt = vt * vt * vt;
+			c[2] = zc + vt * halfH;
+		}
+		VectorMA( c, tear, perp, c );
+		// nudge toward the camera so the chip sits just proud of the wall
+		VectorSubtract( cg.refdef.vieworg, c, toCam );
+		VectorNormalizeFast( toCam );
+		VectorMA( c, 1.5f, toCam, c );
+
+		switch ( ( h >> 17 ) & 3 ) {		// corrupted channel flash
+		case 0:  bc = latGlitchWhite; break;
+		case 1:  bc = latGlitchCyan;  break;
+		case 2:  bc = latGlitchRed;   break;
+		default: bc = col;            break;
+		}
+		al = ( 0.55f + 0.45f * ( ( ( h >> 24 ) & 7 ) / 7.0f ) ) * age;
+
+		// four corners of the chip in the wall plane: c +/- du (along trail) +/- sz (up)
+		VectorScale( segdir, sz, du );
+		VectorSubtract( c, du, v[0].xyz ); v[0].xyz[2] -= sz; v[0].st[0]=0; v[0].st[1]=1;
+		VectorAdd( c, du, v[1].xyz );      v[1].xyz[2] -= sz; v[1].st[0]=1; v[1].st[1]=1;
+		VectorAdd( c, du, v[2].xyz );      v[2].xyz[2] += sz; v[2].st[0]=1; v[2].st[1]=0;
+		VectorSubtract( c, du, v[3].xyz ); v[3].xyz[2] += sz; v[3].st[0]=0; v[3].st[1]=0;
+		for ( j = 0 ; j < 4 ; j++ ) {
+			v[j].modulate[0] = bc[0];
+			v[j].modulate[1] = bc[1];
+			v[j].modulate[2] = bc[2];
+			v[j].modulate[3] = (byte)( al * 255.0f );
+		}
+		trap_R_AddPolyToScene( shader, 4, v );
+	}
+}
 
 static void CG_LatticeDraw( int client ) {
 	int			i, n, idx0, idx1, head;
@@ -236,7 +322,7 @@ static void CG_LatticeDraw( int client ) {
 		float		aMul = 1.0f;
 		qboolean	torn = qfalse;
 		float		split = 0.0f;
-		float		riseA, riseB;
+		float		riseA, riseB, halfA, halfB, topA, botA, topB, botB;
 
 		// idx0 = newer point, idx1 = older; walk back from the head
 		idx0 = ( latHead[client] - 1 - i + LAT_PTS * 2 ) % LAT_PTS;
@@ -244,10 +330,17 @@ static void CG_LatticeDraw( int client ) {
 		VectorCopy( latPts[client][idx0], a );
 		VectorCopy( latPts[client][idx1], b );
 
-		// wall-top rise = the amplitude frozen at each endpoint -> the crest
-		// interpolates into a continuous waveform along the trail
+		// half-height = quiet base + the amplitude frozen at each endpoint (the
+		// waveform crest), capped at the player half-height. Then break up the crisp
+		// top/bottom into a ragged, gently-shimmering edge (continuous across seams).
 		riseA = latAmp[client][idx0] * waveScale;
 		riseB = latAmp[client][idx1] * waveScale;
+		halfA = LAT_WALL_MIN_HALF + riseA;
+		halfB = LAT_WALL_MIN_HALF + riseB;
+		if ( halfA > LAT_WALL_MAX_HALF ) halfA = LAT_WALL_MAX_HALF;
+		if ( halfB > LAT_WALL_MAX_HALF ) halfB = LAT_WALL_MAX_HALF;
+		CG_LatticeEdge( idx0, halfA, &topA, &botA );
+		CG_LatticeEdge( idx1, halfB, &topB, &botB );
 
 		// lateral normal of this segment in the floor plane (the tear axis)
 		VectorSubtract( b, a, dir );
@@ -287,12 +380,21 @@ static void CG_LatticeDraw( int client ) {
 		if ( torn && split > 0 ) {
 			vec3_t ra, rb;
 			VectorMA( a,  split, perp, ra ); VectorMA( b,  split, perp, rb );
-			CG_LatticeQuad( shader, ra, rb, latGlitchRed, i, i + 1, n, scroll, aMul * 0.6f, latSlow, riseA, riseB );
+			CG_LatticeQuad( shader, ra, rb, latGlitchRed, i, i + 1, n, scroll, aMul * 0.6f, latSlow, topA, botA, topB, botB );
 			VectorMA( a, -split, perp, ra ); VectorMA( b, -split, perp, rb );
-			CG_LatticeQuad( shader, ra, rb, latGlitchBlue, i, i + 1, n, scroll, aMul * 0.6f, latSlow, riseA, riseB );
+			CG_LatticeQuad( shader, ra, rb, latGlitchBlue, i, i + 1, n, scroll, aMul * 0.6f, latSlow, topA, botA, topB, botB );
 		}
 
-		CG_LatticeQuad( shader, a, b, segCol, i, i + 1, n, scroll, aMul, latSlow, riseA, riseB );
+		CG_LatticeQuad( shader, a, b, segCol, i, i + 1, n, scroll, aMul, latSlow, topA, botA, topB, botB );
+
+		// micro-glitch chips: the fine "alive" detail, sprayed by the audio highs.
+		// Uses the (possibly torn) a/b so chips follow a glitched segment's shove.
+		if ( glitch > 0 ) {
+			float halfMid = 0.5f * ( halfA + halfB );
+			float age = 1.0f - ( i / (float)( n - 1 ) );
+			CG_LatticeBlocks( shader, a, b, perp, segCol, LAT_WALL_MID, halfMid,
+				idx0 * 2654435761u + client, tbucket, glitch, latHigh, age );
+		}
 	}
 
 	// the head index is reused by the dynamic lights below. NOTE: the billboarded
@@ -324,6 +426,49 @@ static void CG_LatticeDraw( int client ) {
 			lp[2] += 30.0f;
 			trap_R_AddLightToScene( lp, 45.0f + 55.0f * fade, lr, lg, lb );
 		}
+	}
+}
+
+/*
+================
+CG_LatticeTrailWall
+
+Draw a lattice-style vertical light-wall through an arbitrary trail of world
+points (NEWEST-FIRST in `pts`, `n` of them), tinted `col`, alpha scaled by
+`aMul`. Reuses the lattice quad + ragged-edge builders so the race GHOST wears
+the same speed-trail wall a pilot leaves — without the per-client ring buffer
+or the audio glitch/chip layer (kept clean as a replay overlay). The pulse
+scroll still rides the real clock so it shimmers even in bullet-time.
+================
+*/
+void CG_LatticeTrailWall( const vec3_t *pts, int n, const byte *col, float aMul ) {
+	qhandle_t	shader;
+	float		scroll;
+	int			i;
+
+	if ( n < 2 || !col ) {
+		return;
+	}
+	if ( n > LAT_TRAIL_SEGS + 1 ) {
+		n = LAT_TRAIL_SEGS + 1;
+	}
+	shader = cgs.media.latticeShader ? cgs.media.latticeShader : cgs.media.whiteShader;
+	scroll = latRealMs * 0.006f * ( 1.0f - 0.4f * latSlow ) * ( 1.0f + 0.6f * latMid );
+
+	for ( i = 0 ; i < n - 1 ; i++ ) {
+		vec3_t	a, b;
+		float	half, topA, botA, topB, botB;
+
+		VectorCopy( pts[i], a );
+		VectorCopy( pts[i + 1], b );
+		half = LAT_WALL_MIN_HALF + 14.0f;		// modest fixed wall (no audio amp to ride)
+		if ( half > LAT_WALL_MAX_HALF ) {
+			half = LAT_WALL_MAX_HALF;
+		}
+		CG_LatticeEdge( i,     half, &topA, &botA );
+		CG_LatticeEdge( i + 1, half, &topB, &botB );
+		CG_LatticeQuad( shader, a, b, col, i, i + 1, n, scroll, aMul, latSlow,
+			topA, botA, topB, botB );
 	}
 }
 

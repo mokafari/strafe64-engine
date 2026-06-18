@@ -59,6 +59,10 @@ float	pm_bhopBoostBase = 1.05f;		// speed multiplier on the first chained hop
 float	pm_bhopBoostPerHop = 0.01f;		// extra per consecutive hop...
 float	pm_bhopBoostMax = 1.10f;		// ...up to this cap
 
+// coyote time: a normal ground jump still fires for this long after walking
+// (not jumping) off a ledge, so running off an edge never eats the jump input
+int		pm_coyoteTimeMs = 300;			// 0 = off (vanilla: no late jump)  [TEST: widened from 80]
+
 // double jump / air dash (fresh jump press in mid-air)
 float	pm_airJumpVelocity = 300.0f;	// upward speed of the air jump (matches JUMP_VELOCITY)
 int		pm_airJumpMax = 1;				// air jumps allowed between groundings
@@ -67,6 +71,10 @@ float	pm_airDashSpeed = 150.0f;		// horizontal burst added on the air jump -> a 
 // stair jump (rejumping within the window after landing goes higher)
 int		pm_doubleJumpWindowMs = 400;
 float	pm_doubleJumpBoost = 75.0f;		// added to JUMP_VELOCITY
+
+// terminal velocity: hard cap on downward speed so long void drops stay
+// controllable and fall damage stays bounded (0 = uncapped, vanilla Quake)
+float	pm_terminalVelocity = 1200.0f;
 
 // crouch slide (ducking at speed nearly removes ground friction)
 float	pm_slideMinSpeed = 200.0f;		// need at least this much speed to slide (Apex/TF trigger)
@@ -1139,6 +1147,19 @@ static void PM_AirMove( void ) {
 	pm->ps->pm_flags &= ~PMF_SLIDING;	// leaving the ground ends the slide
 
 	PM_Friction();
+
+	// coyote time: just after walking off a ledge (STAT_GROUND_MS counts the
+	// airborne ms as a small negative), a normal ground jump still fires. On
+	// success PM_CheckJump sets PMF_JUMP_HELD, which makes the wall/air jump
+	// checks below bail out, so the press is never double-spent; we then park
+	// STAT_GROUND_MS out of range so a held jump can't re-fire while airborne.
+	if ( pm_coyoteTimeMs > 0
+		&& pm->ps->stats[STAT_GROUND_MS] < 0
+		&& pm->ps->stats[STAT_GROUND_MS] > -pm_coyoteTimeMs
+		&& PM_CheckJump() ) {
+		Com_Printf( "S64DBG coyote jump fired (airborne %ims)\n", -pm->ps->stats[STAT_GROUND_MS] );
+		pm->ps->stats[STAT_GROUND_MS] = -9000;	// coyote spent
+	}
 
 	// walls take priority over the air jump on a fresh press
 	if ( !PM_CheckWallJump() ) {
@@ -2271,12 +2292,13 @@ static void PM_Weapon( void ) {
 	}
 
 	// STRAFE 64: katana guard. Holding block (right-click) raises the blade.
-	// While up it deflects frontal projectiles and soaks frontal melee/blast
+	// While up it deflects frontal projectiles and PARRIES frontal melee/blast
 	// (resolved server-side); here it just sets the networked state and
-	// suppresses your own swing. Sword-only, and not while a swing is mid-flight.
+	// suppresses your own swing (the guard-up check below holds the blade).
+	// Sword-only. It engages the instant block is held — even during a swing's
+	// recovery cooldown — so you can defend right after attacking in a duel.
 	pm->ps->eFlags &= ~EF_BLOCKING;
-	if ( ( pm->cmd.buttons & BUTTON_BLOCK ) && pm->ps->weapon == WP_SWORD
-			&& pm->ps->weaponstate != WEAPON_FIRING && pm->ps->weaponTime <= 0 ) {
+	if ( ( pm->cmd.buttons & BUTTON_BLOCK ) && pm->ps->weapon == WP_SWORD ) {
 		pm->ps->eFlags |= EF_BLOCKING;
 	}
 
@@ -2586,6 +2608,10 @@ static void PM_UpdateMovementTimers( void ) {
 	}
 
 	if ( pml.walking ) {
+		// landed: drop any airborne/coyote countdown, then accumulate ground time
+		if ( pm->ps->stats[STAT_GROUND_MS] < 0 ) {
+			pm->ps->stats[STAT_GROUND_MS] = 0;
+		}
 		// accumulate grounded time; too long on the ground breaks the chain
 		pm->ps->stats[STAT_GROUND_MS] += realMsec;
 		if ( pm->ps->stats[STAT_GROUND_MS] > 999 ) {
@@ -2599,7 +2625,19 @@ static void PM_UpdateMovementTimers( void ) {
 		pm->ps->stats[STAT_AIRJUMP_COUNT] = 0;
 		pm->ps->stats[STAT_WALLRUN] = 0;
 	} else {
-		pm->ps->stats[STAT_GROUND_MS] = 0;
+		// airborne: STAT_GROUND_MS goes NEGATIVE to time the coyote window.
+		// On the frame we leave the ground, arm it only if we walked off a
+		// ledge (not rising out of a jump/air-jump); otherwise park it far out
+		// of range so jumping off never grants a free coyote jump.
+		if ( pm->ps->stats[STAT_GROUND_MS] >= 0 ) {
+			if ( pm->ps->velocity[2] < 100 ) {
+				pm->ps->stats[STAT_GROUND_MS] = -1;		// walked off: coyote armed
+			} else {
+				pm->ps->stats[STAT_GROUND_MS] = -9000;	// jumped off: no coyote
+			}
+		} else if ( pm->ps->stats[STAT_GROUND_MS] > -8000 ) {
+			pm->ps->stats[STAT_GROUND_MS] -= realMsec;	// count airborne time
+		}
 		// SURF pop-off: a steep slope you're touching but can't stand on
 		// (groundPlane && !walking) refunds the air jump every frame, so a jump
 		// press always launches you off the surface. Without this the surf
@@ -2818,6 +2856,15 @@ void PmoveSingle (pmove_t *pmove) {
 	} else {
 		// airborne
 		PM_AirMove();
+	}
+
+	// terminal velocity: cap downward speed after the frame's movement so long
+	// void drops stay controllable and landing/fall-damage stays bounded
+	if ( pm_terminalVelocity > 0
+		&& ( pm->ps->pm_type == PM_NORMAL || pm->ps->pm_type == PM_DEAD )
+		&& pm->ps->velocity[2] < -pm_terminalVelocity ) {
+		Com_Printf( "S64DBG terminal clamp %.0f -> -%.0f\n", pm->ps->velocity[2], pm_terminalVelocity );
+		pm->ps->velocity[2] = -pm_terminalVelocity;
 	}
 
 	PM_Animate();

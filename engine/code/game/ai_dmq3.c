@@ -1717,7 +1717,13 @@ void BotUpdateInventory(bot_state_t *bs) {
 	//armor
 	bs->inventory[INVENTORY_ARMOR] = bs->cur_ps.stats[STAT_ARMOR];
 	//weapons
-	bs->inventory[INVENTORY_GAUNTLET] = (bs->cur_ps.stats[STAT_WEAPONS] & (1 << WP_GAUNTLET)) != 0;
+	// STRAFE 64: the katana (WP_SWORD) is melee, but botlib's weapon config
+	// (botfiles/weapons.c) only defines weapons 1-10, so handing the AI weapon
+	// 11 spams "weapon number out of range" and a sword-only bot has no valid
+	// weapon to choose. Present the sword to the AI AS the gauntlet (the melee
+	// botlib already understands) — the bot then rushes + attacks in melee range
+	// and actually swings the sword it holds, with no out-of-range weapon number.
+	bs->inventory[INVENTORY_GAUNTLET] = (bs->cur_ps.stats[STAT_WEAPONS] & ((1 << WP_GAUNTLET) | (1 << WP_SWORD))) != 0;
 	bs->inventory[INVENTORY_SHOTGUN] = (bs->cur_ps.stats[STAT_WEAPONS] & (1 << WP_SHOTGUN)) != 0;
 	bs->inventory[INVENTORY_MACHINEGUN] = (bs->cur_ps.stats[STAT_WEAPONS] & (1 << WP_MACHINEGUN)) != 0;
 	bs->inventory[INVENTORY_GRENADELAUNCHER] = (bs->cur_ps.stats[STAT_WEAPONS] & (1 << WP_GRENADE_LAUNCHER)) != 0;

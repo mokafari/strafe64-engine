@@ -391,6 +391,13 @@ tuning (the shipped constants are well-tuned), the bhop-ceiling experiment, and
 the bullet-time response curve (incl. an `autoexec.cfg` freeze-floor inconsistency
 worth a decision).
 
+## Inspection-friendly defaults
+
+`engine_launch`/`engine_open` disable the **stand-still idle-burn** (`g_hotFloor`,
+on by default in the game: a grounded player moving < 120 u/s takes escalating
+burn damage after a 2 s "MOVE!" grace) — it would damage a subject held still for
+an audition/capture. Pass `hot_floor=true` to keep it for real-gameplay testing.
+
 ## "Is this my latest build?" — engine_doctor
 
 The single most common trap (across many sessions) is **silently testing a stale

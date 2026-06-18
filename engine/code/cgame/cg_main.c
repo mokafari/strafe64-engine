@@ -163,6 +163,8 @@ vmCvar_t	cg_latticeWave;		// 0-2: how hard the wall-top rides the music amplitud
 vmCvar_t	cg_ragdoll;				// 1: dead bodies ragdoll; 0: stock death animation
 vmCvar_t	cg_ragdollDamp;			// Verlet velocity retention per step (0..1)
 vmCvar_t	cg_ragdollIterations;	// constraint relaxation passes per frame
+vmCvar_t	cg_wallGrip;			// 1: procedural wall-grip body lean; 0: stock pose
+vmCvar_t	cg_wallGripScale;		// overall strength multiplier on the grip pose
 vmCvar_t	au_bass;			// music band envelopes (set by snd_codec_mod), read for reactivity
 vmCvar_t	au_mid;
 vmCvar_t	au_high;
@@ -264,6 +266,8 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },
 	{ &cg_ragdollDamp, "cg_ragdollDamp", "0.97", CVAR_ARCHIVE },
 	{ &cg_ragdollIterations, "cg_ragdollIterations", "6", CVAR_ARCHIVE },
+	{ &cg_wallGrip, "cg_wallGrip", "1", CVAR_ARCHIVE },
+	{ &cg_wallGripScale, "cg_wallGripScale", "1", CVAR_ARCHIVE },
 	{ &au_bass, "au_bass", "0", 0 },
 	{ &au_mid, "au_mid", "0", 0 },
 	{ &au_high, "au_high", "0", 0 },

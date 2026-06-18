@@ -131,19 +131,19 @@ def t_list(**_):
 
 
 def t_launch(mode="dedicated", map=None, fullscreen=False, bots=0, extra=None,
-             width=None, height=None):
+             width=None, height=None, hot_floor=False):
     global _session
     if _session is not None and _session.alive:
         raise EngineError("an engine is already running — engine_shutdown first")
     _session = EngineSession(mode=mode, map=map, fullscreen=bool(fullscreen),
                              width=width, height=height, bots=int(bots or 0),
-                             extra=list(extra or []))
+                             hot_floor=bool(hot_floor), extra=list(extra or []))
     _session.start()
     return t_status()
 
 
 def t_open(mode="dedicated", map=None, fullscreen=False, bots=0, extra=None,
-           name="default", width=None, height=None):
+           name="default", width=None, height=None, hot_floor=False):
     """Open a *persistent* engine that keeps running after this MCP process
     exits; reattach to it later from any process. `name` lets multiple sessions
     each run their own engine (isolated home + port)."""
@@ -157,7 +157,7 @@ def t_open(mode="dedicated", map=None, fullscreen=False, bots=0, extra=None,
     _current_name = name
     _session = EngineSession(mode=mode, map=map, fullscreen=bool(fullscreen),
                              width=width, height=height, bots=int(bots or 0),
-                             extra=list(extra or []),
+                             hot_floor=bool(hot_floor), extra=list(extra or []),
                              home=live_home(name), detached=True, name=name)
     _session.start()
     return t_status()
@@ -607,6 +607,8 @@ TOOLS = [
                 "bots": {"type": "integer", "default": 0, "description": "number of bots to add"},
                 "width": {"type": "integer", "default": 640, "description": "client window width (px); 0 = desktop res"},
                 "height": {"type": "integer", "default": 360, "description": "client window height (px); 0 = desktop res"},
+                "hot_floor": {"type": "boolean", "default": False,
+                              "description": "keep the stand-still idle-burn (g_hotFloor); default OFF so static auditions/captures aren't damaged"},
                 "extra": {"type": "array", "items": {"type": "string"},
                           "description": "extra engine +args, e.g. ['+set','g_gravity','800']"},
             },
@@ -636,6 +638,8 @@ TOOLS = [
                 "bots": {"type": "integer", "default": 0},
                 "width": {"type": "integer", "default": 640, "description": "client window width (px); 0 = desktop res"},
                 "height": {"type": "integer", "default": 360, "description": "client window height (px); 0 = desktop res"},
+                "hot_floor": {"type": "boolean", "default": False,
+                              "description": "keep the stand-still idle-burn (g_hotFloor); default OFF"},
                 "extra": {"type": "array", "items": {"type": "string"}},
                 "name": {"type": "string", "default": "default",
                          "description": "instance name — distinct engines run side by side"},
@@ -1307,7 +1311,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "seed": {"description": "course seed (int); omit for a random one"},
-                "kind": {"type": "string", "enum": ["course", "arena", "surf", "killbox"],
+                "kind": {"type": "string", "enum": ["course", "combat", "arena", "surf", "killbox"],
                          "default": "course"},
                 "difficulty": {"type": "integer", "enum": [0, 1, 2]},
                 "length": {"type": "integer", "description": "length multiplier (1 ≈ 6 sections)"},

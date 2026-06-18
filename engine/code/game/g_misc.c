@@ -337,6 +337,84 @@ void SP_shooter_grenade( gentity_t *ent ) {
 }
 
 
+/*QUAKED slice_drone (1 0.3 0.3) (-16 -16 -24) (16 16 32)
+A sliceable flow-gate enemy: it renders a model, takes sword damage, and a
+clean pass counts as a kill inside Weapon_Sword (via FL_SLICE_GATE) — so the
+existing momentum-feed fires: a forward kick along your line, refunded
+air-jumps/wall-jumps, the bhop streak kept alive. The kill is a waypoint ON the
+line, never a stop. Place at revector apexes (~1 jump before a corner) so the
+cut lands as you carve through.
+
+"health"  hits to kill (default 1 — a single pass).
+"wait"    seconds until it respawns for the next lap (default 3; -1 = stays dead).
+*/
+static void SliceDrone_Respawn( gentity_t *self ) {
+	self->health = self->count;
+	self->takedamage = qtrue;
+	self->r.contents = CONTENTS_CORPSE;
+	self->s.eFlags &= ~EF_NODRAW;
+	G_AddEvent( self, EV_ITEM_RESPAWN, 0 );
+	trap_LinkEntity( self );
+}
+
+static void SliceDrone_Die( gentity_t *self, gentity_t *inflictor,
+		gentity_t *attacker, int damage, int mod ) {
+	// The flow reward (forward kick / air refund / bhop keep-alive) is paid by
+	// Weapon_Sword, which counts this gate as a kill via FL_SLICE_GATE. Here we
+	// only clear the gate and (optionally) arm a respawn so a second lap has
+	// something to cut again.
+	self->takedamage = qfalse;
+	self->r.contents = 0;
+	self->s.eFlags |= EF_NODRAW;
+	trap_UnlinkEntity( self );
+	if ( self->wait >= 0 ) {
+		self->think = SliceDrone_Respawn;
+		self->nextthink = level.time + (int)( self->wait * 1000 );
+	} else {
+		self->think = G_FreeEntity;
+		self->nextthink = level.time + 100;
+	}
+}
+
+// Re-arm every slice gate on the map — called when a fresh race lap starts so
+// each run begins with a full set of gates to cut, regardless of each drone's
+// own `wait` respawn timer (gates can use wait=-1 "stay dead in-lap" and rely
+// on this for a clean reset between laps). Idempotent on already-live gates.
+void G_RearmSliceGates( void ) {
+	int			i;
+	gentity_t	*e;
+
+	for ( i = 0, e = g_entities; i < level.num_entities; i++, e++ ) {
+		if ( e->inuse && e->die == SliceDrone_Die ) {
+			SliceDrone_Respawn( e );
+		}
+	}
+}
+
+void SP_slice_drone( gentity_t *self ) {
+	self->s.modelindex = G_ModelIndex( "models/powerups/teleporter/tele_exit.md3" );
+	self->s.eType = ET_GENERAL;
+	G_SpawnInt( "health", "1", &self->health );
+	self->count = self->health;
+	G_SpawnFloat( "wait", "3", &self->wait );
+	self->flags |= FL_SLICE_GATE | FL_NO_KNOCKBACK;
+	VectorSet( self->r.mins, -16, -16, -24 );
+	VectorSet( self->r.maxs,  16,  16,  32 );
+	// CONTENTS_CORPSE: the sword (MASK_SHOT) cuts it, but a running player
+	// (MASK_PLAYERSOLID) passes straight through — you fly THROUGH the kill.
+	self->r.contents = CONTENTS_CORPSE;
+	self->takedamage = qtrue;
+	self->die = SliceDrone_Die;
+	self->s.pos.trType = TR_STATIONARY;
+	G_SetOrigin( self, self->s.origin );
+	// a slow spin so it reads as alive — a thing to cut, not scenery
+	self->s.apos.trType = TR_LINEAR;
+	self->s.apos.trTime = level.time;
+	VectorSet( self->s.apos.trDelta, 0, 120, 0 );
+	trap_LinkEntity( self );
+}
+
+
 #ifdef MISSIONPACK
 static void PortalDie (gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int mod) {
 	G_FreeEntity( self );

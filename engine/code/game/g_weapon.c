@@ -154,6 +154,8 @@ rewards staying in the movement chain. A lethal blow triggers dismemberment.
 #define	SWORD_VEL_ALIGN		500.0f	// speed at which the cut fully aligns to your flight path
 #define	SWORD_RANGE_BONUS	80		// extra reach at full speed so a fast fly-by still connects
 #define	SWORD_KILL_SPEED	140.0f	// forward kick per clean kill — routing THROUGH is the fast line
+#define	SWORD_CLEAVE_KICK	340.0f	// base launch (ups) flung along the cut when a swing catches
+									// 2+ bodies, or on a finisher — scaled by g_swordKnockback
 
 void Weapon_Sword( gentity_t *ent ) {
 	int			i, t;
@@ -259,8 +261,9 @@ void Weapon_Sword( gentity_t *ent ) {
 		}
 		hit[ numHit++ ] = tr.entityNum;
 
-		// blood spurt at the contact point (reuses the missile-hit flesh fx)
-		if ( traceEnt->client ) {
+		// blood spurt at the contact point (reuses the missile-hit flesh fx) —
+		// slice gates burst the same way so cutting one reads as a kill
+		if ( traceEnt->client || ( traceEnt->flags & FL_SLICE_GATE ) ) {
 			tent = G_TempEntity( tr.endpos, EV_MISSILE_HIT );
 			tent->s.otherEntityNum = traceEnt->s.number;
 			tent->s.eventParm = DirToByte( tr.plane.normal );
@@ -271,8 +274,10 @@ void Weapon_Sword( gentity_t *ent ) {
 		G_Damage( traceEnt, ent, ent, dir, tr.endpos,
 			damage, 0, MOD_SWORD );
 
-		// a clean kill on an enemy you flew through is a momentum waypoint
-		if ( traceEnt->client && traceEnt->health <= 0 ) {
+		// a clean kill on an enemy you flew through is a momentum waypoint —
+		// player or slice gate, either feeds the chain below
+		if ( traceEnt->health <= 0
+			&& ( traceEnt->client || ( traceEnt->flags & FL_SLICE_GATE ) ) ) {
 			kills++;
 		}
 	}
@@ -295,6 +300,35 @@ void Weapon_Sword( gentity_t *ent ) {
 		ent->client->ps.stats[STAT_GROUND_MS] = 0;
 		if ( ent->client->ps.stats[STAT_BHOP_STREAK] < 1 ) {
 			ent->client->ps.stats[STAT_BHOP_STREAK] = 1;
+		}
+	}
+
+	// --- CLEAVE LAUNCH: catching two or more bodies in one swing (or landing
+	// the heavy finisher) FLINGS them off the blade along the cut line. A
+	// multi-hit reads as a single heavy, dynamic blow — bodies launched the way
+	// you swept — instead of a quiet multi-tag. Scaled live by g_swordKnockback
+	// and by how many it caught; the finisher hits hardest. ---
+	if ( ( numHit >= 2 || finisher ) && g_swordKnockback.value > 0.0f ) {
+		vec3_t	launch;
+		float	kick = SWORD_CLEAVE_KICK * g_swordKnockback.value;
+
+		kick *= 1.0f + 0.20f * ( numHit - 1 );		// more bodies caught, bigger fling
+		if ( finisher ) {
+			kick *= 1.4f;							// the closer launches hardest
+		}
+
+		VectorCopy( axis, launch );					// fling along the slice/flight line
+		launch[2] = 0.0f;
+		if ( VectorNormalize( launch ) == 0.0f ) {
+			VectorCopy( viewDir, launch );
+		}
+		for ( i = 0 ; i < numHit ; i++ ) {
+			gentity_t *vic = &g_entities[ hit[i] ];
+			if ( !vic->client ) {
+				continue;
+			}
+			VectorMA( vic->client->ps.velocity, kick, launch, vic->client->ps.velocity );
+			vic->client->ps.velocity[2] += kick * 0.45f;	// loft them off their feet
 		}
 	}
 
