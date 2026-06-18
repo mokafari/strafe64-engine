@@ -776,6 +776,72 @@ static int CG_CalcViewValues( void ) {
 	VectorCopy( ps->origin, cg.refdef.vieworg );
 	VectorCopy( ps->viewangles, cg.refdefViewAngles );
 
+	// SUPERHOT slow-mo smoothing: our own first-person camera follows the
+	// PREDICTED player origin, which only advances when the integer-ms server
+	// clock ticks (timescale*1000 Hz) -> it stair-steps in deep slow-mo, while
+	// bots look smooth because they already get CG_SmoothEntityMotion (which
+	// explicitly skips our predicted body). Give the view the same treatment: a
+	// REAL-time low-pass that eases the camera toward the stepped predicted
+	// origin every render frame. It is driven by trap_Milliseconds (real ms), so
+	// it keeps converging even while cg.time is frozen between ticks -- that is
+	// what turns the staircase into a glide. Faded by timescale exactly like the
+	// bot smoother (full <=0.5x, off >=0.95x) so normal play is untouched, and
+	// snapped on a big jump (teleport/respawn). Toggle cg_slowmoSmooth 0; the
+	// real-time constant is cg_slowmoSmoothMs (default 55 -> smoothness vs lag).
+	{
+		char	enbuf[32], tsbuf[32], tcbuf[32];
+		float	ts, blend;
+
+		trap_Cvar_VariableStringBuffer( "cg_slowmoSmooth", enbuf, sizeof( enbuf ) );
+		trap_Cvar_VariableStringBuffer( "timescale", tsbuf, sizeof( tsbuf ) );
+		ts = atof( tsbuf );
+		if ( ts <= 0.0f ) {
+			ts = 1.0f;
+		}
+		blend = ( 0.95f - ts ) / 0.45f;		// fade with dilation depth
+
+		if ( enbuf[0] != '0' && blend > 0.0f && ps->pm_type != PM_INTERMISSION ) {
+			static vec3_t	smoothOrigin;
+			static int		smoothRealMs = 0;
+			static qboolean	seeded = qfalse;
+			int		nowReal = trap_Milliseconds();
+			float	tc, dtReal, k, dist;
+			vec3_t	raw, delta;
+
+			if ( blend > 1.0f ) {
+				blend = 1.0f;
+			}
+			trap_Cvar_VariableStringBuffer( "cg_slowmoSmoothMs", tcbuf, sizeof( tcbuf ) );
+			tc = atof( tcbuf );
+			if ( tc < 1.0f ) {
+				tc = 55.0f;		// default real-time constant (ms)
+			}
+
+			VectorCopy( cg.refdef.vieworg, raw );
+			VectorSubtract( raw, smoothOrigin, delta );
+			dist = VectorLength( delta );
+
+			if ( !seeded || dist > 120.0f ) {
+				VectorCopy( raw, smoothOrigin );	// seed / snap on teleport or respawn
+				seeded = qtrue;
+			} else {
+				dtReal = (float)( nowReal - smoothRealMs );
+				if ( dtReal < 0.0f ) {
+					dtReal = 0.0f;
+				}
+				k = dtReal / tc;			// real-time exponential follow
+				if ( k > 1.0f ) {
+					k = 1.0f;
+				}
+				VectorMA( smoothOrigin, k, delta, smoothOrigin );
+				cg.refdef.vieworg[0] = raw[0] + ( smoothOrigin[0] - raw[0] ) * blend;
+				cg.refdef.vieworg[1] = raw[1] + ( smoothOrigin[1] - raw[1] ) * blend;
+				cg.refdef.vieworg[2] = raw[2] + ( smoothOrigin[2] - raw[2] ) * blend;
+			}
+			smoothRealMs = nowReal;
+		}
+	}
+
 	if (cg_cameraOrbit.integer) {
 		if (cg.time > cg.nextOrbitTime) {
 			cg.nextOrbitTime = cg.time + cg_cameraOrbitDelay.integer;
