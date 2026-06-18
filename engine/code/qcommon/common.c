@@ -3015,13 +3015,28 @@ int Com_ModifyMsec( int msec ) {
 	if ( com_fixedtime->integer ) {
 		msec = com_fixedtime->integer;
 	} else if ( com_timescale->value ) {
-		msec *= com_timescale->value;
+		// The world clock is integer milliseconds, but at low timescale the
+		// scaled per-frame delta is a fraction of a millisecond. Truncating it
+		// (and the old <1 -> 1 floor) quantised cg.time onto a coarse, frame-
+		// rate-dependent grid, so the view stair-stepped = choppy slow-mo.
+		// Carry the lost fraction forward so the average rate stays exact and
+		// the integer steps distribute evenly (0/1 ms) instead of snapping to
+		// a hard 1 ms floor every frame. Lockstep is preserved: this is the one
+		// shared source feeding both SV_Frame and the client clock.
+		static float	tsRemainder = 0.0f;
+		float			scaled;
+
+		scaled = msec * com_timescale->value + tsRemainder;
+		msec = (int)scaled;
+		tsRemainder = scaled - msec;
 	} else if (com_cameraMode->integer) {
 		msec *= com_timescale->value;
 	}
-	
-	// don't let it scale below 1 msec
-	if ( msec < 1 && com_timescale->value) {
+
+	// don't let a non-scaled frame stall forever; scaled frames may legitimately
+	// be 0 ms (their time is carried in tsRemainder), so only floor when running
+	// at or above real time.
+	if ( msec < 1 && com_timescale->value >= 1.0f ) {
 		msec = 1;
 	}
 

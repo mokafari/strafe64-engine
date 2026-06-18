@@ -652,6 +652,21 @@ void CL_CreateNewCommands( void ) {
 	old_com_frameTime = com_frameTime;
 
 
+	// In deep slow-mo the world clock (cl.serverTime) can advance by less than
+	// a millisecond per rendered frame, so at high fps many frames share the
+	// same integer serverTime. Bumping cl.cmdNumber for each of them floods the
+	// fixed CMD_BACKUP-deep command ring with zero-progress duplicates that the
+	// server discards (it skips usercmds whose serverTime hasn't advanced). The
+	// ring then spans almost no serverTime, so the count-based "Connection
+	// Interrupted" detector trips even though no input is lost. Only emit a new
+	// command once the server clock has actually ticked, so the ring keeps
+	// spanning real game-time. Mouse/keyboard input keeps accumulating into
+	// cl.viewangles meanwhile, so the next command still carries it in full.
+	if ( cl.cmdNumber > 0
+		&& cl.serverTime == cl.cmds[ cl.cmdNumber & CMD_MASK ].serverTime ) {
+		return;
+	}
+
 	// generate a command for this frame
 	cl.cmdNumber++;
 	cmdNum = cl.cmdNumber & CMD_MASK;
