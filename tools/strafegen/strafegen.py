@@ -140,19 +140,9 @@ textures/strafe64/wall
 		map textures/strafe64/d_wall.tga
 		rgbGen exactVertex
 	}
-	// section-tinted energy conduits drifting up the walls — additive,
-	// so only the faint lines glow; rgbGen exactVertex keeps the colour.
-	// tcMod stretch on the bass envelope (au_bass) makes the conduits
-	// pulse-breathe on the kick — the walls bounce in time with the music
-	// without touching geometry (texcoord only, so section colour and brush
-	// seams are untouched). See snd_codec_mod.c / the audio genfuncs.
-	{
-		map textures/strafe64/accent.tga
-		blendFunc GL_ONE GL_ONE
-		rgbGen exactVertex
-		tcMod scroll 0 0.04
-		tcMod stretch bass 1.0 0.35 0 0
-	}
+	// CLASSIC SOURCE LOOK: the audio-reactive scrolling/bass-pulsing accent
+	// conduit stage was removed — it read as ugly and busy. Walls are now a
+	// clean Hammer dev-grid (d_wall.tga * vertex colour), nothing animated.
 }
 textures/strafe64/sky
 {
@@ -504,16 +494,24 @@ def _build_synthsky(n=256):
 
         return (_clamp8(c[0]), _clamp8(c[1]), _clamp8(c[2]))
 
-    # right-handed orthonormal basis per face: dir = F + sx*R + sy*U, with sx
-    # left->right [-1,1] and sy bottom->top. All sides share U=+z so the horizon
-    # ring is level and seamless across rt/lf/ft/bk.
+    # Per-face basis: dir = F + sx*R + sy*U, with sx left->right [-1,1] and sy
+    # bottom->top [-1,1] (the loop below sets sy=+1 at the image's TOP row). F is
+    # the face's world normal, R the world dir of image-right, U of image-top.
+    #
+    # These MUST match how ioquake3's tr_sky.c maps each named image onto a cube
+    # side, or the sky lands on the wrong faces and shears as you turn (the sun
+    # ends up 90 deg off, "doesn't follow the mouse"). The engine convention is
+    # suf[]={rt,bk,lf,ft,up,dn} drawn under sky_texorder={0,2,1,3,4,5} via
+    # st_to_vec, which resolves to: rt=+X, lf=-X, bk=+Y, ft=-Y, up=+Z, dn=-Z,
+    # with the right/top axes below. All four sides still share U=+z, so the
+    # horizon ring stays level and seamless. (Q3 coords: +x fwd, +y left, +z up.)
     faces = {
-        "rt": ((0, -1, 0), (1, 0, 0), (0, 0, 1)),
-        "lf": ((0, 1, 0), (-1, 0, 0), (0, 0, 1)),
-        "ft": ((1, 0, 0), (0, 1, 0), (0, 0, 1)),
-        "bk": ((-1, 0, 0), (0, -1, 0), (0, 0, 1)),
-        "up": ((0, 0, 1), (1, 0, 0), (0, 1, 0)),
-        "dn": ((0, 0, -1), (1, 0, 0), (0, -1, 0)),
+        "rt": ((1, 0, 0),  (0, -1, 0), (0, 0, 1)),   # +X  right=-Y  top=+Z
+        "lf": ((-1, 0, 0), (0, 1, 0),  (0, 0, 1)),   # -X  right=+Y  top=+Z
+        "bk": ((0, 1, 0),  (1, 0, 0),  (0, 0, 1)),   # +Y  right=+X  top=+Z
+        "ft": ((0, -1, 0), (-1, 0, 0), (0, 0, 1)),   # -Y  right=-X  top=+Z
+        "up": ((0, 0, 1),  (0, -1, 0), (-1, 0, 0)),  # +Z  right=-Y  top=-X
+        "dn": ((0, 0, -1), (0, -1, 0), (1, 0, 0)),   # -Z  right=-Y  top=+X
     }
     out = {}
     for side, (F, R, U) in faces.items():
@@ -544,6 +542,7 @@ def _build_synthsky(n=256):
 SRC_ORANGE = (222, 138, 70)    # dev_measuregeneric01b orange — bulk floors/decks
 SRC_GREY   = (152, 152, 158)   # dev_measuregeneric01  grey   — bulk walls/pillars
 SRC_TRIM   = (240, 182, 120)   # lighter orange — ledges / mantle edges
+SRC_BLUE   = (64, 104, 196)    # dev_measuregeneric blue — deep-blue velodrome ring
 
 # structural sections -> Source dev base (geometry you run on / along)
 PAL_GAPS   = SRC_ORANGE
@@ -560,7 +559,7 @@ PAL_CHECK  = (120, 240, 255)   # checkpoint pads — bright cyan
 
 # arena palettes
 PAL_FLOORA = SRC_ORANGE
-PAL_BANK   = SRC_ORANGE         # surf banks — floor you ride
+PAL_BANK   = SRC_BLUE           # velodrome ring — deep-blue dev grid (gallery look)
 PAL_WALLA  = SRC_GREY
 PAL_CENTER = SRC_ORANGE
 PAL_PILLAR = SRC_GREY
@@ -847,6 +846,12 @@ class Course:
         self.pos = [0.0, 0.0, 0.0]
         self.dir = (0, 1)
         self.lowest = 0.0
+        # CARRIED SPEED: one accumulating momentum value threaded through every
+        # section, so the course is built for a run that gets FASTER the further
+        # it goes (gaps/spacing scale to it) instead of each section cold-starting
+        # at run speed and capping low — the bhop chain compounds end-to-end.
+        self.speed = RUN_SPEED
+        self.SPEED_MAX = 720.0   # ceiling the generator sizes gaps for
 
     # ---- cursor helpers ------------------------------------------------
     def right(self):
@@ -987,8 +992,10 @@ class Course:
     def sec_gaps(self, n=None):
         n = n or self.rng.randint(5, 7)
         self.sections.append(("strafe gaps", {"count": n}))
-        speed = RUN_SPEED + 20.0  # cold entry, slight bhop carry
+        speed = max(self.speed, RUN_SPEED + 20.0)  # carry the run's momentum in
         for i in range(n):
+            # gaps stay clearable from a cold entry (don't REQUIRE carried speed,
+            # or a slowed run dead-ends here); a fast run clears them trivially
             g = min((150 + 14 * i) * self.scale,
                     SAFETY * jump_range(speed) - 8)
             self.gap(g, speed, dz=-8)
@@ -998,16 +1005,20 @@ class Course:
             self.platform(size * 2, size, PAL_GAPS)
             if self.combat and i % 2 == 1:   # a gate over every other landing:
                 self.place_drone(fwd=-size, up=72.0)   # cut it as you fly the pad
-            speed = min(speed + 18, 430)  # chained hops build speed
+            speed = min(speed + 18, self.SPEED_MAX)  # chained hops build speed
+        self.speed = speed  # carry it out to the next section
 
     def sec_bhop(self, n=None):
         n = n or self.rng.randint(8, 11)
         self.sections.append(("bhop lane", {"count": n}))
         for i in range(n):
+            # gaps stay sized for RUN_SPEED so even a dead chain clears them,
+            # but a clean chain physically COMPOUNDS speed — carried out below
             g = min((100 + 4 * i) * self.scale, SAFETY * jump_range(RUN_SPEED))
             self.gap(g, RUN_SPEED)  # solvable even with a dead chain
             self.advance(0, side=self.rng.uniform(-40, 40))
             self.platform(112, 60, PAL_BHOP, thick=16)
+        self.speed = min(self.speed + n * 9.0, self.SPEED_MAX)  # the chain builds speed
 
     def sec_slide(self):
         self.sections.append(("slide ramp", {}))
@@ -1029,10 +1040,11 @@ class Course:
         self.advance(run, dz=-h)
         # slide-jump across the big gap; ~70% of the potential energy of
         # the drop survives friction, then pm_slideJumpBoost kicks
-        v_exit = math.sqrt(RUN_SPEED ** 2 + 1.4 * GRAVITY * h) * SLIDE_JUMP
+        v_exit = math.sqrt(self.speed ** 2 + 1.4 * GRAVITY * h) * SLIDE_JUMP
         g = min(260 * self.scale, SAFETY * jump_range(v_exit))
         self.gap(g, v_exit, dz=-48)
         self.platform(288, 128, PAL_SLIDE)
+        self.speed = min(v_exit, self.SPEED_MAX)  # the slide GENERATES speed — carry it
 
     def sec_walls(self):
         self.sections.append(("walljump hall", {}))
@@ -1152,7 +1164,7 @@ class Course:
         n = n or self.rng.randint(3, 5)
         self.sections.append(("hazard pits", {"pits": n}))
         half_w = 168.0
-        speed = RUN_SPEED + 60.0
+        speed = max(self.speed, RUN_SPEED + 60.0)  # carry momentum in
         self.platform(224, half_w, PAL_BHOP)       # long take-off pad: room to line up
         for i in range(n):
             # comfortable gaps, slightly downhill (like sec_gaps, which bots
@@ -1186,7 +1198,8 @@ class Course:
             self.solids.append(make_box(smins, smaxs, tex=TEX_FLOOR, palette=PAL_DANGER))
             self.gap(pit, speed, dz=dz)
             self.platform(224, half_w, PAL_BHOP)
-            speed = min(speed + 8, 430)
+            speed = min(speed + 8, self.SPEED_MAX)
+        self.speed = speed  # carry it out
 
     def sec_movers(self, n=None):
         """Clustertruck moving platforms. The through-line is static stepping
@@ -1201,7 +1214,7 @@ class Course:
         half_w = 144.0
         stone_half = 96.0
         amp = 40.0
-        speed = RUN_SPEED + 20.0
+        speed = max(self.speed, RUN_SPEED + 20.0)  # carry momentum in
         self.platform(176, half_w, PAL_PILLAR)
         d, r = self.dir, self.right()
         for i in range(n):
@@ -1239,7 +1252,7 @@ class Course:
         off = 280.0                              # lane centre-to-centre
         K, L, G = 4, 176.0, 170.0
         span = K * (G + L)
-        speed = RUN_SPEED + 50.0
+        speed = max(self.speed, RUN_SPEED + 50.0)  # carry momentum into the lanes
 
         def lane(sign, pal, lane_half, reward):
             self.pos = [base[0] + r[0] * sign * off,
@@ -1333,7 +1346,7 @@ class Course:
     def maybe_turn(self):
         if self.rng.random() < 0.45:
             lr = self.rng.choice((-1, 1))
-            self.gap(140 * self.scale, RUN_SPEED + 30, dz=-8)
+            self.gap(140 * self.scale, max(self.speed, RUN_SPEED + 30), dz=-8)
             d = self.dir
             half = 176.0                 # wider pad: room to carry a fast line
             cx = self.pos[0] + d[0] * half
@@ -1402,11 +1415,17 @@ class Course:
         flow = [self.sec_slide, self.sec_walls, self.sec_slalom]
         spice = [self.sec_hurdles, self.sec_movers, self.sec_hazard]
         # length > 1 builds a tower: each deck runs the arc, ending in a lift up
+        # COMBAT runs WAY longer: repeat the flow+spice "movement" several times
+        # (each its own teach→test cycle with enemy phrases) before the tower, so
+        # a combat lap is one long sustained line, not a quick sprint.
+        movements = 5 if self.combat else 1
         for deck in range(self.length):
             o = openers[:]
             self.rng.shuffle(o)
-            deck_secs = (o + [self.sec_fork] + self.rng.sample(flow, 2)
-                         + self.rng.sample(spice, 2) + [self.sec_tower])
+            mid = []
+            for _ in range(movements):
+                mid += list(self.rng.sample(flow, 2)) + list(self.rng.sample(spice, 2))
+            deck_secs = o + [self.sec_fork] + mid + [self.sec_tower]
             for sec in deck_secs:
                 sec()
                 self.maybe_turn()
@@ -1608,7 +1627,7 @@ class Arena:
             b0, b1 = self._pt(R2, i), self._pt(R2, i + 1)
             self.solids.append(make_prism(
                 [a0, a1, b1, b0], -48, [0.0, 0.0, BANK_H, BANK_H],
-                palette=PAL_BANK))
+                palette=PAL_BANK))   # deep-blue standard Source dev surface
             w0, w1 = self._pt(R2 + WALL_T, i), self._pt(R2 + WALL_T, i + 1)
             self.solids.append(make_prism(
                 [b0, b1, w1, w0], -48, [WALL_H] * 4,
@@ -1655,41 +1674,10 @@ class Arena:
             self.place("item_armor_shard", Rm * math.cos(a),
                        Rm * math.sin(a), bank_z(Rm) + 24)
 
-        # velodrome lap race: a start/finish line across the lane wires the
-        # arena into the game's race layer (HUD timer + ghosts). Bots ignore
-        # trigger_race_*, so deathmatch is untouched. The boost gates flow
-        # counter-clockwise, so a lap runs CCW: cross start, ride ~340 deg,
-        # cross finish (one seam behind start), and start re-stamps for the
-        # next lap. Pick a seam clear of boost-gate bands for a clean line.
-        gate_segs = {(g0 + g * self.SEGS // gates) % self.SEGS
-                     for g in range(gates)}
-        s_seam = next(
-            (s for s in range(self.SEGS)
-             if s not in gate_segs and (s - 1) % self.SEGS not in gate_segs),
-            0)
-        self.sections.append(("lap line", {"seam": s_seam}))
-
-        def lap_line(seam, classname, palette):
-            th = seam * seg_a
-
-            def lp(r, dth):
-                return (r * math.cos(th + dth), r * math.sin(th + dth))
-
-            hw = seg_a * 0.10
-            za, zb = bank_z(Ra), bank_z(Rb)
-            self.solids.append(make_prism(   # painted stripe on the bank
-                [lp(Ra, -hw), lp(Ra, hw), lp(Rb, hw), lp(Rb, -hw)],
-                -48, [za + 2, za + 2, zb + 2, zb + 2], palette=palette))
-            tw = seg_a * 0.16
-            tb = make_prism(                 # full-lane-height race trigger
-                [lp(R1, -tw), lp(R1, tw), lp(R2, tw), lp(R2, -tw)],
-                -48, [bank_z(R1) + 220, bank_z(R1) + 220,
-                      bank_z(R2) + 220, bank_z(R2) + 220],
-                tex=TEX_TRIGGER, contents=CONTENTS_TRIGGER)
-            self.triggers.append((tb, {"classname": classname}))
-
-        lap_line(s_seam, "trigger_race_start", PAL_START)
-        lap_line((s_seam - 1) % self.SEGS, "trigger_race_finish", PAL_FINISH)
+        # pure arena combat: NO race layer here. The velodrome lap timer and
+        # ghost (trigger_race_start / trigger_race_finish + painted stripes)
+        # are intentionally omitted — this is a deathmatch pit, not a time
+        # trial. The bank is still ridden for speed, just untimed.
 
         # center structure, seeded: tiered tower or a quad crater.
         # rises are tuned to the movement mod: 56 single-jumpable,
@@ -1790,11 +1778,33 @@ class Arena:
             self.place("target_position", px * 0.30, py * 0.30, apex_z,
                        targetname=f"padtarget_{k}")
 
+        # aerial platforms: floating stepping-stones for bhop chains, air
+        # revectoring and aerial sword kills. A weaving spiral between the
+        # pillars and the center — alternating radius (in/out) AND height
+        # (up/down) forces you to air-strafe a new direction from slab to slab
+        # instead of a flat hop. Launch off a jump pad / kicker, then chain.
+        n_plat = 8
+        self.sections.append(("sky platforms", {"count": n_plat}))
+        plat_r = 0.46 * R1
+        pa_off = rng.uniform(0, 2 * math.pi)
+        for k in range(n_plat):
+            a = pa_off + k * 2 * math.pi / n_plat
+            rad = plat_r * (0.82 if k % 2 else 1.12)            # weave in / out
+            px, py = rad * math.cos(a), rad * math.sin(a)
+            pz = 150.0 + 20.0 * k + (104.0 if k % 2 else 0.0)   # spiral + zigzag
+            ph = rng.choice((80, 96, 112))
+            self.solids.append(make_box((px - ph, py - ph, pz),
+                                        (px + ph, py + ph, pz + 16),
+                                        palette=PAL_LEDGE))
+            if k % 2 == 0:    # a shard on every other slab baits the chain
+                self.place("item_armor_shard", px, py, pz + 40)
+
         # prize ledges at the top of the bank: ride the velodrome to shop.
-        # seeded axis: north/south some seeds, east/west others
-        self.sections.append(("bank ledges", {"items": "rail, mega"}))
+        # seeded axis: north/south some seeds, east/west others. SWORD ARENA:
+        # both ledges are survival rewards (heavy armor + mega), no guns.
+        self.sections.append(("bank ledges", {"items": "armor, mega"}))
         swap = rng.random() < 0.5
-        for s, item in ((1, "weapon_railgun"), (-1, "item_health_mega")):
+        for s, item in ((1, "item_armor_body"), (-1, "item_health_mega")):
             lo, hi = sorted((s * (R2 - 192), s * (R2 - 16)))
             if swap:
                 mins, maxs = (lo, -112), (hi, 112)
@@ -1806,28 +1816,22 @@ class Arena:
                 (mins[0], mins[1], BANK_H - 128),
                 (maxs[0], maxs[1], BANK_H), palette=PAL_LEDGE))
             self.place(item, ix, iy, BANK_H + 24)
-        self.place("ammo_slugs", (R2 - 104) if swap else 88,
-                   88 if swap else (R2 - 104), BANK_H + 24)
 
-        # floor items
+        # floor items — SWORD ARENA: no guns or ammo, only survival pickups, so
+        # the fight stays a pure blade duel. Health/armor reward working the
+        # velodrome and the platforms instead of camping a weapon spawn.
         self.sections.append(("items", {}))
 
         def ring(classname, r, k8, z=24.0):
             a = k8 * math.pi / 4
             self.place(classname, r * math.cos(a), r * math.sin(a), z)
 
-        ring("weapon_rocketlauncher", 0.80 * R1, 0)
-        ring("weapon_rocketlauncher", 0.80 * R1, 4)
-        ring("ammo_rockets", 0.80 * R1 - 96, 0)
-        ring("ammo_rockets", 0.80 * R1 - 96, 4)
-        ring("weapon_lightning", 0.80 * R1, 2)
-        ring("ammo_lightning", 0.80 * R1 - 96, 2)
-        ring("weapon_plasmagun", 0.80 * R1, 6)
-        ring("ammo_cells", 0.80 * R1 - 96, 6)
-        ring("weapon_shotgun", 0.45 * R1, 1)
-        ring("ammo_shells", 0.45 * R1 - 80, 1)
-        ring("weapon_shotgun", 0.45 * R1, 5)
-        ring("ammo_shells", 0.45 * R1 - 80, 5)
+        ring("item_health_large", 0.80 * R1, 0)
+        ring("item_health_large", 0.80 * R1, 4)
+        ring("item_armor_combat", 0.80 * R1, 2)
+        ring("item_armor_combat", 0.80 * R1, 6)
+        ring("item_health_large", 0.45 * R1, 1)
+        ring("item_health_large", 0.45 * R1, 5)
         ring("item_armor_combat", 0.80 * R1, 3)
         ring("item_armor_combat", 0.80 * R1, 7)
         for k in range(4):
