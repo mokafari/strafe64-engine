@@ -160,6 +160,7 @@ vmCvar_t	cg_bulletTrailWidth;
 vmCvar_t	cg_latticeGlitch;
 vmCvar_t	cg_latticeAudio;	// 0-2: how hard the lattice pulses to the music bands
 vmCvar_t	cg_latticeWave;		// 0-2: how hard the wall-top rides the music amplitude (waveform drawn as you run)
+vmCvar_t	cg_arenaTrails;		// draw the audio-reactive speed-trails for every player/bot in ANY mode (visual, no damage)
 vmCvar_t	cg_ragdoll;				// 1: dead bodies ragdoll; 0: stock death animation
 vmCvar_t	cg_ragdollDamp;			// Verlet velocity retention per step (0..1)
 vmCvar_t	cg_ragdollIterations;	// constraint relaxation passes per frame
@@ -263,6 +264,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_latticeGlitch, "cg_latticeGlitch", "0.35", CVAR_ARCHIVE },
 	{ &cg_latticeAudio, "cg_latticeAudio", "1", CVAR_ARCHIVE },
 	{ &cg_latticeWave, "cg_latticeWave", "1", CVAR_ARCHIVE },
+	{ &cg_arenaTrails, "cg_arenaTrails", "0", CVAR_ARCHIVE },
 	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },
 	{ &cg_ragdollDamp, "cg_ragdollDamp", "0.97", CVAR_ARCHIVE },
 	{ &cg_ragdollIterations, "cg_ragdollIterations", "6", CVAR_ARCHIVE },
@@ -1253,6 +1255,39 @@ CG_StartMusic
 void CG_StartMusic( void ) {
 	char	*s;
 	char	parm1[MAX_QPATH], parm2[MAX_QPATH];
+	char	shuf[16];
+
+	// Randomized drum & bass. The generated maps point CS_MUSIC at tracker
+	// modules (.xm) that aren't shipped, so honoring it just gives silence.
+	// Instead pick a random DnB mp3 from baseoa/music/ on every level load,
+	// seeded off trap_Milliseconds (real uptime at load) so it varies run to
+	// run, and loop it. `set cg_musicShuffle 0` restores the map's CS_MUSIC.
+	static const char *dnb[] = {
+		"music/dnb_halogenix_ivory.mp3",
+		"music/liquid_alix-perez_forsaken.mp3",
+		"music/liquid_calibre_even-if.mp3",
+		"music/liquid_calibre_rose.mp3",
+		"music/liquid_lenzman_paper-faces.mp3",
+		"music/liquid_logistics_hayling.mp3",
+		"music/liquid_lsb_walking-blues.mp3",
+		"music/liquid_pola-bryson_moments-notice.mp3",
+		"music/liquid_spectrasoul_away-with-me.mp3",
+		"music/liquid_technimatic_true-believer.mp3",
+	};
+
+	trap_Cvar_VariableStringBuffer( "cg_musicShuffle", shuf, sizeof( shuf ) );
+
+	if ( shuf[0] != '0' ) {
+		int	n = ARRAY_LEN( dnb );
+		int	idx = ( trap_Milliseconds() >> 3 ) % n;
+
+		if ( idx < 0 ) {
+			idx = -idx;
+		}
+		CG_Printf( "^5music:^7 %s\n", dnb[idx] );
+		trap_S_StartBackgroundTrack( dnb[idx], dnb[idx] );	// loop the track
+		return;
+	}
 
 	// start the background music
 	s = (char *)CG_ConfigString( CS_MUSIC );

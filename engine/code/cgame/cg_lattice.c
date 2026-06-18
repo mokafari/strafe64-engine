@@ -32,6 +32,15 @@
 #define LAT_ALPHA			0.82f	// head opacity (wall presence)
 #define LAT_WAVE_HALF		26.0f	// amplitude->half-height gain (clamped at MAX_HALF), * cg_latticeWave
 
+// ARENA velocity ribbon (cg_arenaTrails, NOT full LATTICE mode): a SHORT trail
+// that DISSOLVES on a real-time TTL, so its visible length tracks how far you
+// moved in the last few hundred ms = your speed. Stop and it fades to nothing.
+#define LAT_ARENA_SEGS		48		// max tail; the TTL below is the real limiter
+#define LAT_ARENA_TTL		360.0f	// base game-ms a point lives before it dissolves
+#define LAT_ARENA_STRETCH	3.2f	// slow-mo stretch: trail lives (1 + STRETCH*latSlow)x
+									// longer in bullet-time -> it lengthens as time dilates
+#define LAT_ARENA_HALF		9.0f	// band base half-height; pumps out from the player on bass
+
 // Distinct per-pilot wall colours so three carving trails read apart at speed,
 // regardless of the players' chosen model colours. Indexed by client number.
 // Warm/high-contrast hues first: most arenas lean cool (blue banks, grey floor),
@@ -57,6 +66,7 @@ static unsigned latHash( unsigned a, unsigned b ) {
 
 static vec3_t	latPts[MAX_CLIENTS][LAT_PTS];
 static float	latAmp[MAX_CLIENTS][LAT_PTS];	// music amplitude captured AS each point was laid -> the wall-top waveform
+static int		latTime[MAX_CLIENTS][LAT_PTS];	// real-ms each point was laid -> arena-trail TTL dissolve
 static int		latCount[MAX_CLIENTS];
 static int		latHead[MAX_CLIENTS];
 static int		latLastSample;
@@ -71,6 +81,7 @@ static int		latRealMs;
 static int		latPrevReal;
 static int		latPrevCg;
 static float	latSlow;		// 0 = normal speed, ->1 = near-frozen bullet-time
+static qboolean	latArenaDraw;	// current CG_LatticeDraw pass is the arena ribbon (saturated, centred pump)
 
 // Music band envelopes (au_* cvars, set by the sound codec), already scaled by the
 // cg_latticeAudio master. The lattice IS the third player, so it pulses to the track:
@@ -118,6 +129,11 @@ static void CG_LatticePush( int client, const vec3_t origin ) {
 	// freeze the music amplitude into this point so the wall remembers how loud
 	// the track was where the pilot ran — the crest traces the waveform in space
 	latAmp[client][latHead[client]] = latWaveNow;
+	// stamp on cg.time (the SAME clock the sampling cadence uses) so the arena
+	// dissolve is consistent with point creation: in bullet-time both slow
+	// together, so the trail accumulates and lingers instead of expiring between
+	// samples. Length then = game-distance over the TTL window = your speed.
+	latTime[client][latHead[client]] = cg.time;
 	latHead[client] = ( latHead[client] + 1 ) % LAT_PTS;
 	if ( latCount[client] < LAT_PTS ) {
 		latCount[client]++;
@@ -147,9 +163,12 @@ static void CG_LatticeVert( polyVert_t *v, const vec3_t xyz, float s, float t,
 	float	hi    = 1.00f + 0.60f * slow + 0.75f * latBass;	// kick brightens, stays coloured
 	float	pulse = lo + ( hi - lo ) * 0.5f * ( 1.0f + sin( idx * 0.45f - scroll ) );
 	float	hot   = ( idx < 5 ) ? ( 1.0f - idx * 0.2f ) : 0.0f;	// molten white leading edge
-	float	vmul  = top ? 0.5f : 1.0f;							// energy is solid at the floor, fades up
+	// arena ribbon: an EVEN bar centred on the player (no floor-heavy gradient)
+	// and far LESS white blowout, so the neon stays saturated and rich instead of
+	// washing to white — vivid but not tacky.
+	float	vmul  = latArenaDraw ? 0.90f : ( top ? 0.5f : 1.0f );
 	float	al    = LAT_ALPHA * age * pulse * vmul * aMul;
-	float	w     = hot * 0.85f;								// whiten toward the head
+	float	w     = hot * ( latArenaDraw ? 0.38f : 0.85f );		// whiten toward the head
 
 	if ( al < 0 ) al = 0; else if ( al > 1 ) al = 1;
 	VectorCopy( xyz, v->xyz );
@@ -285,11 +304,12 @@ static void CG_LatticeBlocks( qhandle_t shader, const vec3_t a, const vec3_t b,
 }
 
 static void CG_LatticeDraw( int client ) {
-	int			i, n, idx0, idx1, head;
+	int			i, n, idx0, idx1, head, maxSegs;
 	const byte	*col;
 	qhandle_t	shader;
-	float		scroll, glitch;
+	float		scroll, glitch, capHalf, arenaTtl;
 	unsigned	tbucket;
+	qboolean	arena;
 
 	float		waveScale;
 
@@ -297,9 +317,19 @@ static void CG_LatticeDraw( int client ) {
 	if ( n < 2 ) {
 		return;
 	}
-	if ( n > LAT_TRAIL_SEGS + 1 ) {
-		n = LAT_TRAIL_SEGS + 1;
+	// arena ribbon: short, thin and time-dissolving (velocity read). Full
+	// LATTICE: the long, tall, persistent damaging wall.
+	arena   = ( !cgs.lattice && cg_arenaTrails.integer );
+	maxSegs = arena ? LAT_ARENA_SEGS : LAT_TRAIL_SEGS;
+	capHalf = arena ? LAT_ARENA_HALF : LAT_WALL_MAX_HALF;
+	// INVERTED slow-mo scaling: the ribbon LIVES LONGER (so reads longer) the
+	// deeper the bullet-time, instead of shrinking — the trail unfurls as time
+	// dilates. latSlow is 0 at full speed, ->1 near-frozen.
+	arenaTtl = LAT_ARENA_TTL * ( 1.0f + LAT_ARENA_STRETCH * latSlow );
+	if ( n > maxSegs + 1 ) {
+		n = maxSegs + 1;
 	}
+	latArenaDraw = arena;	// tells CG_LatticeVert to use the saturated arena look
 
 	// amplitude -> half-height gain (clamped to the player half-height per segment)
 	waveScale = cg_latticeWave.value * LAT_WAVE_HALF;
@@ -320,6 +350,7 @@ static void CG_LatticeDraw( int client ) {
 		vec3_t		a, b, dir, perp;
 		const byte	*segCol = col;
 		float		aMul = 1.0f;
+		float		arenaFade = 1.0f;
 		qboolean	torn = qfalse;
 		float		split = 0.0f;
 		float		riseA, riseB, halfA, halfB, topA, botA, topB, botB;
@@ -330,15 +361,38 @@ static void CG_LatticeDraw( int client ) {
 		VectorCopy( latPts[client][idx0], a );
 		VectorCopy( latPts[client][idx1], b );
 
+		// ARENA dissolve: fade each segment by how long ago its point was laid,
+		// and stop the trail once points have aged past the TTL. Short tail whose
+		// length tracks your speed; fades to nothing when you stop.
+		if ( arena ) {
+			float ageMs = (float)( cg.time - latTime[client][idx0] );
+			if ( ageMs >= arenaTtl ) {
+				break;
+			}
+			arenaFade = 1.0f - ageMs / arenaTtl;
+		}
+
 		// half-height = quiet base + the amplitude frozen at each endpoint (the
 		// waveform crest), capped at the player half-height. Then break up the crisp
 		// top/bottom into a ragged, gently-shimmering edge (continuous across seams).
-		riseA = latAmp[client][idx0] * waveScale;
-		riseB = latAmp[client][idx1] * waveScale;
-		halfA = LAT_WALL_MIN_HALF + riseA;
-		halfB = LAT_WALL_MIN_HALF + riseB;
-		if ( halfA > LAT_WALL_MAX_HALF ) halfA = LAT_WALL_MAX_HALF;
-		if ( halfB > LAT_WALL_MAX_HALF ) halfB = LAT_WALL_MAX_HALF;
+		if ( arena ) {
+			// the whole short ribbon pumps OUT from the player centre on the kick
+			// — one uniform live-bass height so the bar pulses as a unit, emanating
+			// from the pilot, rather than a travelling waveform. cg_latticeWave
+			// scales the swell; level keeps a thin resting line between hits.
+			float pump = LAT_ARENA_HALF
+				* ( 0.28f + 1.25f * latBass + 0.22f * latLevel ) * cg_latticeWave.value;
+			if ( pump > LAT_ARENA_HALF * 2.0f ) pump = LAT_ARENA_HALF * 2.0f;
+			if ( pump < 1.5f ) pump = 1.5f;
+			halfA = halfB = pump;
+		} else {
+			riseA = latAmp[client][idx0] * waveScale;
+			riseB = latAmp[client][idx1] * waveScale;
+			halfA = LAT_WALL_MIN_HALF + riseA;
+			halfB = LAT_WALL_MIN_HALF + riseB;
+			if ( halfA > capHalf ) halfA = capHalf;
+			if ( halfB > capHalf ) halfB = capHalf;
+		}
 		CG_LatticeEdge( idx0, halfA, &topA, &botA );
 		CG_LatticeEdge( idx1, halfB, &topB, &botB );
 
@@ -375,6 +429,8 @@ static void CG_LatticeDraw( int client ) {
 			}
 		}
 
+		aMul *= arenaFade;	// arena TTL dissolve (1.0 in full LATTICE mode)
+
 		// chromatic split: faint red/blue ghosts shoved opposite ways (drawn
 		// first, under the core) — the classic datamosh colour fringe
 		if ( torn && split > 0 ) {
@@ -403,6 +459,15 @@ static void CG_LatticeDraw( int client ) {
 	// stuck to them. The trail wall + the head dynamic light below carry the
 	// energy-extrusion read without a sprite sitting on the body.
 	head = ( latHead[client] - 1 + LAT_PTS ) % LAT_PTS;
+
+	// arena: the head light fades with the ribbon (gone once it has dissolved),
+	// so a stationary fighter isn't haloed by a light with no visible trail.
+	if ( arena ) {
+		float headAge = (float)( cg.time - latTime[client][head] );
+		if ( headAge >= arenaTtl ) {
+			return;
+		}
+	}
 
 	// DYNAMIC NEON LIGHTS: the wall is a real light source, but kept as a subtle
 	// ACCENT (not a floodlight) so the arena still reads cleanly. A modest pulsing
@@ -486,7 +551,12 @@ void CG_LatticeFrame( void ) {
 	entityState_t	*es;
 	qboolean		doSample;
 
-	if ( !cgs.lattice || !cg.snap ) {
+	// Trails draw in LATTICE mode, OR whenever cg_arenaTrails is on — the
+	// rendering is pure client-side (reconstructed from observed positions +
+	// the live music bands), so it works in any gametype as a visual-only
+	// effect with no damage/elimination. Lets bots leave flowing, pumping
+	// speed-trails in the sword arena.
+	if ( ( !cgs.lattice && !cg_arenaTrails.integer ) || !cg.snap ) {
 		return;
 	}
 
