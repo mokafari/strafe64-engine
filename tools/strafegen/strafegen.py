@@ -144,6 +144,21 @@ textures/strafe64/wall
 	// conduit stage was removed — it read as ugly and busy. Walls are now a
 	// clean Hammer dev-grid (d_wall.tga * vertex colour), nothing animated.
 }
+// soft plasma glow for the arena speed-trail datamosh chips. Alpha-scaled
+// additive (GL_SRC_ALPHA GL_ONE) so the per-chip alpha controls translucency,
+// rgbGen/alphaGen vertex so each blob wears the pilot's stream hue. The radial
+// trailglow texture turns each quad into a translucent plasma blob, not a
+// hard square — bloom then lifts it into neon.
+strafe64/trailglow
+{
+	nopicmip
+	{
+		map textures/strafe64/trailglow.tga
+		blendFunc GL_SRC_ALPHA GL_ONE
+		rgbGen vertex
+		alphaGen vertex
+	}
+}
 textures/strafe64/sky
 {
 	qer_editorimage textures/strafe64/env/synth_ft.tga
@@ -332,11 +347,27 @@ def build_detail_textures():
             v += noise[y * n + x]
             voidtex.append((_clamp8(v), _clamp8(v), _clamp8(v)))
 
+    # --- soft radial glow for the plasma-ish speed-trail datamosh chips: bright
+    # centre falling smoothly to black at the edge, so an additive vertex-coloured
+    # quad reads as a soft translucent plasma blob rather than a hard square. ---
+    glow = []
+    gc = (n - 1) / 2.0
+    for y in range(n):
+        for x in range(n):
+            dx = (x - gc) / gc
+            dy = (y - gc) / gc
+            r = math.sqrt(dx * dx + dy * dy)
+            gv = max(0.0, 1.0 - r)
+            gv = gv * gv * gv          # soft cubic falloff -> plasma core + haze
+            iv = _clamp8(gv * 255)
+            glow.append((iv, iv, iv))
+
     tex = {
         "textures/strafe64/d_floor.tga": _tga32(n, n, floor),
         "textures/strafe64/d_wall.tga": _tga32(n, n, wall),
         "textures/strafe64/accent.tga": _tga32(n, n, accent),
         "textures/strafe64/void_hex.tga": _tga32(n, n, voidtex),
+        "textures/strafe64/trailglow.tga": _tga32(n, n, glow),
         "textures/strafe64/sky_stars.tga": _build_starfield(),
     }
     tex.update(_build_synthsky())   # 90s geometric-landscape skybox (6 faces)

@@ -958,6 +958,7 @@ static void CG_RegisterGraphics( void ) {
 	cgs.media.invisShader = trap_R_RegisterShader("powerups/invisibility" );
 	cgs.media.ghostShader = trap_R_RegisterShader("strafe64/ghost" );	// optional, from the strafe64 pk3
 	cgs.media.latticeShader = trap_R_RegisterShader("strafe64/lattice" );	// LATTICE trail wall (baseoa/scripts)
+	cgs.media.trailGlowShader = trap_R_RegisterShader("strafe64/trailglow" );	// plasma glow for arena trail chips
 	cgs.media.voidShader = trap_R_RegisterShader("strafe64/void" );	// optional, from the strafe64 pk3
 	cgs.media.regenShader = trap_R_RegisterShader("powerups/regen" );
 	cgs.media.hastePuffShader = trap_R_RegisterShader("hasteSmokePuff" );

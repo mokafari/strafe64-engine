@@ -834,6 +834,7 @@ typedef struct {
 	qhandle_t	invisShader;
 	qhandle_t	ghostShader;	// translucent racing ghost (strafe64/ghost, optional)
 	qhandle_t	latticeShader;	// LATTICE speed-trail wall (strafe64/lattice, alpha-blended)
+	qhandle_t	trailGlowShader;	// soft plasma glow for the arena trail datamosh chips (additive, vertex-coloured)
 	qhandle_t	voidShader;		// rising void plane (strafe64/void, optional)
 	qhandle_t	regenShader;
 	qhandle_t	battleSuitShader;

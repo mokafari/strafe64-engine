@@ -40,6 +40,7 @@
 #define LAT_ARENA_STRETCH	3.2f	// slow-mo stretch: trail lives (1 + STRETCH*latSlow)x
 									// longer in bullet-time -> it lengthens as time dilates
 #define LAT_ARENA_HALF		9.0f	// band base half-height; pumps out from the player on bass
+#define LAT_ARENA_MID		14.0f	// centre the arena band + chips on the BODY (chest), off the ground
 
 // Distinct per-pilot wall colours so three carving trails read apart at speed,
 // regardless of the players' chosen model colours. Indexed by client number.
@@ -193,8 +194,9 @@ static void CG_LatticeEdge( int ringIdx, float half, float *top, float *bot ) {
 	float		shim   = 0.6f + 0.4f * sin( ringIdx * 0.7f + latRealMs * 0.004f );
 	float		nt     = ( ( h        & 255 ) / 255.0f ) * shim;
 	float		nb     = ( ( ( h >> 8 ) & 255 ) / 255.0f ) * shim;
-	*top = LAT_WALL_MID + half + ebreak * nt;
-	*bot = LAT_WALL_MID - half - ebreak * nb;
+	float		mid    = latArenaDraw ? LAT_ARENA_MID : LAT_WALL_MID;	// arena: chest-centred
+	*top = mid + half + ebreak * nt;
+	*bot = mid - half - ebreak * nb;
 }
 
 // One upright wall quad between points a (newer, segment index ia) and b (older,
@@ -232,7 +234,8 @@ static const byte latGlitchBlue[3]  = {  60,  90, 255 };
 // snares spray the wall with little corrupted squares — the "alive" detail layer.
 // Chips are pushed a hair toward the camera so they pop off the wall (no z-fight)
 // and read as floating data, not paint.
-#define LAT_BLK_CAND	5		// candidate chips considered per segment
+#define LAT_BLK_CAND	5		// candidate chips considered per segment (wall)
+#define LAT_ARENA_BLK	16		// arena ribbon: denser, finer datamosh grain
 static void CG_LatticeBlocks( qhandle_t shader, const vec3_t a, const vec3_t b,
 		const vec3_t perp, const byte *col, float zc, float halfH,
 		unsigned key, unsigned tbucket, float glitch, float highs, float age ) {
@@ -245,13 +248,22 @@ static void CG_LatticeBlocks( qhandle_t shader, const vec3_t a, const vec3_t b,
 	if ( seglen < 1.0f || age <= 0.05f ) {
 		return;
 	}
-	// fraction of candidates that fire: sparse when quiet, spraying on loud highs
-	dense = 0.18f + 0.55f * highs;
-	if ( dense > 0.9f ) dense = 0.9f;
+	// fraction of candidates that fire. ARENA: GLITCH ON THE BEAT — a low resting
+	// base keeps the ribbon near-clean between hits, then the kick (bass) sprays
+	// the datamosh across it and highs add sparkle, so the corruption punches in
+	// time with the track instead of sitting as a constant grain. WALL keeps its
+	// highs-driven spray.
+	if ( latArenaDraw ) {
+		dense = 0.10f + 0.85f * latBass + 0.20f * highs;
+	} else {
+		dense = 0.18f + 0.55f * highs;
+	}
+	if ( dense > 0.97f ) dense = 0.97f;
 
-	for ( k = 0 ; k < LAT_BLK_CAND ; k++ ) {
+	for ( k = 0 ; k < ( latArenaDraw ? LAT_ARENA_BLK : LAT_BLK_CAND ) ; k++ ) {
 		unsigned	h = latHash( key * 2246822519u + k * 2654435761u, tbucket );
-		float		t, zt, sz, tear, al;
+		unsigned	h2 = latHash( h, 0x9E3779B9u );		// decorrelated entropy for chip shape
+		float		t, zt, szw, szh, tear, al;
 		const byte	*bc;
 		vec3_t		c, du, toCam;
 		polyVert_t	v[4];
@@ -261,17 +273,30 @@ static void CG_LatticeBlocks( qhandle_t shader, const vec3_t a, const vec3_t b,
 		}
 		t    = ( ( h >> 4 ) & 255 ) / 255.0f;			// position along the segment
 		zt   = ( ( h >> 12 ) & 255 ) / 255.0f;			// height within the band
-		sz   = 2.0f + ( ( h >> 20 ) & 7 );				// 2..9u — small
+		// ARENA: varied RECTANGULAR datamosh macroblocks (independent width/height
+		// from a decorrelated hash, wide range) so the grain reads as organic noise
+		// instead of a tiling of identical squares. WALL: uniform square.
+		if ( latArenaDraw ) {
+			szw = 1.5f + ( h2 & 15 ) * 0.55f;			// ~1.5..9.8u wide
+			szh = 1.5f + ( ( h2 >> 4 ) & 15 ) * 0.40f;	// ~1.5..7.5u tall
+		} else {
+			szw = szh = 2.0f + ( ( h >> 20 ) & 7 );
+		}
 		tear = ( (int)( ( h >> 6 ) & 15 ) - 8 ) * 0.5f * glitch;	// sideways jitter
 
 		VectorMA( a, t * seglen, segdir, c );
-		// cluster the chips toward the centre line (the stream core that flows from
-		// the player) — cube the [-1,1] height so most hug the centre and only a few
-		// reach the edges, instead of spreading evenly up the whole band.
+		// vertical placement WITHIN the bar. Critical: c already holds the
+		// interpolated trail-point z (the pilot's height), so we ADD the band
+		// offset (centre mid + spread) instead of OVERWRITING z — otherwise the
+		// chips pin to an absolute ~mid near the floor while the bar rides the
+		// pilot, and they never sit on the stream. ARENA spreads across the full
+		// band height (layer the whole ribbon); WALL cubes toward the centre core.
 		{
 			float vt = zt * 2.0f - 1.0f;
-			vt = vt * vt * vt;
-			c[2] = zc + vt * halfH;
+			if ( !latArenaDraw ) {
+				vt = vt * vt * vt;
+			}
+			c[2] += zc + vt * halfH;
 		}
 		VectorMA( c, tear, perp, c );
 		// nudge toward the camera so the chip sits just proud of the wall
@@ -279,27 +304,37 @@ static void CG_LatticeBlocks( qhandle_t shader, const vec3_t a, const vec3_t b,
 		VectorNormalizeFast( toCam );
 		VectorMA( c, 1.5f, toCam, c );
 
-		switch ( ( h >> 17 ) & 3 ) {		// corrupted channel flash
-		case 0:  bc = latGlitchWhite; break;
-		case 1:  bc = latGlitchCyan;  break;
-		case 2:  bc = latGlitchRed;   break;
-		default: bc = col;            break;
+		if ( latArenaDraw ) {
+			// MATCH the stream: chips wear the pilot's own neon, so the datamosh
+			// reads as the ribbon corrupting rather than foreign coloured squares.
+			bc = col;
+		} else {
+			switch ( ( h >> 17 ) & 3 ) {		// corrupted channel flash
+			case 0:  bc = latGlitchWhite; break;
+			case 1:  bc = latGlitchCyan;  break;
+			case 2:  bc = latGlitchRed;   break;
+			default: bc = col;            break;
+			}
 		}
-		al = ( 0.55f + 0.45f * ( ( ( h >> 24 ) & 7 ) / 7.0f ) ) * age;
+		// arena chips are TRANSLUCENT plasma that flares on the kick (faint between,
+		// brighter on the beat); the soft glow shader + bloom lift them into neon.
+		al = ( ( latArenaDraw ? 0.30f + 0.40f * latBass : 0.55f )
+			+ ( latArenaDraw ? 0.15f : 0.45f ) * ( ( ( h >> 24 ) & 7 ) / 7.0f ) ) * age;
+		if ( al > 1.0f ) al = 1.0f;
 
-		// four corners of the chip in the wall plane: c +/- du (along trail) +/- sz (up)
-		VectorScale( segdir, sz, du );
-		VectorSubtract( c, du, v[0].xyz ); v[0].xyz[2] -= sz; v[0].st[0]=0; v[0].st[1]=1;
-		VectorAdd( c, du, v[1].xyz );      v[1].xyz[2] -= sz; v[1].st[0]=1; v[1].st[1]=1;
-		VectorAdd( c, du, v[2].xyz );      v[2].xyz[2] += sz; v[2].st[0]=1; v[2].st[1]=0;
-		VectorSubtract( c, du, v[3].xyz ); v[3].xyz[2] += sz; v[3].st[0]=0; v[3].st[1]=0;
+		// four corners of the chip: c +/- du (width along trail) +/- szh (height)
+		VectorScale( segdir, szw, du );
+		VectorSubtract( c, du, v[0].xyz ); v[0].xyz[2] -= szh; v[0].st[0]=0; v[0].st[1]=1;
+		VectorAdd( c, du, v[1].xyz );      v[1].xyz[2] -= szh; v[1].st[0]=1; v[1].st[1]=1;
+		VectorAdd( c, du, v[2].xyz );      v[2].xyz[2] += szh; v[2].st[0]=1; v[2].st[1]=0;
+		VectorSubtract( c, du, v[3].xyz ); v[3].xyz[2] += szh; v[3].st[0]=0; v[3].st[1]=0;
 		for ( j = 0 ; j < 4 ; j++ ) {
 			v[j].modulate[0] = bc[0];
 			v[j].modulate[1] = bc[1];
 			v[j].modulate[2] = bc[2];
 			v[j].modulate[3] = (byte)( al * 255.0f );
 		}
-		trap_R_AddPolyToScene( shader, 4, v );
+		trap_R_AddPolyToScene( latArenaDraw ? cgs.media.trailGlowShader : shader, 4, v );
 	}
 }
 
@@ -309,7 +344,7 @@ static void CG_LatticeDraw( int client ) {
 	qhandle_t	shader;
 	float		scroll, glitch, capHalf, arenaTtl;
 	unsigned	tbucket;
-	qboolean	arena;
+	qboolean	arena, isSelf;
 
 	float		waveScale;
 
@@ -330,6 +365,7 @@ static void CG_LatticeDraw( int client ) {
 		n = maxSegs + 1;
 	}
 	latArenaDraw = arena;	// tells CG_LatticeVert to use the saturated arena look
+	isSelf = ( cg.snap && client == cg.snap->ps.clientNum );	// our own trail -> fade near the eye
 
 	// amplitude -> half-height gain (clamped to the player half-height per segment)
 	waveScale = cg_latticeWave.value * LAT_WAVE_HALF;
@@ -351,6 +387,7 @@ static void CG_LatticeDraw( int client ) {
 		const byte	*segCol = col;
 		float		aMul = 1.0f;
 		float		arenaFade = 1.0f;
+		float		selfFade = 1.0f;
 		qboolean	torn = qfalse;
 		float		split = 0.0f;
 		float		riseA, riseB, halfA, halfB, topA, botA, topB, botB;
@@ -372,6 +409,25 @@ static void CG_LatticeDraw( int client ) {
 			arenaFade = 1.0f - ageMs / arenaTtl;
 		}
 
+		// SELF: fade out our OWN trail near the camera so the head doesn't smear
+		// across the first-person view. Invisible up close, fading in with
+		// distance so the extended trail still reads when you look back. In
+		// third-person/dead the eye is far from the body, so it shows normally.
+		if ( isSelf && arena ) {
+			vec3_t	mid;
+			float	d, nf;
+			VectorAdd( a, b, mid );
+			VectorScale( mid, 0.5f, mid );
+			d  = Distance( cg.refdef.vieworg, mid );
+			nf = ( d - 96.0f ) / 150.0f;		// 0 within 96u, full by ~246u
+			if ( nf < 0.0f ) nf = 0.0f; else if ( nf > 1.0f ) nf = 1.0f;
+			selfFade  = nf;
+			arenaFade *= nf;
+			if ( arenaFade <= 0.0f ) {
+				continue;	// fully hidden right around the eye
+			}
+		}
+
 		// half-height = quiet base + the amplitude frozen at each endpoint (the
 		// waveform crest), capped at the player half-height. Then break up the crisp
 		// top/bottom into a ragged, gently-shimmering edge (continuous across seams).
@@ -381,9 +437,9 @@ static void CG_LatticeDraw( int client ) {
 			// from the pilot, rather than a travelling waveform. cg_latticeWave
 			// scales the swell; level keeps a thin resting line between hits.
 			float pump = LAT_ARENA_HALF
-				* ( 0.28f + 1.25f * latBass + 0.22f * latLevel ) * cg_latticeWave.value;
-			if ( pump > LAT_ARENA_HALF * 2.0f ) pump = LAT_ARENA_HALF * 2.0f;
-			if ( pump < 1.5f ) pump = 1.5f;
+				* ( 0.16f + 1.05f * latBass + 0.16f * latLevel ) * cg_latticeWave.value;
+			if ( pump > LAT_ARENA_HALF * 1.5f ) pump = LAT_ARENA_HALF * 1.5f;
+			if ( pump < 1.2f ) pump = 1.2f;
 			halfA = halfB = pump;
 		} else {
 			riseA = latAmp[client][idx0] * waveScale;
@@ -447,8 +503,9 @@ static void CG_LatticeDraw( int client ) {
 		// Uses the (possibly torn) a/b so chips follow a glitched segment's shove.
 		if ( glitch > 0 ) {
 			float halfMid = 0.5f * ( halfA + halfB );
-			float age = 1.0f - ( i / (float)( n - 1 ) );
-			CG_LatticeBlocks( shader, a, b, perp, segCol, LAT_WALL_MID, halfMid,
+			float age = ( 1.0f - ( i / (float)( n - 1 ) ) ) * selfFade;	// fade own near-eye chips
+			CG_LatticeBlocks( shader, a, b, perp, segCol,
+				arena ? LAT_ARENA_MID : LAT_WALL_MID, halfMid,
 				idx0 * 2654435761u + client, tbucket, glitch, latHigh, age );
 		}
 	}
@@ -479,12 +536,16 @@ static void CG_LatticeDraw( int client ) {
 		int		lit, lidx;
 		vec3_t	lp;
 
-		VectorCopy( latPts[client][head], lp );
-		lp[2] += 30.0f;
-		trap_R_AddLightToScene( lp, hb, lr, lg, lb );
+		// our OWN head light would flood the first-person view — skip it, and
+		// start the trail lights further back so nothing glares right at the eye.
+		if ( !isSelf ) {
+			VectorCopy( latPts[client][head], lp );
+			lp[2] += 30.0f;
+			trap_R_AddLightToScene( lp, hb, lr, lg, lb );
+		}
 
 		lit = 0;
-		for ( i = 0 ; i < n && lit < 6 ; i += 9, lit++ ) {		// every 9th point, max 6
+		for ( i = ( isSelf ? 18 : 0 ) ; i < n && lit < 6 ; i += 9, lit++ ) {	// every 9th point, max 6
 			float fade = 1.0f - ( i / (float)( n ) );
 			lidx = ( latHead[client] - 1 - i + LAT_PTS * 2 ) % LAT_PTS;
 			VectorCopy( latPts[client][lidx], lp );
