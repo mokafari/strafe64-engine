@@ -91,6 +91,113 @@ Surf *feel* is still human-validated; the dojo now HAS a surf archetype
 (`dojo.py --archetypes surf`, added 2026-06-16) guarding surf traversal quality
 (maxspd ≥380 + airpct ≥55) so a movement/pmove change can't silently break surf.
 
+## ★★ Full-loop gaps — skeleton → game (2026-06-21, Gustav)
+**The v0 core loop is closed end to end (surf → lap → PERS_SCORE → `buy` →
+MISSION REPORT → again), but it's a CYCLE, not a RUN: nothing is at stake, no
+lap is harder than the last, and progress dies with the session.** These six
+entries turn the repeating cycle into a roguelite run with stakes, escalation,
+and a reason to keep going. Ordered by leverage: 1+2 are cheap wiring of
+systems that already exist and deliver most of the "now it's a game" feel; 3+4
+are the depth that makes a session last; 5+6 are framing on top.
+
+### [ ] 1. Score at risk — give death/laps stakes (HIGH leverage, small)
+Today banked `PERS_SCORE` is never lost, so the rising void is pressure with no
+teeth and there's no "push vs. bank" decision. Make lap-score *volatile run
+currency*:
+- **Two buckets.** Keep the volatile run score in `PERS_SCORE` (as now); add a
+  small permanent **salvage** trickle (feeds entry #2). `race_finish_touch`
+  (`g_trigger.c:364`) already computes the per-lap `award` — bank the full award
+  to `PERS_SCORE` as today, and add `award/10` to the new persistent counter.
+- **Wipe on void/combat death, keep on lap.** A lap is a checkpoint: crossing
+  `race_finish_touch` makes the run score "safe". Dying (`MOD_FALLING` from
+  `G_RunVoid` at `g_main.c:1930`, or combat) forfeits the *unbanked* portion —
+  i.e. score earned since the last finish line. Track `client->raceSafeScore` at
+  each finish; on death in `player_die`/`ClientSpawn` (`g_client.c`) reset
+  `PERS_SCORE` back to `raceSafeScore`. The MISSION REPORT (`CG_DrawMissionReport`,
+  `cg_draw.c`) already fires on death — add a "BANKED n / LOST m" line so the
+  forfeit reads.
+- **Why first:** one rule (`raceSafeScore`) turns the existing void + score +
+  shop into a real extraction-tension loop. Pure game-side, no new assets, no
+  geometry, no client protocol change beyond one report line.
+
+### [ ] 2. Meta-progression across sessions (HIGH leverage, small-medium)
+The WC3-mod-for-CS north star: purchases compound, but today `boughtWeapons` /
+`boughtAirJump` (`g_local.h:309`) only persist *across death within one map* —
+a `map` reload wipes them. Persist the meta layer to disk via archived cvars
+(same mechanism `g_session.c` already uses: `trap_Cvar_Set` + the engine's
+config write; cf. the per-map `cgp_<map>` PAR cvars):
+- **Permanent currency.** Write the salvage counter from #1 to an archived cvar
+  (`g_metaScore`, `CVAR_ARCHIVE`) on death / map-end (`G_WriteSessionData`,
+  `g_session.c:191` is the natural hook); read it back in `G_InitGame`.
+- **Persistent unlock bitfield.** A second archived cvar (`g_metaUnlocks`) holds
+  movement-kit unlocks bought with meta currency; re-applied in `ClientSpawn`
+  (`g_client.c:1226`, exactly where `boughtWeapons`/airjump are re-granted
+  today). Start with the airjump (already a clean `PMF_AIRJUMP_BONUS` template at
+  `bg_pmove.c:825`).
+- **Shop depth — movement kit, not guns.** Extend the `g_shop[]` table
+  (`g_cmds.c:1890`) with the movement upgrades the loop wants and that are most
+  STRAFE-flavoured: **slide-boost**, **haste**, **longer wall-run**,
+  **grapple/dash**, **higher bhop cap**. Each maps to a flag/tunable already in
+  `bg_pmove.c`/`bg_local.h`. Split the shop into *consumables* (rebought each run,
+  spend `PERS_SCORE`) vs *permanent unlocks* (spend `g_metaScore`, persist).
+
+### [ ] 3. Escalation — make lap N harder than lap 1 (HIGH leverage, medium)
+The pitch says "the track and void escalate to match" but nothing scales off
+`client->raceLaps` (`g_local.h:308`) today — every lap is identical. Scale
+difficulty with lap count:
+- **Void pace.** Bump `level.voidRise` (read in `G_RunVoid`, `g_main.c:1914`) as
+  laps accrue so the floor floods faster each lap — the simplest, highest-impact
+  knob. Per-lap multiplier in `race_finish_touch` or a lap-derived factor in
+  `G_RunVoid`.
+- **Procedural per-lap circuit.** `SurfLine.build()` (`strafegen.py:2721`) is
+  already seed-driven (N=3–5 ramps, seed-varied angles). Feed `lap` into the seed
+  / difficulty so each finish regenerates a harder line (more ramps, steeper
+  banks, longer gaps). v0 surf is fixed geometry per map; the generator path to
+  per-lap variety already exists — needs a regen-on-lap hook or a pre-baked
+  ramp of escalating maps.
+- **Threat count.** Scale enemy/hazard count off lap (ties into #4).
+- **Payout scales too** so a deeper lap is worth the risk (reinforces #1's
+  push-vs-bank decision). Adjust the `speedBonus`/`lapBonus` math at
+  `g_trigger.c:388`.
+
+### [ ] 4. Unify the two pillars — threat ON the surf line (MEDIUM-HIGH, medium)
+The combat identity (katana, deflectable bullet-time bolts, LATTICE) and the
+surf loop are separate games right now; the surf track is empty traversal.
+"Fight at speed" is in the dossier but unrealised.
+- **Enemies on the track.** Place shooters along the surf line that you deflect
+  (`G_DeflectMissile`, the `EF_BLOCKING` parry path) and cleave *while surfing
+  through* — the literal "see the shot, swing through it" + "movement IS the
+  game" fantasy in one loop. Spawn them from `SurfLine.build()` as bot/turret
+  entities along the ramp midlines (the same midline the surf item-bait already
+  uses to lead bots — `BotSurfControl`, `ai_main.c`).
+- **Lattice/trail as a track hazard.** Reuse `g_lattice.c`'s trail-contact chip
+  as a moving hazard on the surf line (a rival ghost laying a wall you must
+  out-carve), cross-pollinating tech that's already built and regress-guarded.
+- Gate behind the slow-mo dial (`g_timeBind`) so the fight reads at speed.
+
+### [ ] 5. Run framing — a start, a climax, an end (MEDIUM, medium)
+The loop is infinite with no arc — it continues until the player gets bored,
+never *resolves*.
+- **A run goal / climax.** A target the escalating laps build toward: reach
+  depth N before the void floods, a boss gate, or a final lap. Gives a run a
+  resolution and a brag-worthy end state instead of open-ended grinding.
+- **Onboarding + start-a-run flow.** Menu → start run; a one-screen teach for
+  surf / slow-mo / `buy`. `docs/HUMAN_PLAYTEST.md` is effectively the script;
+  the UI lives in `code/q3_ui` (the NERV/MAGI reskin) + the existing MISSION
+  REPORT as the run-end card.
+
+### [ ] 6. Close the competitive/retention loop (MEDIUM, small-medium)
+80% of the async-competition machinery already exists — daily seeded circuits
+(`--daily --surf`), daily mutators (`g_mutator 9`), ghosts (`.gho`), and PAR
+calibration (`par_calibrate.py`). What's missing to make it sticky:
+- **Ghost sharing / async leaderboard for the daily.** Export/import the saved
+  `ghosts/<map>.gho` so you race a stranger's run on the shared daily seed. The
+  files + the date-seeded map are the whole mechanism — needs a share path
+  (upload/download or a paste-able blob) + a "racing <name>'s ghost" HUD note.
+- **"Pick 1 of 3" between-run draft** (already a P2 TODO): turn the shop into a
+  roguelite draft at each run/lap boundary so each run feels authored. UI hooks
+  off the MISSION REPORT spend moment.
+
 ## [x] Bullet-time projectiles — trail + speed lever + per-owner tint DONE; just pick g_bulletSpeed by feel (2026-06-16)
 **Make deflectable projectiles READ as the bullet-time centerpiece they are.**
 Every gun fires a parryable projectile (milestone `e9500e8`).
