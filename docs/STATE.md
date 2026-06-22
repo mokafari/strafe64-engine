@@ -2,7 +2,8 @@
 
 Orientation doc for the self-contained engine tree at `~/strafe64-engine`.
 For the prioritized work backlog see [ROADMAP.md](ROADMAP.md); for what to
-check by hand see [HUMAN_PLAYTEST.md](HUMAN_PLAYTEST.md).
+check by hand see [HUMAN_PLAYTEST.md](HUMAN_PLAYTEST.md); for where maps and the
+game are heading see [MAP_DESIGN.md](MAP_DESIGN.md).
 
 _Last updated: 2026-06-15._
 

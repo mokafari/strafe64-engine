@@ -844,6 +844,95 @@ are untouched. (Per-entity time — only the human dilates, SUPERHOT-style — w
 explored and set aside; see ROADMAP "Bots work under slow-mo".)
 ==============
 */
+/*
+==============
+G_ClientDash
+
+STRAFE 64: a SHIFT dash (BUTTON_DASH) that lunges along your motion and REVECTORS
+a little toward the nearest enemy in a forward cone — so a dash can carry you onto
+the kill-line and connect a slice you'd otherwise sail past. Burst = g_dashSpeed,
+homing blend = g_dashHoming, on a short cooldown. Server-side (it must see enemies);
+the velocity lands in the playerState the client predicts.
+==============
+*/
+#define DASH_COOLDOWN	650		// ms between dashes
+#define DASH_RANGE		720.0f	// how far ahead an enemy can be to pull the dash
+
+static void G_ClientDash( gentity_t *ent, usercmd_t *ucmd ) {
+	gclient_t	*client = ent->client;
+	vec3_t		fwd, dir, to, best;
+	float		bestdot, dist, h;
+	gentity_t	*e, *target;
+	int			i;
+
+	// fresh press only (client->buttons is still last frame's here — it's
+	// restamped further down ClientThink), on cooldown, alive and in normal play
+	if ( !( ucmd->buttons & BUTTON_DASH ) || ( client->buttons & BUTTON_DASH ) ) {
+		return;
+	}
+	if ( client->ps.pm_type != PM_NORMAL || level.time < client->dashTime ) {
+		return;
+	}
+	client->dashTime = level.time + DASH_COOLDOWN;
+	// WAKE the clock for a short window so the dash reads as a FAST real-time
+	// lunge, not a slow drift (a 430u/s burst at timescale 0.06 would crawl).
+	client->dashSurge = level.time + 300;
+
+	// base direction: down the line you're already flying, else where you look
+	VectorCopy( client->ps.velocity, dir );
+	dir[2] = 0.0f;
+	if ( VectorNormalize( dir ) < 1.0f ) {
+		AngleVectors( client->ps.viewangles, dir, NULL, NULL );
+		dir[2] = 0.0f;
+		VectorNormalize( dir );
+	}
+
+	// revector toward the nearest enemy / slice-gate inside a ~70deg forward cone
+	AngleVectors( client->ps.viewangles, fwd, NULL, NULL );
+	fwd[2] = 0.0f;
+	VectorNormalize( fwd );
+	target = NULL;
+	bestdot = 0.35f;
+	VectorClear( best );
+	for ( i = 0 ; i < level.num_entities ; i++ ) {
+		e = &g_entities[i];
+		if ( e == ent || !e->inuse || e->health <= 0 ) {
+			continue;
+		}
+		if ( !( e->client || ( e->flags & FL_SLICE_GATE ) ) ) {
+			continue;
+		}
+		VectorSubtract( e->r.currentOrigin, ent->r.currentOrigin, to );
+		to[2] = 0.0f;
+		dist = VectorNormalize( to );
+		if ( dist < 1.0f || dist > DASH_RANGE ) {
+			continue;
+		}
+		if ( DotProduct( to, fwd ) > bestdot ) {
+			bestdot = DotProduct( to, fwd );
+			target = e;
+			VectorCopy( to, best );
+		}
+	}
+	if ( target ) {
+		h = g_dashHoming.value;
+		if ( h < 0.0f ) h = 0.0f;
+		if ( h > 1.0f ) h = 1.0f;
+		dir[0] = dir[0] * ( 1.0f - h ) + best[0] * h;
+		dir[1] = dir[1] * ( 1.0f - h ) + best[1] * h;
+		if ( VectorNormalize( dir ) < 0.01f ) {
+			VectorCopy( fwd, dir );
+		}
+	}
+
+	client->ps.velocity[0] += dir[0] * g_dashSpeed.value;
+	client->ps.velocity[1] += dir[1] * g_dashSpeed.value;
+	// a little lift so an air-dash stays airborne to chain the slice
+	if ( client->ps.velocity[2] < 90.0f ) {
+		client->ps.velocity[2] = 90.0f;
+	}
+}
+
 static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 	static float	cur = -1.0f;		// last applied timescale (one human assumed)
 	static qboolean	active = qfalse;	// did we take over the timescale cvar?
@@ -910,6 +999,14 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 		intent = g_timeBindFire.value;
 	}
 
+	// DASH wakes the clock: for a short window after a dash, force intent high so
+	// the lunge is a FAST real-time burst, not a slow-mo drift (a 430u/s dash at
+	// timescale 0.06 would crawl). This is what makes SHIFT read as "dash", not
+	// "slow time". (See G_ClientDash, which stamps client->dashSurge.)
+	if ( level.time < ent->client->dashSurge && intent < 0.95f ) {
+		intent = 0.95f;
+	}
+
 	if ( intent > 1.0f ) intent = 1.0f;
 
 	if ( g_timeBindLog.integer ) {
@@ -920,6 +1017,16 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 	} else {
 		// linear interpolation of the shaped intent
 		target = tmin + ( tmax - tmin ) * pow( intent, curve );
+	}
+
+	// raising the GUARD dips the world into a defensive slow-mo beat — a moment to
+	// read the room / time a parry. A MULTIPLIER on the target (not an intent cap),
+	// so it ALWAYS ramps time down a notch while BUTTON_BLOCK is held, whether
+	// you're sprinting or nearly still. g_timeBindBlock = the dip (0.5 = half-speed
+	// of whatever the clock would otherwise be; lower = deeper; 1 = off).
+	if ( ( ucmd->buttons & BUTTON_BLOCK ) && g_timeBindBlock.value < 1.0f ) {
+		target *= g_timeBindBlock.value;
+		if ( target < tmin ) target = tmin;
 	}
 
 	// crouch/slide TIME BRAKE: while ducked, CAP the clock at a KINETIC slow-mo —
@@ -1204,6 +1311,10 @@ void ClientThink_real( gentity_t *ent ) {
 
 	// SUPERHOT-style time dilation: drive the world clock from movement intent
 	G_UpdateTimeBind( ent, ucmd, msec );
+
+	// SHIFT dash that revectors toward enemies (after pmove so it sets the
+	// resulting velocity; lands in the predicted playerState)
+	G_ClientDash( ent, ucmd );
 
 	// save results of pmove
 	if ( ent->client->ps.eventSequence != oldEventSequence ) {

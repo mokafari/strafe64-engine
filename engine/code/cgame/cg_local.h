@@ -702,6 +702,17 @@ typedef struct {
 	float		weaponKickPitch;
 	float		weaponKickRoll;
 
+	// STRAFE 64: MOVE-kick — a snappy view punch on moveset events (walljump,
+	// air/double-jump, hard land, speed burst/dash) so the kit has OOMPH. Own
+	// channel so it stacks with the melee kick. Edge trackers below.
+	int			moveKickTime;
+	float		moveKickPitch;
+	float		moveKickRoll;
+	int			mkPrevWalljump;
+	int			mkPrevAirjump;
+	int			mkPrevLandTime;
+	float		mkPrevSpeed;
+
 	//qboolean cameraMode;		// if rendering from a loaded camera
 
 
@@ -1181,6 +1192,7 @@ extern	markPoly_t		cg_markPolys[MAX_MARK_POLYS];
 extern	vmCvar_t		cg_centertime;
 extern	vmCvar_t		cg_runpitch;
 extern	vmCvar_t		cg_runroll;
+extern	vmCvar_t		cg_moveKick;
 extern	vmCvar_t		cg_bobup;
 extern	vmCvar_t		cg_bobpitch;
 extern	vmCvar_t		cg_bobroll;

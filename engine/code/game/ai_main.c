@@ -82,6 +82,7 @@ vmCvar_t bot_interbreedcycle;
 vmCvar_t bot_interbreedwrite;
 vmCvar_t bot_moveset;			// STRAFE 64: bots use the bhop/wall/double-jump kit
 vmCvar_t bot_combatBhop;		// STRAFE 64: bots fight on the move (bhop-rush + peel); arena/DM only — leaks onto movement courses, so off by default
+vmCvar_t bot_swordBlock;		// STRAFE 64: bots parry incoming katana swings (reactive, skill-gated)
 
 void ExitLevel( void );
 
@@ -936,6 +937,11 @@ static int g_botSurfStrafe[MAX_CLIENTS];
 // committed point-blank peel direction (-1/0/+1): held through a close pass so
 // the bot carries momentum PAST the enemy instead of flip-flopping in an orbit.
 static signed char g_botPass[MAX_CLIENTS];
+// per-swing parry latch: the enemy's torsoAnim (incl. the toggle bit) keys each
+// distinct swing, so we roll the skill gate ONCE per swing and hold that verdict
+// for its whole duration instead of re-rolling (and flickering) every frame.
+static int g_botBlockKey[MAX_CLIENTS];
+static signed char g_botBlockRoll[MAX_CLIENTS];
 
 /*
 ==============
@@ -1008,6 +1014,38 @@ static void BotApplyMoveset(bot_state_t *bs) {
 		return;
 	}
 
+	// SWORD DUEL (g_botSwordOnly): cinematic slow-mo blade trading. Unlike the rail
+	// peel below (which carries momentum PAST the enemy), close aggressively then
+	// LOCK at blade range and circle slowly, so the bullet-time camera catches the
+	// exchange. Attacks + BotApplyDefense parries do the rest. Takes priority over
+	// the combat-bhop peel whenever the field is pure melee.
+	if (g_botSwordOnly.integer && bs->enemy >= 0) {
+		aas_entityinfo_t	enemyinfo;
+		vec3_t				d;
+		float				edist;
+		BotEntityInfo(bs->enemy, &enemyinfo);
+		VectorSubtract(enemyinfo.origin, ps->origin, d);
+		edist = VectorLength(d);
+		if (edist < 220.0f) {
+			// at blade range: stand and trade, edging in to stay in reach without
+			// ramming through; a slow committed orbit for the camera, no bhop
+			cmd->upmove = 0;
+			cmd->forwardmove = (edist > 90.0f) ? 90 : 0;
+			if (!g_botPass[bs->client]) {
+				g_botPass[bs->client] = (level.time & 2048) ? 1 : -1;
+			}
+			cmd->rightmove = g_botPass[bs->client] * 55;	// slow orbit, not a peel
+			return;
+		}
+		if (edist < 3000.0f) {
+			// not yet in reach: bhop straight in, aggressive close
+			cmd->upmove = 127;
+			cmd->forwardmove = 127;
+			g_botPass[bs->client] = 0;
+			return;
+		}
+	}
+
 	// COMBAT AT SPEED (bot_combatBhop, arena/DM only). Not a standing gunfight and
 	// not an in-place orbit (both slow) — bhop-RUSH: hold jump and drive forward
 	// (the aim tracks the enemy, so forward = straight at it) to build speed on the
@@ -1065,6 +1103,91 @@ static void BotApplyMoveset(bot_state_t *bs) {
 
 /*
 ==============
+BotApplyDefense
+
+Teach bots to GUARD and PARRY with the katana. The guard (EF_BLOCKING) only raises
+with the sword up and only parries FRONTAL melee — so we gate on the weapon and on
+the bot actually facing its enemy (its aim usually is, but it peels off mid-pass).
+Holding block also suppresses the bot's own swing, so it can't just turtle. Two
+ways in, both skill-gated so weak bots stay beatable and aces feel like duelists:
+
+  REACTIVE PARRY — the enemy is mid-cut (sword/gauntlet alternates TORSO_ATTACK/
+  ATTACK2). Roll the read ONCE per swing and, if it lands, raise the guard to clash
+  the blow. A clean sword-vs-sword parry deals zero damage and shoves the attacker
+  back, flipping the duel.
+
+  ANTICIPATORY GUARD — nose-to-nose with the enemy and no swing yet: raise the
+  guard in BURSTS (a duty cycle) so a clash lands on a raised blade, dropping it in
+  the gaps to riposte. Better bots spend more of the cycle on guard.
+
+Runs after BotApplyMoveset, touching only buttons — the bhop/surf moveset keeps
+driving the bot's feet underneath the guard.
+==============
+*/
+static void BotApplyDefense(bot_state_t *bs) {
+	usercmd_t			*cmd = &bs->lastucmd;
+	playerState_t		*ps = &bs->cur_ps;
+	aas_entityinfo_t	enemyinfo;
+	vec3_t				dir, fwd, to;
+	float				dist, skill, chance;
+	int					eanim, key;
+
+	if (!bot_swordBlock.integer) return;
+	if (ps->pm_type != PM_NORMAL) return;
+	if (ps->weapon != WP_SWORD) return;			// guard only raises with the katana
+	if (bs->enemy < 0) return;
+
+	BotEntityInfo(bs->enemy, &enemyinfo);
+	if (!enemyinfo.valid) return;
+
+	VectorSubtract(enemyinfo.origin, ps->origin, dir);
+	dist = VectorLength(dir);
+	if (dist > 260.0f) return;					// out of blade reach — keep pressing
+
+	// FRONTAL only: the guard parries frontal hits, so don't raise it unless we're
+	// actually looking at the enemy
+	AngleVectors(ps->viewangles, fwd, NULL, NULL);
+	VectorCopy(dir, to);
+	if (VectorNormalize(to) <= 0.0f || DotProduct(fwd, to) < 0.30f) return;
+
+	skill = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_ATTACK_SKILL, 0, 1);
+	eanim = enemyinfo.torsoAnim & ~ANIM_TOGGLEBIT;
+
+	if (eanim == TORSO_ATTACK || eanim == TORSO_ATTACK2) {
+		// REACTIVE: roll the skill gate ONCE per swing (key = the raw torsoAnim,
+		// which flips its toggle bit / alternates ATTACK<->ATTACK2 each new swing)
+		key = enemyinfo.torsoAnim;
+		if (key != g_botBlockKey[bs->client]) {
+			g_botBlockKey[bs->client] = key;
+			chance = 0.35f + 0.60f * skill;		// ~35% reads at skill 0 → ~95% at skill 1
+			g_botBlockRoll[bs->client] = (random() <= chance) ? 1 : 0;
+		}
+		if (!g_botBlockRoll[bs->client]) return;	// missed the read this swing
+	} else if (dist < 150.0f && ps->weaponTime <= 0) {
+		// ANTICIPATORY: point-blank, no swing from either of us yet — flick the guard
+		// up briefly so a sudden cut lands on a raised blade, but stay mostly on the
+		// ATTACK so the duel doesn't stall into a turtle standoff. Don't interrupt our
+		// own swing (weaponTime>0). Phase-offset per client so bots don't lockstep.
+		int		period = 520;
+		float	frac = 0.10f + 0.20f * skill;	// only 10%..30% of the cycle on guard
+		int		phase = (level.time + bs->client * 137) % period;
+		if (phase >= (int)(frac * period)) return;	// riposte window — blade down, swing
+	} else {
+		return;									// in reach but not swinging and not point-blank
+	}
+
+	cmd->buttons |= BUTTON_BLOCK;				// raise the blade
+	cmd->buttons &= ~BUTTON_ATTACK;				// (a raised guard suppresses the swing anyway)
+
+	if (bot_swordBlock.integer >= 2) {			// debug: confirm the guard path fires
+		BotAI_Print(PRT_MESSAGE, "GUARD: bot %d vs enemy %d (dist %.0f, %s)\n",
+			bs->client, bs->enemy, dist,
+			(eanim == TORSO_ATTACK || eanim == TORSO_ATTACK2) ? "parry" : "anticip");
+	}
+}
+
+/*
+==============
 BotUpdateInput
 ==============
 */
@@ -1090,6 +1213,8 @@ void BotUpdateInput(bot_state_t *bs, int time, int elapsed_time) {
 	BotInputToUserCommand(&bi, &bs->lastucmd, bs->cur_ps.delta_angles, time);
 	//STRAFE 64: augment the command so bots use the new moveset
 	BotApplyMoveset(bs);
+	//STRAFE 64: raise the katana guard to parry an incoming swing
+	BotApplyDefense(bs);
 	//subtract the delta angles
 	for (j = 0; j < 3; j++) {
 		bs->viewangles[j] = AngleMod(bs->viewangles[j] - SHORT2ANGLE(bs->cur_ps.delta_angles[j]));
@@ -1581,6 +1706,9 @@ int BotAIStartFrame(int time) {
 	trap_Cvar_Update(&bot_saveroutingcache);
 	trap_Cvar_Update(&bot_pause);
 	trap_Cvar_Update(&bot_report);
+	trap_Cvar_Update(&bot_moveset);			// STRAFE 64: live-tunable bot kit cvars
+	trap_Cvar_Update(&bot_combatBhop);
+	trap_Cvar_Update(&bot_swordBlock);
 
 	if (bot_report.integer) {
 //		BotTeamplayReport();
@@ -1839,6 +1967,7 @@ int BotAISetup( int restart ) {
 	trap_Cvar_Register(&bot_interbreedwrite, "bot_interbreedwrite", "", 0);
 	trap_Cvar_Register(&bot_moveset, "bot_moveset", "1", 0);
 	trap_Cvar_Register(&bot_combatBhop, "bot_combatBhop", "1", 0);
+	trap_Cvar_Register(&bot_swordBlock, "bot_swordBlock", "1", 0);
 
 	//if the game is restarted for a tournament
 	if (restart) {

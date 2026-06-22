@@ -160,6 +160,72 @@ static void CG_EntityEffects( centity_t *cent ) {
 CG_General
 ==================
 */
+/*
+==================
+CG_SliceDrone
+
+STRAFE 64: a sliceable ENEMY NPC gate, drawn as a humanoid player-model so the
+thing you cut through reads as a character — not an orb. Stands and faces the
+incoming runner (server sets its yaw), flagged hostile with a red tint + a red
+threat light so it pops on the dev-grey world (the guidance-hue rule). Server
+side: g_misc.c SP_slice_drone (ET_SLICE_DRONE, CONTENTS_CORPSE, FL_SLICE_GATE).
+==================
+*/
+static void CG_SliceDrone( centity_t *cent ) {
+	refEntity_t		legs, torso, head;
+	vec3_t			angles;
+	clientInfo_t	*ci;
+	static const byte hostile[4] = { 255, 90, 80, 255 };
+
+	if ( cent->currentState.eFlags & EF_NODRAW ) {
+		return;
+	}
+	// reuse the local player's loaded model as the NPC body (guaranteed present);
+	// the red tint + light is what reads it as the enemy, not your own skin.
+	ci = &cgs.clientinfo[ cg.clientNum ];
+	if ( !ci->infoValid || !ci->legsModel || !ci->torsoModel || !ci->headModel ) {
+		return;
+	}
+
+	memset( &legs, 0, sizeof( legs ) );
+	memset( &torso, 0, sizeof( torso ) );
+	memset( &head, 0, sizeof( head ) );
+
+	VectorSet( angles, 0, cent->lerpAngles[YAW], 0 );
+	AnglesToAxis( angles, legs.axis );
+	AxisCopy( legs.axis, torso.axis );
+	AxisCopy( legs.axis, head.axis );
+
+	legs.hModel = ci->legsModel;
+	legs.customSkin = ci->legsSkin;
+	legs.renderfx = RF_LIGHTING_ORIGIN | RF_MINLIGHT;
+	Com_Memcpy( legs.shaderRGBA, hostile, 4 );
+	legs.frame = legs.oldframe = ci->animations[LEGS_IDLE].firstFrame;
+	VectorCopy( cent->lerpOrigin, legs.origin );
+	VectorCopy( cent->lerpOrigin, legs.lightingOrigin );
+	trap_R_AddRefEntityToScene( &legs );
+
+	torso.hModel = ci->torsoModel;
+	torso.customSkin = ci->torsoSkin;
+	torso.renderfx = RF_LIGHTING_ORIGIN | RF_MINLIGHT;
+	Com_Memcpy( torso.shaderRGBA, hostile, 4 );
+	torso.frame = torso.oldframe = ci->animations[TORSO_STAND].firstFrame;
+	VectorCopy( cent->lerpOrigin, torso.lightingOrigin );
+	CG_PositionRotatedEntityOnTag( &torso, &legs, ci->legsModel, "tag_torso" );
+	trap_R_AddRefEntityToScene( &torso );
+
+	head.hModel = ci->headModel;
+	head.customSkin = ci->headSkin;
+	head.renderfx = RF_LIGHTING_ORIGIN | RF_MINLIGHT;
+	Com_Memcpy( head.shaderRGBA, hostile, 4 );
+	VectorCopy( cent->lerpOrigin, head.lightingOrigin );
+	CG_PositionRotatedEntityOnTag( &head, &torso, ci->torsoModel, "tag_head" );
+	trap_R_AddRefEntityToScene( &head );
+
+	// red threat light: makes the gate pop as hostile against the dev-grey line
+	trap_R_AddLightToScene( cent->lerpOrigin, 140, 1.0f, 0.25f, 0.2f );
+}
+
 static void CG_General( centity_t *cent ) {
 	refEntity_t			ent;
 	entityState_t		*s1;
@@ -1244,6 +1310,9 @@ static void CG_AddCEntity( centity_t *cent ) {
 		break;
 	case ET_TEAM:
 		CG_TeamBase( cent );
+		break;
+	case ET_SLICE_DRONE:
+		CG_SliceDrone( cent );
 		break;
 	}
 }

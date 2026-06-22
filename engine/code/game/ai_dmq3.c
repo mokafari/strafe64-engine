@@ -2198,6 +2198,15 @@ BotAggression
 ==================
 */
 float BotAggression(bot_state_t *bs) {
+	// STRAFE 64: melee field. The katana presents to botlib AS the gauntlet, which
+	// scores 0 aggression here (no ammo branch matches), so sword bots read as
+	// "feeling bad" and flee instead of dueling. In a sword-only arena the blade IS
+	// the kit — make them commit. Drop it only when badly hurt so a desperate
+	// finisher still reads as a fight, not a stand-off.
+	if (g_botSwordOnly.integer) {
+		if (bs->inventory[INVENTORY_HEALTH] < 30) return 30;
+		return 90;
+	}
 	//if the bot has quad
 	if (bs->inventory[INVENTORY_QUAD]) {
 		//if the bot is not holding the gauntlet or the enemy is really nearby
@@ -2246,6 +2255,11 @@ BotFeelingBad
 ==================
 */
 float BotFeelingBad(bot_state_t *bs) {
+	// STRAFE 64: in the melee field the katana (mapped to the gauntlet) is the whole
+	// kit — don't read it as a bad weapon, that just makes the bot want to retreat.
+	if (g_botSwordOnly.integer) {
+		return (bs->inventory[INVENTORY_HEALTH] < 30) ? 100 : 0;
+	}
 	if (bs->weaponnum == WP_GAUNTLET) {
 		return 100;
 	}

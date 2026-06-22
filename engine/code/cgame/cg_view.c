@@ -309,6 +309,49 @@ static void CG_StepOffset( void ) {
 
 /*
 ===============
+CG_MoveKicks
+
+Fire a short view PUNCH on moveset events so the kit has OOMPH: walljump and
+air/double-jump jolt the view UP (walljump also rolls toward the wall side), a
+hard landing slams it DOWN (scaled by fall depth), and a big speed burst (dash /
+slide-jump / pad) shoves a forward pitch. One channel (latest event wins), decays
+in CG_OffsetFirstPersonView. Scaled by cg_moveKick (0 = off). Run once/frame.
+===============
+*/
+static void CG_MoveKick( float pitch, float roll ) {
+	cg.moveKickTime  = cg.time;
+	cg.moveKickPitch = pitch * cg_moveKick.value;
+	cg.moveKickRoll  = roll  * cg_moveKick.value;
+}
+
+static void CG_MoveKicks( void ) {
+	playerState_t	*ps = &cg.predictedPlayerState;
+	int				wj  = ps->stats[STAT_WALLJUMP_COUNT];
+	int				aj  = ps->stats[STAT_AIRJUMP_COUNT];
+	float			spd = sqrt( ps->velocity[0] * ps->velocity[0]
+							  + ps->velocity[1] * ps->velocity[1] );
+
+	if ( cg_moveKick.value > 0.0f && ps->pm_type == PM_NORMAL ) {
+		if ( wj > cg.mkPrevWalljump ) {				// walljump: up + roll off the wall
+			int wr = ps->stats[STAT_WALLRUN];
+			CG_MoveKick( -2.2f, wr > 0 ? 3.0f : ( wr < 0 ? -3.0f : 0.0f ) );
+		} else if ( aj > cg.mkPrevAirjump ) {		// air / double jump: upward pop
+			CG_MoveKick( -1.8f, 0.0f );
+		} else if ( cg.landTime != cg.mkPrevLandTime && cg.landChange < -7.0f ) {
+			float m = -cg.landChange / 24.0f;		// hard land slams down, by depth
+			CG_MoveKick( 2.6f * m, 0.0f );
+		} else if ( spd - cg.mkPrevSpeed > 220.0f ) {	// dash / slide-jump / pad burst
+			CG_MoveKick( -1.6f, 0.0f );
+		}
+	}
+	cg.mkPrevWalljump = wj;
+	cg.mkPrevAirjump  = aj;
+	cg.mkPrevLandTime = cg.landTime;
+	cg.mkPrevSpeed    = spd;
+}
+
+/*
+===============
 CG_OffsetFirstPersonView
 
 ===============
@@ -364,6 +407,19 @@ static void CG_OffsetFirstPersonView( void ) {
 			float	k = 1.0f - ratio;		// linear settle
 			angles[PITCH] += k * cg.weaponKickPitch;
 			angles[ROLL]  += k * cg.weaponKickRoll;
+		}
+	}
+
+	// STRAFE 64: MOVE-kick — the oomph punch on walljump / air-jump / hard land /
+	// speed burst (set in CG_MoveKicks). Sharp hit, eased settle over ~180ms.
+	CG_MoveKicks();
+	if ( cg.moveKickTime ) {
+		ratio = ( cg.time - cg.moveKickTime ) / 180.0f;
+		if ( ratio >= 0 && ratio < 1.0f ) {
+			float	k = 1.0f - ratio;
+			k = k * k;						// ease-out: snaps, then settles soft
+			angles[PITCH] += k * cg.moveKickPitch;
+			angles[ROLL]  += k * cg.moveKickRoll;
 		}
 	}
 

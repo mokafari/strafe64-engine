@@ -1157,7 +1157,7 @@ static void PM_AirMove( void ) {
 		&& pm->ps->stats[STAT_GROUND_MS] < 0
 		&& pm->ps->stats[STAT_GROUND_MS] > -pm_coyoteTimeMs
 		&& PM_CheckJump() ) {
-		Com_Printf( "S64DBG coyote jump fired (airborne %ims)\n", -pm->ps->stats[STAT_GROUND_MS] );
+		// (debug print removed — was spamming the corner on every coyote jump)
 		pm->ps->stats[STAT_GROUND_MS] = -9000;	// coyote spent
 	}
 
@@ -2863,7 +2863,7 @@ void PmoveSingle (pmove_t *pmove) {
 	if ( pm_terminalVelocity > 0
 		&& ( pm->ps->pm_type == PM_NORMAL || pm->ps->pm_type == PM_DEAD )
 		&& pm->ps->velocity[2] < -pm_terminalVelocity ) {
-		Com_Printf( "S64DBG terminal clamp %.0f -> -%.0f\n", pm->ps->velocity[2], pm_terminalVelocity );
+		// (debug print removed — was spamming the corner on terminal clamp)
 		pm->ps->velocity[2] = -pm_terminalVelocity;
 	}
 

@@ -69,6 +69,10 @@ vmCvar_t	g_timeBindLog;		// 1 = logarithmic (Matrix) slow-mo curve, 0 = linear
 vmCvar_t	g_timeBindCrouch;	// crouch/slide TIME BRAKE: direct timescale CAP while ducked so a
 								// slide drops into KINETIC bullet-time, not a freeze (1.0 = off,
 								// 0.5 = half-speed slide, lower = slower)
+vmCvar_t	g_timeBindBlock;	// GUARD TIME-DIP: intent cap while BUTTON_BLOCK held, so raising the
+								// blade drops the world into a defensive slow-mo beat (read/parry)
+vmCvar_t	g_dashSpeed;		// BUTTON_DASH horizontal burst magnitude (u/s)
+vmCvar_t	g_dashHoming;		// 0..1 blend of the dash toward the nearest enemy (melee-lunge revector)
 vmCvar_t	g_bulletSpeed;		// live scale on deflectable-bolt travel speed: lower = the
 								// slow-mo darts you can see/track/parry (co-tune vs the guard window)
 vmCvar_t	g_swordKnockback;	// live scale on the katana cleave-launch (multi-hit / finisher fling)
@@ -191,6 +195,9 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_timeBindFire, "g_timeBindFire", "0.8", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_timeBindLog, "g_timeBindLog", "1", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_timeBindCrouch, "g_timeBindCrouch", "0.5", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_timeBindBlock, "g_timeBindBlock", "0.5", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_dashSpeed, "g_dashSpeed", "430", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_dashHoming, "g_dashHoming", "0.5", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_bulletSpeed, "g_bulletSpeed", "0.45", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_swordKnockback, "g_swordKnockback", "1.0", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_botSwordOnly, "g_botSwordOnly", "0", CVAR_ARCHIVE, 0, qfalse  },

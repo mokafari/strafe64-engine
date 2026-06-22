@@ -33,8 +33,8 @@ engine/            ioquake3 engine source + the STRAFE 64 mod
 tools/strafegen/   procedural course generator — writes playable IBSP v46
                    .bsp files directly (no q3map). Includes a prebuilt arm64
                    `bspc` AAS compiler and the strafe64.cfg / psx.cfg presets.
-docs/              ART_DIRECTION, MOVEMENT, ROADMAP, VISUALS, PLAYTEST,
-                   HUMAN_PLAYTEST
+docs/              ART_DIRECTION, MOVEMENT, MAP_DESIGN, ROADMAP, VISUALS,
+                   PLAYTEST, HUMAN_PLAYTEST
 scripts/           build.sh, run.sh
 COPYING.txt        GPLv2 (id Software / ioquake3)
 ```

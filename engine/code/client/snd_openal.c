@@ -45,6 +45,17 @@ cvar_t *s_alInputDevice;
 cvar_t *s_alAvailableDevices;
 cvar_t *s_alAvailableInputDevices;
 
+// Time-dilation pitch: bullet-time bends SFX/music pitch DOWN with the world
+// clock (and back up on a time-surge), so the soundscape varispeeds along with
+// slow-mo instead of playing at flat realtime pitch. See S_AL_UpdateTimePitch.
+cvar_t *s_timePitch;       // master enable
+cvar_t *s_timePitchSfx;    // 0..1 : how hard SFX follow the clock
+cvar_t *s_timePitchMusic;  // 0..1 : how hard the music follows the clock
+cvar_t *s_timePitchFloor;  // pitch at the DEEPEST slow-mo (timescale -> 0)
+cvar_t *s_timePitchCurve;  // shaping exponent: <1 drops early, >1 holds high
+cvar_t *s_timePitchCeil;   // pitch clamp when time SURGES past 1x
+cvar_t *s_timePitchSmooth; // control-rate glide time constant, seconds
+
 static qboolean enumeration_ext = qfalse;
 static qboolean enumeration_all_ext = qfalse;
 #ifdef USE_VOIP
@@ -1434,6 +1445,91 @@ void S_AL_StopLoopingSound(int entityNum )
 
 /*
 =================
+S_AL_UpdateTimePitch
+
+Drive the global playback pitch from the world clock. The sword bullet-time
+funnels everything through the "timescale" cvar (set in g_active.c); the audio
+mixer itself runs at realtime, so without this every effect would play at flat
+pitch during slow-mo. We map timescale -> a target pitch, then glide the
+APPLIED pitch toward it with a one-pole low-pass in REAL time. The one-pole is
+deliberate: timescale already ramps smoothly when slow-mo snaps in/out, and a
+low-pass adds no overshoot, so the pitch never wobbles past its target the way a
+spring would. The smoothing also kills zipper noise from per-frame pitch steps.
+=================
+*/
+static float s_alTimePitch     = 1.0f;  // smoothed core pitch, 1 = realtime
+static int   s_alTimePitchLast  = 0;    // wallclock ms at last update
+
+static void S_AL_UpdateTimePitch( void )
+{
+	float ts, target, floorP, curve, coeff, dt;
+	int   now;
+
+	if(!s_timePitch->integer)
+	{
+		s_alTimePitch = 1.0f;
+		s_alTimePitchLast = Sys_Milliseconds();
+		return;
+	}
+
+	ts = Cvar_VariableValue("timescale");
+	if(ts <= 0.0f)
+		ts = 0.0001f;
+
+	floorP = s_timePitchFloor->value;
+	curve  = s_timePitchCurve->value;
+	if(curve <= 0.0f)
+		curve = 1.0f;
+
+	if(ts <= 1.0f)
+	{
+		// Slow-mo: glide pitch from 1 (realtime) down toward the floor as ts->0.
+		target = floorP + (1.0f - floorP) * powf(ts, curve);
+	}
+	else
+	{
+		// Time surge past 1x: pitch up, clamped so it never chipmunks out.
+		target = ts;
+		if(target > s_timePitchCeil->value)
+			target = s_timePitchCeil->value;
+	}
+
+	// Frame-rate-independent one-pole glide, clocked in real (unscaled) time so
+	// the ramp feels identical regardless of how deep the slow-mo is.
+	now = Sys_Milliseconds();
+	dt  = (now - s_alTimePitchLast) * 0.001f;
+	s_alTimePitchLast = now;
+	if(dt < 0.0f)
+		dt = 0.0f;
+	else if(dt > 0.25f)
+		dt = 0.25f;            // clamp hitches and the first frame
+
+	if(s_timePitchSmooth->value > 0.0001f)
+		coeff = 1.0f - expf(-dt / s_timePitchSmooth->value);
+	else
+		coeff = 1.0f;
+
+	s_alTimePitch += (target - s_alTimePitch) * coeff;
+}
+
+/*
+=================
+S_AL_PitchFor
+
+Blend the smoothed clock pitch toward realtime by a per-category weight (SFX vs
+music), so each can follow the slow-mo independently. AL_PITCH must stay > 0.
+=================
+*/
+static ALfloat S_AL_PitchFor( float weight )
+{
+	float p = 1.0f + weight * (s_alTimePitch - 1.0f);
+	if(p < 0.02f)
+		p = 0.02f;
+	return (ALfloat)p;
+}
+
+/*
+=================
 S_AL_SrcUpdate
 
 Update state (move things around, manage sources, and so on)
@@ -1465,6 +1561,9 @@ void S_AL_SrcUpdate( void )
 			qalSourcef(curSource->alSource, AL_ROLLOFF_FACTOR, s_alRolloff->value);
 		if(s_alMinDistance->modified)
 			qalSourcef(curSource->alSource, AL_REFERENCE_DISTANCE, s_alMinDistance->value);
+
+		// Bend pitch with the world clock (slow-mo / time-surge)
+		qalSourcef(curSource->alSource, AL_PITCH, S_AL_PitchFor(s_timePitchSfx->value));
 
 		if(curSource->isLooping)
 		{
@@ -2192,6 +2291,11 @@ void S_AL_MusicUpdate( void )
 
 	// Set the gain property
 	S_AL_Gain(musicSource, s_alGain->value * s_musicVolume->value);
+
+	// Bend the music pitch with the world clock too (independent weight). The
+	// band-envelope analyzer is gated on buffer consumption, so it slows in step
+	// with playback and stays roughly in sync with the audio-reactive visuals.
+	qalSourcef(musicSource, AL_PITCH, S_AL_PitchFor(s_timePitchMusic->value));
 }
 
 
@@ -2273,6 +2377,9 @@ static
 void S_AL_Update( void )
 {
 	int i;
+
+	// Recompute the slow-mo pitch once per frame before it's applied below.
+	S_AL_UpdateTimePitch();
 
 	if(s_muted->modified)
 	{
@@ -2526,6 +2633,15 @@ qboolean S_AL_Init( soundInterface_t *si )
 	s_alMaxDistance = Cvar_Get("s_alMaxDistance", "1024", CVAR_CHEAT);
 	s_alRolloff = Cvar_Get( "s_alRolloff", "2", CVAR_CHEAT);
 	s_alGraceDistance = Cvar_Get("s_alGraceDistance", "512", CVAR_CHEAT);
+
+	// Time-dilation pitch (bullet-time varispeed) — see S_AL_UpdateTimePitch
+	s_timePitch       = Cvar_Get( "s_timePitch",       "1",    CVAR_ARCHIVE );
+	s_timePitchSfx    = Cvar_Get( "s_timePitchSfx",    "1",    CVAR_ARCHIVE );
+	s_timePitchMusic  = Cvar_Get( "s_timePitchMusic",  "1",    CVAR_ARCHIVE );
+	s_timePitchFloor  = Cvar_Get( "s_timePitchFloor",  "0.35", CVAR_ARCHIVE );
+	s_timePitchCurve  = Cvar_Get( "s_timePitchCurve",  "0.75", CVAR_ARCHIVE );
+	s_timePitchCeil   = Cvar_Get( "s_timePitchCeil",   "1.5",  CVAR_ARCHIVE );
+	s_timePitchSmooth = Cvar_Get( "s_timePitchSmooth", "0.07", CVAR_ARCHIVE );
 
 	s_alDriver = Cvar_Get( "s_alDriver", ALDRIVER_DEFAULT, CVAR_ARCHIVE | CVAR_LATCH | CVAR_PROTECTED );
 

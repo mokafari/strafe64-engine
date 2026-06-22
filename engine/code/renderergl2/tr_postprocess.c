@@ -512,7 +512,15 @@ void RB_Bloom(FBO_t *srcFbo, ivec4_t srcBox)
 		blur = 0.0f;
 
 	// 1. downsample the (tonemapped) scene into the quarter buffer: [0] = c
-	FBO_FastBlit(srcFbo, srcBox, tr.quarterFbo[0], NULL, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+	//    Use FBO_Blit (a flipping textured-quad blit), NOT FBO_FastBlit
+	//    (glBlitFramebuffer, which preserves Y). The whole bright-pass + blur
+	//    chain below is built from FBO_Blit and the final additive composite
+	//    (step 4) is a single FBO_Blit = one net vertical flip. Capturing the
+	//    scene here with the same flipping primitive makes the flip count EVEN,
+	//    so the glow lands right-side-up. With FastBlit the parity was odd and
+	//    the bloom was added back upside-down — bright floors/ramps ghosting up
+	//    into the sky.
+	FBO_Blit(srcFbo, srcBox, NULL, tr.quarterFbo[0], NULL, NULL, NULL, 0);
 
 	// 2. bright-pass by raising the colour to the 4th power, done with two
 	//    multiplicative self-blits (dst*src). c^4 is a hard soft-knee: only

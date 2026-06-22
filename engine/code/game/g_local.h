@@ -314,6 +314,8 @@ struct gclient_s {
 
 	int			swordComboStep;		// sword melee combo counter; advances while swings chain within the window
 	int			swordComboTime;		// level.time of the last sword swing (combo window timer)
+	int			dashTime;			// level.time the dash is off cooldown (BUTTON_DASH)
+	int			dashSurge;			// level.time until which a dash wakes the clock (snappy real-time lunge)
 
 	qboolean	fireHeld;			// used for hook
 	gentity_t	*hook;				// grapple hook if out
@@ -785,6 +787,9 @@ extern	vmCvar_t	g_timeBindRise;
 extern	vmCvar_t	g_timeBindFire;
 extern	vmCvar_t	g_timeBindLog;
 extern	vmCvar_t	g_timeBindCrouch;	// crouch/slide time-brake: intent scale while ducked
+extern	vmCvar_t	g_timeBindBlock;	// guard time-dip: intent cap while BUTTON_BLOCK held (defensive slow-mo)
+extern	vmCvar_t	g_dashSpeed;		// BUTTON_DASH burst magnitude (u/s)
+extern	vmCvar_t	g_dashHoming;		// 0..1 revector blend toward the nearest enemy on a dash
 extern	vmCvar_t	g_bulletSpeed;		// live scale on deflectable-bolt travel speed
 extern	vmCvar_t	g_swordKnockback;	// live scale on the katana cleave-launch (multi-hit / finisher fling)
 extern	vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field)

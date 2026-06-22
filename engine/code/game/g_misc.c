@@ -392,8 +392,12 @@ void G_RearmSliceGates( void ) {
 }
 
 void SP_slice_drone( gentity_t *self ) {
+	float	yaw = 0.0f;
+
+	// ET_SLICE_DRONE: the cgame draws this as a humanoid ENEMY player-model gate
+	// (see CG_AddSliceDrone). modelindex is a harmless fallback for an old cgame.
 	self->s.modelindex = G_ModelIndex( "models/powerups/teleporter/tele_exit.md3" );
-	self->s.eType = ET_GENERAL;
+	self->s.eType = ET_SLICE_DRONE;
 	G_SpawnInt( "health", "1", &self->health );
 	self->count = self->health;
 	G_SpawnFloat( "wait", "3", &self->wait );
@@ -407,10 +411,12 @@ void SP_slice_drone( gentity_t *self ) {
 	self->die = SliceDrone_Die;
 	self->s.pos.trType = TR_STATIONARY;
 	G_SetOrigin( self, self->s.origin );
-	// a slow spin so it reads as alive — a thing to cut, not scenery
-	self->s.apos.trType = TR_LINEAR;
-	self->s.apos.trTime = level.time;
-	VectorSet( self->s.apos.trDelta, 0, 120, 0 );
+	// face the incoming runner (generator sets "angle" = look-back yaw); a
+	// humanoid NPC stands and faces, it doesn't spin like the old orb.
+	G_SpawnFloat( "angle", "0", &yaw );
+	self->s.angles[YAW] = yaw;
+	self->s.apos.trType = TR_STATIONARY;
+	VectorCopy( self->s.angles, self->s.apos.trBase );
 	trap_LinkEntity( self );
 }
 
