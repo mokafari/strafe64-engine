@@ -874,7 +874,9 @@ static qboolean PM_CheckAirJump( void ) {
 	pm->ps->pm_flags |= PMF_JUMP_HELD;
 	pm->ps->stats[STAT_AIRJUMP_COUNT]++;
 
-	PM_AddEvent( EV_JUMP );
+	// its own event (not EV_JUMP): the cgame plays the jump grunt AND a kick-off
+	// dust burst so an air-jump reads as the kinetic double jump it is.
+	PM_AddEvent( EV_DOUBLE_JUMP );
 	PM_ForceLegsAnim( LEGS_JUMP );
 	pm->ps->pm_flags &= ~PMF_BACKWARDS_JUMP;
 
@@ -2300,6 +2302,15 @@ static void PM_Weapon( void ) {
 	pm->ps->eFlags &= ~EF_BLOCKING;
 	if ( ( pm->cmd.buttons & BUTTON_BLOCK ) && pm->ps->weapon == WP_SWORD ) {
 		pm->ps->eFlags |= EF_BLOCKING;
+	}
+
+	// STRAFE 64: mirror the crouch-slide onto a networked eFlag (PMF_SLIDING is
+	// local pm_flags only) so the cgame can draw the ground dust trail on every
+	// pilot, not just the viewing client. Resolved earlier this frame in friction.
+	if ( pm->ps->pm_flags & PMF_SLIDING ) {
+		pm->ps->eFlags |= EF_SLIDING;
+	} else {
+		pm->ps->eFlags &= ~EF_SLIDING;
 	}
 
 	// check for item using

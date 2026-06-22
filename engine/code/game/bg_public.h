@@ -305,6 +305,7 @@ typedef enum {
 #define EF_AWARD_DENIED		0x00040000		// denied
 #define EF_TEAMVOTED		0x00080000		// already cast a team vote
 #define EF_BLOCKING			0x00100000		// STRAFE 64: katana guard raised (deflects)
+#define EF_SLIDING			0x00200000		// STRAFE 64: in a crouch-slide (drives the ground dust trail)
 
 // NOTE: may not have more than 16
 typedef enum {
@@ -499,7 +500,8 @@ typedef enum {
 	EV_TAUNT_PATROL,
 
 	EV_DISMEMBER,			// STRAFE 64: sword sever — origin2 = cut direction, eventParm = cut type
-	EV_SWORD_HIT			// STRAFE 64: blade connected (fired on attacker) — eventParm = finisher flag
+	EV_SWORD_HIT,			// STRAFE 64: blade connected (fired on attacker) — eventParm = finisher flag
+	EV_DOUBLE_JUMP			// STRAFE 64: mid-air double jump (air-dash kick-off) — jump sound + ground-burst puff
 
 } entity_event_t;
 

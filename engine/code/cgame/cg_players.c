@@ -1621,6 +1621,63 @@ static void CG_DustTrail( centity_t *cent ) {
 
 /*
 ===============
+CG_SlideTrail
+
+STRAFE 64: ground dust kicked up behind a crouch-slide. The slide is a
+signature movement state but had only camera juice (FOV punch + lean) and no
+particle signature. Driven off the networked EF_SLIDING flag so it draws on
+every pilot (and bots), not just the viewing client. Puffs spawn at the
+trailing edge of the slide, kicked up and back along the motion vector, scaling
+with slide speed. (CG_DustTrail above is MISSIONPACK-only; this is always built.)
+===============
+*/
+static void CG_SlideTrail( centity_t *cent ) {
+	vec3_t		end, vel, dir;
+	trace_t		tr;
+	float		speed;
+
+	if ( !cg_slideDust.integer ) {
+		return;
+	}
+	if ( !( cent->currentState.eFlags & EF_SLIDING ) ) {
+		return;
+	}
+	if ( cent->dustTrailTime > cg.time ) {
+		return;		// rate-limit (shared with CG_DustTrail, which isn't built here)
+	}
+	cent->dustTrailTime = cg.time + 35;
+
+	// must be over ground for dust to make sense
+	VectorCopy( cent->lerpOrigin, end );
+	end[2] -= 64;
+	CG_Trace( &tr, cent->lerpOrigin, NULL, NULL, end, cent->currentState.number, MASK_PLAYERSOLID );
+	if ( tr.fraction == 1.0f ) {
+		return;
+	}
+
+	// horizontal motion vector — puffs trail BEHIND the slide
+	VectorCopy( cent->currentState.pos.trDelta, dir );
+	dir[2] = 0;
+	speed = VectorNormalize( dir );
+
+	VectorCopy( tr.endpos, end );
+	end[2] += 2;
+	VectorMA( end, -16.0f, dir, end );		// behind the feet
+
+	vel[0] = -dir[0] * 40.0f + crandom() * 20.0f;
+	vel[1] = -dir[1] * 40.0f + crandom() * 20.0f;
+	vel[2] = 30.0f + random() * 30.0f;		// kick up off the floor
+
+	CG_SmokePuff( end, vel,
+				  8.0f + speed * 0.02f,			// faster slide => bigger plume
+				  0.80f, 0.85f, 0.95f, 0.45f,	// cool synth-grey
+				  400,
+				  cg.time, 0, 0,
+				  cgs.media.smokePuffShader );
+}
+
+/*
+===============
 CG_TrailItem
 ===============
 */
@@ -2705,6 +2762,8 @@ void CG_Player( centity_t *cent ) {
 
 	CG_DustTrail(cent);
 #endif
+
+	CG_SlideTrail(cent);
 
 	//
 	// add the gun / barrel / flash

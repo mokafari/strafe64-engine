@@ -1374,5 +1374,8 @@ void CG_AddPacketEntities( void ) {
 
 	// blade slice flashes from sword dismemberments
 	CG_AddSwordCuts();
+
+	// kill-confirm flash + shockwave ring on blade kills
+	CG_AddKillBursts();
 }
 

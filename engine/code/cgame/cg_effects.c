@@ -715,6 +715,10 @@ void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, vec3_t cutNormal, int 
 	// a bright slice swept through the body along the blade's angle
 	CG_SpawnSwordCut( wound, normal, fwd );
 
+	// kill-confirm pop: a flash + shockwave ring scaled by the cut depth, so a
+	// hard 1-shot / finisher reads as the emphatic kill it is
+	CG_SpawnKillConfirm( wound, cutType );
+
 	// arterial spray at the wound
 	CG_Bleed( wound, ENTITYNUM_NONE );
 	CG_Bleed( wound, ENTITYNUM_NONE );

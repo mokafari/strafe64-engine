@@ -1006,6 +1006,9 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		AngleVectors( client->ps.viewangles, vf, NULL, NULL );
 		// dir is the hit's travel direction; a frontal hit drives into the guard
 		if ( DotProduct( dir, vf ) < 0.2f ) {
+			gentity_t	*spark;
+			vec3_t		clashAt;
+
 			if ( mod == MOD_SWORD || mod == MOD_GAUNTLET ) {
 				// CLEAN PARRY: a guarded blade vs blade fully stops the cut and
 				// CLASHES — the attacker is shoved back off the guard, staggered
@@ -1028,6 +1031,16 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 				damage = (int)( damage * 0.2f );			// blast/other: 80% soak, not a full stop
 				G_AddEvent( targ, EV_SWORD_HIT, 0 );
 			}
+
+			// clash spark: a guard contact (clean parry or soaked blast) throws
+			// sparks just like a parried projectile does (G_DeflectMissile) —
+			// without this the blade-on-blade clash was visually silent. Spray
+			// off the guard face (viewforward) at the impact, or the body if no
+			// impact point.
+			VectorCopy( point ? point : targ->r.currentOrigin, clashAt );
+			spark = G_TempEntity( clashAt, EV_BULLET_HIT_WALL );
+			spark->s.eventParm = DirToByte( vf );
+			spark->s.otherEntityNum = targ->s.number;
 		}
 	}
 
