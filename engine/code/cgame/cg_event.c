@@ -684,6 +684,26 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		DEBUGNAME("EV_JUMP");
 		trap_S_StartSound (NULL, es->number, CHAN_VOICE, CG_CustomSound( es->number, "*jump1.wav" ) );
 		break;
+
+	case EV_DOUBLE_JUMP:
+		DEBUGNAME("EV_DOUBLE_JUMP");
+		// mid-air double jump: the jump grunt PLUS a kick-off dust burst at the
+		// feet — you pushed off nothing, so a sharp puff sells the kinetic kick.
+		trap_S_StartSound (NULL, es->number, CHAN_VOICE, CG_CustomSound( es->number, "*jump1.wav" ) );
+		{
+			vec3_t	feet, down = {0, 0, -1};
+
+			VectorCopy( cent->lerpOrigin, feet );
+			feet[2] -= 18;					// down at the boots, not the waist
+			CG_SmokePuff( feet, down,
+						  18,
+						  0.75f, 0.82f, 0.95f, 0.40f,	// cool synth-grey
+						  350,
+						  cg.time, 0,
+						  LEF_PUFF_DONT_SCALE,
+						  cgs.media.smokePuffShader );
+		}
+		break;
 	case EV_TAUNT:
 		DEBUGNAME("EV_TAUNT");
 		trap_S_StartSound (NULL, es->number, CHAN_VOICE, CG_CustomSound( es->number, "*taunt.wav" ) );

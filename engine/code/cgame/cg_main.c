@@ -219,6 +219,8 @@ vmCvar_t	cg_oldRocket;
 vmCvar_t	cg_oldPlasma;
 vmCvar_t	cg_trueLightning;
 
+vmCvar_t	cg_slideDust;		// STRAFE 64: crouch-slide dust — built in baseq3 too (CG_SlideTrail is not MISSIONPACK-gated)
+
 #ifdef MISSIONPACK
 vmCvar_t 	cg_redTeamName;
 vmCvar_t 	cg_blueTeamName;
@@ -352,6 +354,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_bloodTime, "cg_bloodTime", "2", CVAR_ARCHIVE },	// STRAFE 64: gore lingers this much longer
 	{ &cg_bloodSpurtTime, "cg_bloodSpurtTime", "4000", CVAR_ARCHIVE },	// STRAFE 64: dismember geyser duration (ms)
 	{ &cg_synchronousClients, "g_synchronousClients", "0", CVAR_SYSTEMINFO },
+	{ &cg_slideDust, "cg_slideDust", "1", CVAR_ARCHIVE},		// STRAFE 64: crouch-slide ground dust trail (baseq3 too — CG_SlideTrail isn't MISSIONPACK-gated)
 #ifdef MISSIONPACK
 	{ &cg_redTeamName, "g_redteam", DEFAULT_REDTEAM_NAME, CVAR_ARCHIVE | CVAR_SERVERINFO | CVAR_USERINFO },
 	{ &cg_blueTeamName, "g_blueteam", DEFAULT_BLUETEAM_NAME, CVAR_ARCHIVE | CVAR_SERVERINFO | CVAR_USERINFO },

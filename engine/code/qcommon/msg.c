@@ -760,7 +760,7 @@ netField_t	entityStateFields[] =
 { NETF(legsAnim), 8 },
 { NETF(groundEntityNum), GENTITYNUM_BITS },
 { NETF(pos.trType), 8 },
-{ NETF(eFlags), 21 },		// STRAFE 64: 19 -> 21 to carry EF_BLOCKING (bit 20)
+{ NETF(eFlags), 22 },		// STRAFE 64: 19 -> 21 (EF_BLOCKING bit 20) -> 22 (EF_SLIDING bit 21)
 { NETF(otherEntityNum), GENTITYNUM_BITS },
 { NETF(weapon), 8 },
 { NETF(clientNum), 8 },
@@ -1082,7 +1082,7 @@ netField_t	playerStateFields[] =
 { PSF(pm_flags), 16 },
 { PSF(groundEntityNum), GENTITYNUM_BITS },
 { PSF(weaponstate), 4 },
-{ PSF(eFlags), 21 },		// STRAFE 64: 16 -> 21 to carry EF_BLOCKING (bit 20)
+{ PSF(eFlags), 22 },		// STRAFE 64: 16 -> 21 (EF_BLOCKING bit 20) -> 22 (EF_SLIDING bit 21)
 { PSF(externalEvent), 10 },
 { PSF(gravity), 16 },
 { PSF(speed), 16 },
