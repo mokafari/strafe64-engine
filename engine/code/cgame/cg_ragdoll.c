@@ -320,10 +320,14 @@ void CG_AddKillBursts( void ) {
 				re.customShader = cgs.media.whiteShader;
 				VectorCopy( kb->origin, re.origin );
 				re.radius = ( 12.0f + 26.0f * kb->intensity ) * ( 0.6f + 0.6f * frac );
-				re.shaderRGBA[0] = 255;
-				re.shaderRGBA[1] = 232;
-				re.shaderRGBA[2] = 190;
-				re.shaderRGBA[3] = (byte)( fa * 255.0f );
+				// whiteShader is ADDITIVE here (cf. the ghost trail in cg_view.c and
+				// cg_ents.c): it blends by RGB, not alpha. Fade by scaling the colour
+				// toward black with alpha pinned at 255, or the punch-in/out is lost
+				// and the flash just snaps on then cuts out at full brightness.
+				re.shaderRGBA[0] = (byte)( 255 * fa );
+				re.shaderRGBA[1] = (byte)( 232 * fa );
+				re.shaderRGBA[2] = (byte)( 190 * fa );
+				re.shaderRGBA[3] = 255;
 				trap_R_AddRefEntityToScene( &re );
 			}
 		}
@@ -337,7 +341,10 @@ void CG_AddKillBursts( void ) {
 			float	band  = 6.0f + ( 1.0f - frac ) * 16.0f;
 			float	inner = ringR;
 			float	outer = ringR + band;
-			byte	ca    = (byte)( alpha * 200.0f );
+			// additive whiteShader fades by RGB, not alpha (see flash above) —
+			// premultiply the ease-out into the colour, alpha stays 255. Peak
+			// ~0.78 keeps the ring from blowing out white over a bright floor.
+			float	rf    = alpha * 0.78f;
 			polyVert_t	verts[4];
 
 			for ( s = 0 ; s < KILL_RING_SEGS ; s++ ) {
@@ -366,10 +373,10 @@ void CG_AddKillBursts( void ) {
 				verts[3].st[0] = 0; verts[3].st[1] = 1;
 
 				for ( j = 0 ; j < 4 ; j++ ) {
-					verts[j].modulate[0] = 255;
-					verts[j].modulate[1] = 220;
-					verts[j].modulate[2] = 180;
-					verts[j].modulate[3] = ca;
+					verts[j].modulate[0] = (byte)( 255 * rf );
+					verts[j].modulate[1] = (byte)( 220 * rf );
+					verts[j].modulate[2] = (byte)( 180 * rf );
+					verts[j].modulate[3] = 255;
 				}
 				trap_R_AddPolyToScene( cgs.media.whiteShader, 4, verts );
 			}
