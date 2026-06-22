@@ -1312,6 +1312,7 @@ extern  vmCvar_t		cg_recordSPDemo;
 extern  vmCvar_t		cg_recordSPDemoName;
 extern	vmCvar_t		cg_obeliskRespawnDelay;
 #endif
+extern	vmCvar_t		cg_slideDust;		// STRAFE 64: crouch-slide dust (base build, not MISSIONPACK-gated)
 
 //
 // cg_main.c

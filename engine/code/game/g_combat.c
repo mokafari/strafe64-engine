@@ -1005,8 +1005,20 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		AngleVectors( client->ps.viewangles, vf, NULL, NULL );
 		// dir is the hit's travel direction; a frontal hit drives into the guard
 		if ( DotProduct( dir, vf ) < 0.2f ) {
+			gentity_t	*spark;
+			vec3_t		clashAt;
+
 			damage = (int)( damage * 0.2f );		// 80% mitigated head-on
-			G_AddEvent( targ, EV_SWORD_HIT, 0 );	// blade-clang feedback
+			G_AddEvent( targ, EV_SWORD_HIT, 0 );	// blade-clang sound + view punch
+
+			// clash spark: a melee/blast soaked on the guard should throw sparks
+			// just like a parried projectile does (G_DeflectMissile). Without this
+			// a blade-on-blade clash was visually silent. Spray off the blade face
+			// (guard forward) at the impact, or the body if no impact point.
+			VectorCopy( point ? point : targ->r.currentOrigin, clashAt );
+			spark = G_TempEntity( clashAt, EV_BULLET_HIT_WALL );
+			spark->s.eventParm = DirToByte( vf );
+			spark->s.otherEntityNum = targ->s.number;
 		}
 	}
 

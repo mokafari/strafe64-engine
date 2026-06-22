@@ -226,6 +226,7 @@ vmCvar_t	cg_currentSelectedPlayer;
 vmCvar_t	cg_currentSelectedPlayerName;
 vmCvar_t	cg_singlePlayer;
 vmCvar_t	cg_enableDust;
+vmCvar_t	cg_slideDust;
 vmCvar_t	cg_enableBreath;
 vmCvar_t	cg_singlePlayerActive;
 vmCvar_t	cg_recordSPDemo;
@@ -359,6 +360,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_currentSelectedPlayerName, "cg_currentSelectedPlayerName", "", CVAR_ARCHIVE},
 	{ &cg_singlePlayer, "ui_singlePlayerActive", "0", CVAR_USERINFO},
 	{ &cg_enableDust, "g_enableDust", "0", CVAR_SERVERINFO},
+	{ &cg_slideDust, "cg_slideDust", "1", CVAR_ARCHIVE},		// STRAFE 64: crouch-slide ground dust trail
 	{ &cg_enableBreath, "g_enableBreath", "0", CVAR_SERVERINFO},
 	{ &cg_singlePlayerActive, "ui_singlePlayerActive", "0", CVAR_USERINFO},
 	{ &cg_recordSPDemo, "ui_recordSPDemo", "0", CVAR_ARCHIVE},
