@@ -1300,13 +1300,20 @@ void ClientSpawn(gentity_t *ent) {
 			client->ps.weaponstate = WEAPON_READY;
 			// fire the targets of the spawn point
 			G_UseTargets(spawnPoint, ent);
-			// select the highest weapon number available, after any spawn given items have fired
-			client->ps.weapon = 1;
+			// VECTORGUN arena: the speed-scaled rail IS the gun — keep it
+			// equipped on spawn. (The katana is always owned as baseline melee,
+			// so the highest-weapon scan below would otherwise pull the blade
+			// out and bury the rail. Sword arena wants exactly that; vectorgun
+			// does not.)
+			if ( !G_VECTORGUN_ON ) {
+				// select the highest weapon number available, after any spawn given items have fired
+				client->ps.weapon = 1;
 
-			for (i = WP_NUM_WEAPONS - 1 ; i > 0 ; i--) {
-				if (client->ps.stats[STAT_WEAPONS] & (1 << i)) {
-					client->ps.weapon = i;
-					break;
+				for (i = WP_NUM_WEAPONS - 1 ; i > 0 ; i--) {
+					if (client->ps.stats[STAT_WEAPONS] & (1 << i)) {
+						client->ps.weapon = i;
+						break;
+					}
 				}
 			}
 			// positively link the client, even if the command times are weird

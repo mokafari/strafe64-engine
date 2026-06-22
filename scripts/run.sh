@@ -50,8 +50,13 @@ if [ -f "$ENGINE/baseq3/qagame.dylib" ]; then
 fi
 
 # stage the canonical gameplay ruleset so "/exec strafe64" is always
-# available in-game (to reset cvars after experimenting).
-cp "$STRAFEGEN/strafe64.cfg" "$OA/baseoa/strafe64.cfg" 2>/dev/null
+# available in-game (to reset cvars after experimenting). The arena
+# presets ship too, so "/exec arena", "/exec sword_arena" and
+# "/exec arena_vg" work from any session.
+cp "$STRAFEGEN/strafe64.cfg"    "$OA/baseoa/strafe64.cfg"    2>/dev/null
+cp "$STRAFEGEN/arena.cfg"       "$OA/baseoa/arena.cfg"       2>/dev/null
+cp "$STRAFEGEN/sword_arena.cfg" "$OA/baseoa/sword_arena.cfg" 2>/dev/null
+cp "$STRAFEGEN/arena_vg.cfg"    "$OA/baseoa/arena_vg.cfg"    2>/dev/null
 
 # optional leading -p: stage and exec the PSX cvar preset on the client
 PSX=""
