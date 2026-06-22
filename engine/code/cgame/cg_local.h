@@ -1494,6 +1494,8 @@ qboolean CG_RagdollAdd( centity_t *cent, int renderfx, float shadowPlane );
 qboolean CG_RagdollWound( int entnum, int part, vec3_t out );
 void CG_SpawnSwordCut( vec3_t origin, vec3_t normal, vec3_t fwd );
 void CG_AddSwordCuts( void );
+void CG_SpawnKillConfirm( vec3_t origin, int cutType );
+void CG_AddKillBursts( void );
 void CG_Beam( centity_t *cent );
 void CG_AdjustPositionForMover(const vec3_t in, int moverNum, int fromTime, int toTime, vec3_t out, vec3_t angles_in, vec3_t angles_out);
 

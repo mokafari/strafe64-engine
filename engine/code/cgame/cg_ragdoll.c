@@ -122,6 +122,26 @@ typedef struct {
 
 static swordCut_t	cg_swordCuts[MAX_SWORD_CUTS];
 
+// ---- kill confirm burst -----------------------------------------------------
+// STRAFE 64: a radial pop on a blade kill so a clean 1-shot / finisher READS as
+// the kill it is — a bright central flash + an expanding shockwave ring, scaled
+// by the cut depth (cutType): a glancing sever barely pops, a bisection novas.
+// Drawn additively with whiteShader (always present; no asset dependency), the
+// same procedural-poly path as the bolt trails and the sword-cut flashes.
+
+#define MAX_KILL_BURSTS	8
+#define KILL_BURST_MS	380
+#define KILL_RING_SEGS	24
+
+typedef struct {
+	qboolean	active;
+	int			startTime;
+	vec3_t		origin;
+	float		intensity;	// scales radius + brightness (by cut depth)
+} killBurst_t;
+
+static killBurst_t	cg_killBursts[MAX_KILL_BURSTS];
+
 /*
 ===============
 CG_RagdollReset
@@ -132,6 +152,7 @@ Drop all corpses + pending cut flashes (level change / vid_restart).
 void CG_RagdollReset( void ) {
 	memset( cg_ragdolls, 0, sizeof( cg_ragdolls ) );
 	memset( cg_swordCuts, 0, sizeof( cg_swordCuts ) );
+	memset( cg_killBursts, 0, sizeof( cg_killBursts ) );
 }
 
 /*
@@ -226,6 +247,133 @@ void CG_AddSwordCuts( void ) {
 			verts[j].modulate[3] = ca;
 		}
 		trap_R_AddPolyToScene( cgs.media.swordSlashShader, 4, verts );
+	}
+}
+
+/*
+===============
+CG_SpawnKillConfirm
+
+Pop a kill-confirm burst at a wound. cutType (0 single limb / 1 decap /
+2 bisection) scales the spectacle so a hard 1-shot/finisher novas while a
+glancing sever just glints. Called from CG_DismemberPlayer on a blade kill.
+===============
+*/
+void CG_SpawnKillConfirm( vec3_t origin, int cutType ) {
+	killBurst_t	*kb;
+	int			i, slot, oldestTime;
+
+	slot = 0;
+	oldestTime = cg_killBursts[0].startTime;
+	for ( i = 0 ; i < MAX_KILL_BURSTS ; i++ ) {
+		if ( !cg_killBursts[i].active ) {
+			slot = i;
+			break;
+		}
+		if ( cg_killBursts[i].startTime < oldestTime ) {
+			oldestTime = cg_killBursts[i].startTime;
+			slot = i;
+		}
+	}
+	kb = &cg_killBursts[slot];
+
+	kb->active = qtrue;
+	kb->startTime = cg.time;
+	VectorCopy( origin, kb->origin );
+	// 0 -> 0.75, 1 -> 1.05, 2 -> 1.5 : the harder the cut, the bigger the pop
+	kb->intensity = 0.75f + 0.375f * (float)cutType;
+}
+
+/*
+===============
+CG_AddKillBursts
+
+Render the live kill-confirm pops: a bright central flash that snaps in and
+fades, plus a flat shockwave ring expanding outward across the kill. Called
+once per frame beside CG_AddSwordCuts.
+===============
+*/
+void CG_AddKillBursts( void ) {
+	int			i, s;
+	killBurst_t	*kb;
+	float		frac, alpha;
+
+	for ( i = 0 ; i < MAX_KILL_BURSTS ; i++ ) {
+		kb = &cg_killBursts[i];
+		if ( !kb->active ) {
+			continue;
+		}
+		frac = ( cg.time - kb->startTime ) / (float)KILL_BURST_MS;
+		if ( frac >= 1.0f ) {
+			kb->active = qfalse;
+			continue;
+		}
+
+		// --- central flash: a sprite that punches bright early then fades ---
+		{
+			refEntity_t	re;
+			float		fa = ( frac < 0.30f ) ? ( frac / 0.30f ) : ( 1.0f - ( frac - 0.30f ) / 0.70f );
+
+			if ( fa > 0.0f ) {
+				memset( &re, 0, sizeof( re ) );
+				re.reType = RT_SPRITE;
+				re.customShader = cgs.media.whiteShader;
+				VectorCopy( kb->origin, re.origin );
+				re.radius = ( 12.0f + 26.0f * kb->intensity ) * ( 0.6f + 0.6f * frac );
+				re.shaderRGBA[0] = 255;
+				re.shaderRGBA[1] = 232;
+				re.shaderRGBA[2] = 190;
+				re.shaderRGBA[3] = (byte)( fa * 255.0f );
+				trap_R_AddRefEntityToScene( &re );
+			}
+		}
+
+		// --- shockwave ring: a flat annulus around Z, expanding + fading ---
+		alpha = ( 1.0f - frac );
+		alpha = alpha * alpha;					// ease-out fade
+		{
+			float	maxR  = 56.0f * kb->intensity;
+			float	ringR = frac * maxR;
+			float	band  = 6.0f + ( 1.0f - frac ) * 16.0f;
+			float	inner = ringR;
+			float	outer = ringR + band;
+			byte	ca    = (byte)( alpha * 200.0f );
+			polyVert_t	verts[4];
+
+			for ( s = 0 ; s < KILL_RING_SEGS ; s++ ) {
+				float	a0 = ( 2.0f * M_PI * s ) / KILL_RING_SEGS;
+				float	a1 = ( 2.0f * M_PI * ( s + 1 ) ) / KILL_RING_SEGS;
+				float	c0 = cos( a0 ), s0 = sin( a0 );
+				float	c1 = cos( a1 ), s1 = sin( a1 );
+				int		j;
+
+				verts[0].xyz[0] = kb->origin[0] + c0 * inner;
+				verts[0].xyz[1] = kb->origin[1] + s0 * inner;
+				verts[0].xyz[2] = kb->origin[2];
+				verts[1].xyz[0] = kb->origin[0] + c0 * outer;
+				verts[1].xyz[1] = kb->origin[1] + s0 * outer;
+				verts[1].xyz[2] = kb->origin[2];
+				verts[2].xyz[0] = kb->origin[0] + c1 * outer;
+				verts[2].xyz[1] = kb->origin[1] + s1 * outer;
+				verts[2].xyz[2] = kb->origin[2];
+				verts[3].xyz[0] = kb->origin[0] + c1 * inner;
+				verts[3].xyz[1] = kb->origin[1] + s1 * inner;
+				verts[3].xyz[2] = kb->origin[2];
+
+				verts[0].st[0] = 0; verts[0].st[1] = 0;
+				verts[1].st[0] = 1; verts[1].st[1] = 0;
+				verts[2].st[0] = 1; verts[2].st[1] = 1;
+				verts[3].st[0] = 0; verts[3].st[1] = 1;
+
+				for ( j = 0 ; j < 4 ; j++ ) {
+					verts[j].modulate[0] = 255;
+					verts[j].modulate[1] = 220;
+					verts[j].modulate[2] = 180;
+					verts[j].modulate[3] = ca;
+				}
+				trap_R_AddPolyToScene( cgs.media.whiteShader, 4, verts );
+			}
+		}
 	}
 }
 
