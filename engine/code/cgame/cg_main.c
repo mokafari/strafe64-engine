@@ -162,6 +162,8 @@ vmCvar_t	cg_latticeGlitch;
 vmCvar_t	cg_latticeAudio;	// 0-2: how hard the lattice pulses to the music bands
 vmCvar_t	cg_latticeWave;		// 0-2: how hard the wall-top rides the music amplitude (waveform drawn as you run)
 vmCvar_t	cg_arenaTrails;		// draw the audio-reactive speed-trails for every player/bot in ANY mode (visual, no damage)
+vmCvar_t	cg_playerGlow;		// 0-2: each fighter casts a faint dynamic light in their own colour
+vmCvar_t	cg_dashGlitch;		// 0-2: chromatic-ghost glitch trail intensity on air-dash
 vmCvar_t	cg_ragdoll;				// 1: dead bodies ragdoll; 0: stock death animation
 vmCvar_t	cg_ragdollDamp;			// Verlet velocity retention per step (0..1)
 vmCvar_t	cg_ragdollIterations;	// constraint relaxation passes per frame
@@ -265,9 +267,11 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_bulletTrail, "cg_bulletTrail", "1", CVAR_ARCHIVE },
 	{ &cg_bulletTrailWidth, "cg_bulletTrailWidth", "3", CVAR_ARCHIVE },
 	{ &cg_latticeGlitch, "cg_latticeGlitch", "0.35", CVAR_ARCHIVE },
-	{ &cg_latticeAudio, "cg_latticeAudio", "1", CVAR_ARCHIVE },
+	{ &cg_latticeAudio, "cg_latticeAudio", "0.5", CVAR_ARCHIVE },
 	{ &cg_latticeWave, "cg_latticeWave", "1", CVAR_ARCHIVE },
 	{ &cg_arenaTrails, "cg_arenaTrails", "0", CVAR_ARCHIVE },
+	{ &cg_playerGlow, "cg_playerGlow", "0.8", CVAR_ARCHIVE },
+	{ &cg_dashGlitch, "cg_dashGlitch", "1.0", CVAR_ARCHIVE },
 	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },
 	{ &cg_ragdollDamp, "cg_ragdollDamp", "0.97", CVAR_ARCHIVE },
 	{ &cg_ragdollIterations, "cg_ragdollIterations", "6", CVAR_ARCHIVE },
@@ -964,6 +968,32 @@ static void CG_RegisterGraphics( void ) {
 	cgs.media.ghostShader = trap_R_RegisterShader("strafe64/ghost" );	// optional, from the strafe64 pk3
 	cgs.media.latticeShader = trap_R_RegisterShader("strafe64/lattice" );	// LATTICE trail wall (baseoa/scripts)
 	cgs.media.trailGlowShader = trap_R_RegisterShader("strafe64/trailglow" );	// plasma glow for arena trail chips
+	// STRAFE 64: hard blocky ADDITIVE datamosh shader for the arena trail glitch
+	// (chips + chromatic ghosts). Additive (GL_SRC_ALPHA GL_ONE) so the blocks bloom
+	// into neon under the GL2 HDR/tonemap pipeline instead of crushing to black like
+	// the alpha-blend lattice shader does on small discrete glitch quads. Loose-shipped
+	// (baseoa/scripts/strafe64_lattice.shader) so it always registers; fall back to the
+	// soft trailglow if absent.
+	cgs.media.datamoshShader = trap_R_RegisterShader("strafe64/datamosh" );
+	if ( !cgs.media.datamoshShader ) {
+		cgs.media.datamoshShader = cgs.media.trailGlowShader;
+	}
+	// STRAFE 64: additive, entity-tinted $whiteimage for the dash chromatic ghost
+	// (loose baseoa/scripts/strafe64_ghost.shader). Re-renders the pilot as red/cyan
+	// after-images on an air-dash; additive so they bloom to neon, never black.
+	cgs.media.glitchGhostShader = trap_R_RegisterShader("strafe64/glitchghost" );
+	if ( !cgs.media.glitchGhostShader ) {
+		cgs.media.glitchGhostShader = cgs.media.datamoshShader;
+	}
+	// STRAFE 64: textured streak for the kill slash-arc (CG_AddSwordCuts). That quad
+	// maps st 0..1 and fades by alpha, so it needs a real texture + alpha-aware
+	// additive blend (strafe64/sword_cut), NOT the FP swing trail's $whiteimage
+	// shader. Fall back to trailglow (also additive, never black) if the asset is
+	// missing, so a sword kill can never draw the default gridded/black shader.
+	cgs.media.swordCutShader = trap_R_RegisterShader("strafe64/sword_cut" );
+	if ( !cgs.media.swordCutShader ) {
+		cgs.media.swordCutShader = cgs.media.trailGlowShader;
+	}
 	cgs.media.voidShader = trap_R_RegisterShader("strafe64/void" );	// optional, from the strafe64 pk3
 	cgs.media.regenShader = trap_R_RegisterShader("powerups/regen" );
 	cgs.media.hastePuffShader = trap_R_RegisterShader("hasteSmokePuff" );

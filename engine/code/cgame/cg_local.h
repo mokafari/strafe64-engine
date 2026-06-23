@@ -202,6 +202,21 @@ typedef struct centity_s {
 	// integer-quantised snapshot positions don't stair-step in deep bullet-time
 	vec3_t			smoothOrigin;
 	int				smoothTime;		// last frame this was updated (0 = uninitialised)
+
+	// STRAFE 64: per-entity sword swing + blade-trail state, so OTHER players and
+	// bots seen in third person get the same swing timing and slash ribbon the
+	// local player drives through cg_t (the local first-person path keeps its own
+	// copy in cg_t). Driven from this entity's own EV_FIRE_WEAPON events.
+	int			swordSwingTime;		// cg.time this entity's current swing started
+	int			swordSwingStep;		// combo index (finisher on every 3rd)
+	vec3_t		swordTipPath[12];	// world-space blade tip history (newest at 0)
+	vec3_t		swordBasePath[12];	// world-space blade guard history
+	int			swordTrailLastTime;	// cg.time of the last sample (one per frame)
+	int			swordTrailNum;		// valid samples in the ring
+
+	// STRAFE 64: cg.time of the last air-dash (EV_DOUBLE_JUMP) — drives the short
+	// chromatic-ghost glitch trail rendered in CG_Player while it's fresh.
+	int			dashGlitchTime;
 } centity_t;
 
 
@@ -846,6 +861,8 @@ typedef struct {
 	qhandle_t	ghostShader;	// translucent racing ghost (strafe64/ghost, optional)
 	qhandle_t	latticeShader;	// LATTICE speed-trail wall (strafe64/lattice, alpha-blended)
 	qhandle_t	trailGlowShader;	// soft plasma glow for the arena trail datamosh chips (additive, vertex-coloured)
+	qhandle_t	datamoshShader;		// hard blocky ADDITIVE $whiteimage — arena glitch blocks bloom to neon, never black
+	qhandle_t	glitchGhostShader;	// additive, entity-tinted $whiteimage — dash chromatic after-image (strafe64/glitchghost)
 	qhandle_t	voidShader;		// rising void plane (strafe64/void, optional)
 	qhandle_t	regenShader;
 	qhandle_t	battleSuitShader;
@@ -946,7 +963,8 @@ typedef struct {
 #endif
 	sfxHandle_t	swordHitSound;		// STRAFE 64: meaty blade-on-flesh impact
 	sfxHandle_t	swordHeavySound;	// STRAFE 64: heavier finisher swing whoosh
-	qhandle_t	swordSlashShader;	// STRAFE 64: additive slash-arc ribbon
+	qhandle_t	swordSlashShader;	// STRAFE 64: additive FP swing-trail ribbon ($whiteimage)
+	qhandle_t	swordCutShader;		// STRAFE 64: textured kill slash-arc streak (CG_AddSwordCuts)
 	sfxHandle_t	gibSound;
 	sfxHandle_t	gibBounce1Sound;
 	sfxHandle_t	gibBounce2Sound;
@@ -1264,6 +1282,8 @@ extern	vmCvar_t		cg_latticeGlitch;
 extern	vmCvar_t		cg_latticeAudio;
 extern	vmCvar_t		cg_latticeWave;
 extern	vmCvar_t		cg_arenaTrails;		// render the lattice speed-trails in ANY mode (visual only, no damage)
+extern	vmCvar_t		cg_playerGlow;		// each fighter casts a faint dynamic light in their own colour
+extern	vmCvar_t		cg_dashGlitch;		// 0-2: chromatic-ghost glitch trail intensity on air-dash
 extern	vmCvar_t		au_bass;
 extern	vmCvar_t		au_mid;
 extern	vmCvar_t		au_high;

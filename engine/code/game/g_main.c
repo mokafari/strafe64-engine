@@ -53,6 +53,9 @@ vmCvar_t	g_hotFloor;
 vmCvar_t	g_flowRegen;
 vmCvar_t	g_speedKnockback;
 vmCvar_t	g_grapple;
+vmCvar_t	g_grappleInstant;	// 1 = instant trace-attach (movement tool), 0 = fly-out projectile
+vmCvar_t	g_grappleRange;		// max latch distance, units (instant mode)
+vmCvar_t	g_grappleSpeed;		// projectile travel speed, ups (projectile mode only)
 vmCvar_t	g_vectorgun;
 vmCvar_t	g_voidRise;
 vmCvar_t	g_timeBind;			// SUPERHOT-style: scale world clock by movement intent
@@ -183,6 +186,9 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_flowRegen, "g_flowRegen", "3", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_speedKnockback, "g_speedKnockback", "1", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_grapple, "g_grapple", "1", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_grappleInstant, "g_grappleInstant", "1", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_grappleRange, "g_grappleRange", "4000", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_grappleSpeed, "g_grappleSpeed", "1500", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_vectorgun, "g_vectorgun", "0", CVAR_SERVERINFO | CVAR_ARCHIVE | CVAR_LATCH, 0, qfalse  },
 	{ &g_voidRise, "g_voidRise", "1", CVAR_ARCHIVE | CVAR_LATCH, 0, qfalse  },
 	{ &g_timeBind, "g_timeBind", "1", CVAR_ARCHIVE, 0, qfalse  },

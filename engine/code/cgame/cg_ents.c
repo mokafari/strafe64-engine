@@ -571,10 +571,13 @@ static void CG_BulletTrail( centity_t *cent ) {
 
 		for ( j = 0 ; j < 4 ; j++ ) {
 			float al = ( j < 2 ) ? al0 : al1;
-			verts[j].modulate[0] = (byte)( tintR * al );
-			verts[j].modulate[1] = (byte)( tintG * al );
-			verts[j].modulate[2] = (byte)( tintB * al );
-			verts[j].modulate[3] = 255;
+			// whiteShader is an ALPHA blend (SRC_ALPHA/ONE_MINUS_SRC_ALPHA, rgbGen
+			// vertex) — fade the streak via alpha with the tint pinned. Scaling RGB
+			// toward black with alpha 255 would draw an opaque ribbon, not a glow.
+			verts[j].modulate[0] = (byte)tintR;
+			verts[j].modulate[1] = (byte)tintG;
+			verts[j].modulate[2] = (byte)tintB;
+			verts[j].modulate[3] = (byte)( al * 255.0f );
 		}
 		verts[0].st[0] = 0; verts[0].st[1] = 0;
 		verts[1].st[0] = 1; verts[1].st[1] = 0;

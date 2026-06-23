@@ -1,10 +1,12 @@
 # build output (rebuildable)
 engine/build/
-# bundled third-party OpenArena assets (~455 MB, not ours to version)
-assets/openarena/
+# bundled third-party / generated assets (~1 GB binaries, mp4s, pk3s, model packs — not ours to version)
+/assets/
 # generated courses / tool artifacts (regenerable)
 tools/strafegen/generated/
 tools/strafegen/generated_fog/
 tools/strafegen/__pycache__/
+tools/strafegen/shaderlib/__pycache__/
+tools/strafegen/sweep_results.jsonl
 *.log
 .DS_Store

@@ -324,6 +324,37 @@ static qboolean G_DeflectMissile( gentity_t *ent, gentity_t *blocker ) {
 	return qtrue;
 }
 
+/*
+=================
+Grapple_Anchor
+
+Latch the hook at a world point and begin the pull THIS frame. Shared by the
+instant trace-attach (fire_grapple) and the legacy projectile impact path so
+the two can never drift apart. hitEnt is the entity the hook bit into, or NULL
+for a static surface; when it's a player the hook tracks them (Weapon_HookThink
+follows their origin each frame).
+=================
+*/
+void Grapple_Anchor( gentity_t *hook, gentity_t *owner, vec3_t point, gentity_t *hitEnt ) {
+	hook->enemy = ( hitEnt && hitEnt->client ) ? hitEnt : NULL;
+
+	// change over to the static grapple entity right at the anchor
+	hook->s.eType = ET_GRAPPLE;
+	G_SetOrigin( hook, point );
+
+	hook->think = Weapon_HookThink;
+	hook->nextthink = level.time + FRAMETIME;
+
+	owner->client->ps.pm_flags |= PMF_GRAPPLE_PULL;
+	VectorCopy( hook->r.currentOrigin, owner->client->ps.grapplePoint );
+
+	// metallic latch from the anchor point: the grapple is a core movement
+	// tool now, so biting in should read tactile, not silent
+	G_Sound( hook, CHAN_AUTO, G_SoundIndex( "sound/weapons/machinegun/ric1.wav" ) );
+
+	trap_LinkEntity( hook );
+}
+
 void G_MissileImpact( gentity_t *ent, trace_t *trace ) {
 	gentity_t		*other;
 	qboolean		hitClient = qfalse;
@@ -450,8 +481,6 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace ) {
 			G_AddEvent( nent, EV_MISSILE_HIT, DirToByte( trace->plane.normal ) );
 			nent->s.otherEntityNum = other->s.number;
 
-			ent->enemy = other;
-
 			v[0] = other->r.currentOrigin[0] + (other->r.mins[0] + other->r.maxs[0]) * 0.5;
 			v[1] = other->r.currentOrigin[1] + (other->r.mins[1] + other->r.maxs[1]) * 0.5;
 			v[2] = other->r.currentOrigin[2] + (other->r.mins[2] + other->r.maxs[2]) * 0.5;
@@ -460,7 +489,6 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace ) {
 		} else {
 			VectorCopy(trace->endpos, v);
 			G_AddEvent( nent, EV_MISSILE_MISS, DirToByte( trace->plane.normal ) );
-			ent->enemy = NULL;
 		}
 
 		SnapVectorTowards( v, ent->s.pos.trBase );	// save net bandwidth
@@ -468,22 +496,12 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace ) {
 		nent->freeAfterEvent = qtrue;
 		// change over to a normal entity right at the point of impact
 		nent->s.eType = ET_GENERAL;
-		ent->s.eType = ET_GRAPPLE;
-
-		G_SetOrigin( ent, v );
 		G_SetOrigin( nent, v );
 
-		ent->think = Weapon_HookThink;
-		ent->nextthink = level.time + FRAMETIME;
+		// latch + begin the pull (shared with the instant-attach path)
+		Grapple_Anchor( ent, ent->parent, v,
+			( other->takedamage && other->client ) ? other : NULL );
 
-		ent->parent->client->ps.pm_flags |= PMF_GRAPPLE_PULL;
-		VectorCopy( ent->r.currentOrigin, ent->parent->client->ps.grapplePoint);
-
-		// metallic latch from the impact point: the grapple is a core
-		// movement tool now, so biting in should read tactile, not silent
-		G_Sound( ent, CHAN_AUTO, G_SoundIndex( "sound/weapons/machinegun/ric1.wav" ) );
-
-		trap_LinkEntity( ent );
 		trap_LinkEntity( nent );
 
 		return;
@@ -847,7 +865,6 @@ gentity_t *fire_grapple (gentity_t *self, vec3_t start, vec3_t dir) {
 	hook->classname = "hook";
 	hook->nextthink = level.time + 10000;
 	hook->think = Weapon_HookFree;
-	hook->s.eType = ET_MISSILE;
 	hook->r.svFlags = SVF_USE_CURRENT_ORIGIN;
 	hook->s.weapon = WP_GRAPPLING_HOOK;
 	hook->r.ownerNum = self->s.number;
@@ -855,14 +872,41 @@ gentity_t *fire_grapple (gentity_t *self, vec3_t start, vec3_t dir) {
 	hook->clipmask = MASK_SHOT;
 	hook->parent = self;
 	hook->target_ent = NULL;
+	hook->s.otherEntityNum = self->s.number;	// use to match beam in client
+	VectorCopy( start, hook->s.pos.trBase );
+	VectorCopy( start, hook->r.currentOrigin );
 
+	// INSTANT LATCH (default): the grapple is a movement tool, not a slow combat
+	// projectile. Trace to the surface now and start the pull THIS frame — no
+	// dead travel window where you've committed but nothing answers. The client
+	// beam still reads as a thrown rope. g_grappleInstant 0 falls back to the
+	// classic fly-out projectile (combat counterplay: it can be dodged).
+	if ( g_grappleInstant.integer ) {
+		trace_t	tr;
+		vec3_t	end;
+		float	range = ( g_grappleRange.value > 0 ) ? g_grappleRange.value : 4000;
+
+		VectorMA( start, range, dir, end );
+		trap_Trace( &tr, start, NULL, NULL, end, self->s.number, MASK_SHOT );
+
+		if ( tr.fraction >= 1.0f || ( tr.surfaceFlags & SURF_NOIMPACT ) ) {
+			// nothing in reach — whiff, no anchor (out of range or sky)
+			G_FreeEntity( hook );
+			return NULL;
+		}
+
+		Grapple_Anchor( hook, self, tr.endpos,
+			( tr.entityNum < ENTITYNUM_WORLD ) ? &g_entities[tr.entityNum] : NULL );
+		self->client->hook = hook;
+		return hook;
+	}
+
+	// classic projectile hook: flies out and attaches on impact via G_MissileImpact
+	hook->s.eType = ET_MISSILE;
 	hook->s.pos.trType = TR_LINEAR;
 	hook->s.pos.trTime = level.time - MISSILE_PRESTEP_TIME;		// move a bit on the very first frame
-	hook->s.otherEntityNum = self->s.number; // use to match beam in client
-	VectorCopy( start, hook->s.pos.trBase );
-	VectorScale( dir, 1500, hook->s.pos.trDelta );	// fast hook: it's a movement tool
+	VectorScale( dir, ( g_grappleSpeed.value > 0 ) ? g_grappleSpeed.value : 1500, hook->s.pos.trDelta );
 	SnapVector( hook->s.pos.trDelta );			// save net bandwidth
-	VectorCopy (start, hook->r.currentOrigin);
 
 	self->client->hook = hook;
 

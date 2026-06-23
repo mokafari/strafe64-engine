@@ -2765,6 +2765,21 @@ void CG_Player( centity_t *cent ) {
 
 	CG_SlideTrail(cent);
 
+	// STRAFE 64: each fighter glows faintly in their OWN colour, so they read as
+	// neon-lit holographic figures rather than dark silhouettes against the world.
+	// Skip the local pilot in first person (the light would wash the near view);
+	// everyone seen in third person / spectate gets the halo.
+	if ( cg_playerGlow.value > 0
+			&& !( cent->currentState.number == cg.snap->ps.clientNum && !cg.renderingThirdPerson ) ) {
+		vec3_t	glowOrg;
+		float	r = ci->color1[0], g = ci->color1[1], b = ci->color1[2];
+		// guarantee a visible neon even if the player picked a near-black colour
+		if ( r + g + b < 0.4f ) { r = 0.4f; g = 0.7f; b = 1.0f; }
+		VectorCopy( cent->lerpOrigin, glowOrg );
+		glowOrg[2] += 28;		// chest height
+		trap_R_AddLightToScene( glowOrg, 110.0f + 90.0f * cg_playerGlow.value, r, g, b );
+	}
+
 	//
 	// add the gun / barrel / flash
 	//

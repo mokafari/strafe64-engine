@@ -83,6 +83,7 @@ vmCvar_t bot_interbreedwrite;
 vmCvar_t bot_moveset;			// STRAFE 64: bots use the bhop/wall/double-jump kit
 vmCvar_t bot_combatBhop;		// STRAFE 64: bots fight on the move (bhop-rush + peel); arena/DM only — leaks onto movement courses, so off by default
 vmCvar_t bot_swordBlock;		// STRAFE 64: bots parry incoming katana swings (reactive, skill-gated)
+vmCvar_t bot_dash;				// STRAFE 64: bots tap the SHIFT dash (BUTTON_DASH) to close on enemies / extend gap-leaps
 
 void ExitLevel( void );
 
@@ -769,6 +770,16 @@ void BotChangeViewAngles(bot_state_t *bs, float thinktime) {
 		factor = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_VIEW_FACTOR, 0.01f, 1);
 		maxchange = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_VIEW_MAXCHANGE, 1, 1800);
 		if (maxchange < 240) maxchange = 240;
+		// STRAFE 64: a melee duel tracks a CLOSE enemy that subtends a big angular
+		// rate as it weaves. The stock "over reaction" model (below) overshoots that
+		// and the aim wobble feeds back into the bot's view-relative strafe — so it
+		// loops in circles instead of trading. Lock on FAST and smooth: a high factor
+		// + high cap keeps the aim planted on the enemy, the feet stay pointed at it,
+		// and the duel reads as an exchange, not an orbit.
+		if (g_botSwordOnly.integer) {
+			factor = 0.5f;
+			maxchange = 900;
+		}
 	}
 	else {
 		// STRAFE 64: while TRAVELLING (no enemy) the stock view snaps at up to
@@ -782,8 +793,8 @@ void BotChangeViewAngles(bot_state_t *bs, float thinktime) {
 	maxchange *= thinktime;
 	for (i = 0; i < 2; i++) {
 		//
-		if (bot_challenge.integer || bs->enemy < 0) {
-			//smooth slowdown view model
+		if (bot_challenge.integer || bs->enemy < 0 || g_botSwordOnly.integer) {
+			//smooth slowdown view model (STRAFE 64: also for sword duels — see above)
 			diff = fabs(AngleDifference(bs->viewangles[i], bs->ideal_viewangles[i]));
 			anglespeed = diff * factor;
 			if (anglespeed > maxchange) anglespeed = maxchange;
@@ -1016,9 +1027,8 @@ static void BotApplyMoveset(bot_state_t *bs) {
 
 	// SWORD DUEL (g_botSwordOnly): cinematic slow-mo blade trading. Unlike the rail
 	// peel below (which carries momentum PAST the enemy), close aggressively then
-	// LOCK at blade range and circle slowly, so the bullet-time camera catches the
-	// exchange. Attacks + BotApplyDefense parries do the rest. Takes priority over
-	// the combat-bhop peel whenever the field is pure melee.
+	// TRADE at blade range. Attacks + BotApplyDefense parries do the rest. Takes
+	// priority over the combat-bhop peel whenever the field is pure melee.
 	if (g_botSwordOnly.integer && bs->enemy >= 0) {
 		aas_entityinfo_t	enemyinfo;
 		vec3_t				d;
@@ -1027,14 +1037,26 @@ static void BotApplyMoveset(bot_state_t *bs) {
 		VectorSubtract(enemyinfo.origin, ps->origin, d);
 		edist = VectorLength(d);
 		if (edist < 220.0f) {
-			// at blade range: stand and trade, edging in to stay in reach without
-			// ramming through; a slow committed orbit for the camera, no bhop
-			cmd->upmove = 0;
-			cmd->forwardmove = (edist > 90.0f) ? 90 : 0;
-			if (!g_botPass[bs->client]) {
-				g_botPass[bs->client] = (level.time & 2048) ? 1 : -1;
+			// at blade range. Damage is SPEED-SCALED (a standing trade barely
+			// scratches), so the orbit isn't just for show — the lateral speed is
+			// what makes the cuts bite. The old bug was a CONSTANT one-way orbit at a
+			// fixed radius (plus the view overshoot above): that reads as an endless
+			// loop and never resolves. Keep the speed, break the loop: orbit but
+			// REVERSE it on a timer, and every ~2.6s LUNGE straight through for a
+			// committed speed cut, then resume. Reads as duelling footwork, not a ring.
+			int		t = level.time + bs->client * 777;
+			if ((t % 2600) < 520) {
+				// committed pass — dash through, speed = damage
+				cmd->upmove = 0;
+				cmd->forwardmove = 127;
+				cmd->rightmove = 0;
+			} else {
+				// hold the ring and circle, flipping direction so it's back-and-forth
+				cmd->upmove = 0;
+				cmd->forwardmove = (edist > 110.0f) ? 95 : 25;
+				cmd->rightmove = ((t / 1500) & 1) ? 90 : -90;
 			}
-			cmd->rightmove = g_botPass[bs->client] * 55;	// slow orbit, not a peel
+			g_botPass[bs->client] = 0;
 			return;
 		}
 		if (edist < 3000.0f) {
@@ -1099,6 +1121,71 @@ static void BotApplyMoveset(bot_state_t *bs) {
 		// otherwise keep jump held so the landing rehop continues the chain
 		cmd->upmove = 127;
 	}
+}
+
+/*
+==============
+BotApplyDash
+
+STRAFE 64: let bots use the SHIFT dash (BUTTON_DASH). The dash itself (G_ClientDash)
+bursts along the bot's motion and REVECTORS toward a nearby enemy / slice-gate, so
+here we only decide WHEN to tap it: closing on an enemy to connect a slice, or to
+extend a fast forward leap across a gap. G_ClientDash wants a FRESH press on its own
+650ms cooldown, so we pulse a single isolated frame spaced just past that, tracked
+per-bot in g_botDashTime. Buttons are rebuilt fresh each frame (BotInputToUserCommand),
+so a lone set frame is naturally surrounded by clear ones — a clean press. Touches only
+the button; the moveset keeps driving the feet. Runs after BotApplyMoveset so the dash
+reads the finalised forward/strafe steer it lunges along.
+==============
+*/
+static int g_botDashTime[MAX_CLIENTS];
+
+static void BotApplyDash(bot_state_t *bs) {
+	usercmd_t		*cmd = &bs->lastucmd;
+	playerState_t	*ps = &bs->cur_ps;
+	float			speed;
+	qboolean		want = qfalse;
+
+	if (!bot_dash.integer) return;
+	if (!bot_moveset.integer) return;			// shares the master moveset switch
+	if (ps->pm_type != PM_NORMAL) return;
+	if (g_botSurfStrafe[bs->client]) return;	// never dash off a surf face
+	if (cmd->buttons & BUTTON_WALKING) return;	// careful walking near ledges
+	if (cmd->forwardmove <= 0) return;			// dash lunges along forward steer; need it
+	if (level.time < g_botDashTime[bs->client]) return;
+
+	speed = sqrt(ps->velocity[0] * ps->velocity[0]
+		+ ps->velocity[1] * ps->velocity[1]);
+
+	// COMBAT / FLOW-GATE CLOSE: an enemy a dash-length ahead (but not already at blade
+	// range, where a dash would overshoot) — tap to lunge onto the kill-line; the dash
+	// homing carries the rest. Drives the sword duel and the arena bhop-rush.
+	if (bs->enemy >= 0) {
+		aas_entityinfo_t	enemyinfo;
+		vec3_t				d;
+		float				edist;
+
+		BotEntityInfo(bs->enemy, &enemyinfo);
+		VectorSubtract(enemyinfo.origin, ps->origin, d);
+		edist = VectorLength(d);
+		if (edist > 200.0f && edist < 700.0f) {		// ~DASH_RANGE, past blade reach
+			want = qtrue;
+		}
+	}
+
+	// MOVEMENT: extend a fast forward leap. Airborne, at/past the apex and moving
+	// quick — the dash carries the jump further (and revectors toward a slice-gate in
+	// the cone if one's there), reading as a deliberate gap-dash rather than a lurch
+	// that would wreck ground navigation.
+	if (!want && ps->groundEntityNum == ENTITYNUM_NONE
+			&& ps->velocity[2] < 60.0f && speed > 450.0f) {
+		want = qtrue;
+	}
+
+	if (!want) return;
+
+	cmd->buttons |= BUTTON_DASH;
+	g_botDashTime[bs->client] = level.time + 800;	// just past DASH_COOLDOWN (650ms)
 }
 
 /*
@@ -1213,6 +1300,8 @@ void BotUpdateInput(bot_state_t *bs, int time, int elapsed_time) {
 	BotInputToUserCommand(&bi, &bs->lastucmd, bs->cur_ps.delta_angles, time);
 	//STRAFE 64: augment the command so bots use the new moveset
 	BotApplyMoveset(bs);
+	//STRAFE 64: tap the SHIFT dash to close on enemies / extend gap-leaps
+	BotApplyDash(bs);
 	//STRAFE 64: raise the katana guard to parry an incoming swing
 	BotApplyDefense(bs);
 	//subtract the delta angles
@@ -1709,6 +1798,7 @@ int BotAIStartFrame(int time) {
 	trap_Cvar_Update(&bot_moveset);			// STRAFE 64: live-tunable bot kit cvars
 	trap_Cvar_Update(&bot_combatBhop);
 	trap_Cvar_Update(&bot_swordBlock);
+	trap_Cvar_Update(&bot_dash);
 
 	if (bot_report.integer) {
 //		BotTeamplayReport();
@@ -1968,6 +2058,7 @@ int BotAISetup( int restart ) {
 	trap_Cvar_Register(&bot_moveset, "bot_moveset", "1", 0);
 	trap_Cvar_Register(&bot_combatBhop, "bot_combatBhop", "1", 0);
 	trap_Cvar_Register(&bot_swordBlock, "bot_swordBlock", "1", 0);
+	trap_Cvar_Register(&bot_dash, "bot_dash", "1", 0);
 
 	//if the game is restarted for a tournament
 	if (restart) {

@@ -30,3 +30,19 @@ strafe64/lattice
 		alphaGen vertex
 	}
 }
+
+// STRAFE 64 — DATAMOSH glitch blocks: hard $whiteimage but ADDITIVE (GL_SRC_ALPHA
+// GL_ONE) so the arena chips + chromatic ghosts bloom into neon under HDR instead
+// of crushing to black. Fades by vertex alpha.
+strafe64/datamosh
+{
+	nomipmaps
+	nopicmip
+	cull none
+	{
+		map $whiteimage
+		blendfunc GL_SRC_ALPHA GL_ONE
+		rgbGen vertex
+		alphaGen vertex
+	}
+}

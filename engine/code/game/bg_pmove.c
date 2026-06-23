@@ -96,6 +96,8 @@ int		pm_wallJumpMax = 2;				// walljumps allowed between groundings
 
 // grapple swing: jump reels in (build speed), crouch reels out
 float	pm_grappleReel = 900.0f;		// rope shorten/lengthen rate, ups
+float	pm_grappleSpring = 0.35f;		// fraction of overstretch corrected per frame (1.0 = rigid rope, the old hard snap)
+float	pm_grappleDamp = 6.0f;			// damps outward bounce so the spring settles instead of trampolining
 
 // wall run (Titanfall-style: hold forward and ride a wall at speed with
 // greatly reduced gravity; jump to kick off, refunded each ride)
@@ -1259,7 +1261,7 @@ PM_GrappleMove
 */
 static void PM_GrappleMove( void ) {
 	vec3_t	pull;
-	float	dist, ropeLen, radial, target;
+	float	dist, ropeLen, radial, target, correct;
 
 	VectorSubtract( pm->ps->grapplePoint, pm->ps->origin, pull );
 	dist = VectorNormalize( pull );		// pull now points toward the anchor
@@ -1294,17 +1296,30 @@ static void PM_GrappleMove( void ) {
 	pm->ps->stats[STAT_GRAPPLE_LEN] = (int)ropeLen;
 
 	// pendulum: a rope only pulls, never pushes, so it bites only when taut.
-	// at rope length it cancels just the velocity heading further out (and
-	// nudges back any overstretch) while leaving every bit of tangential
-	// momentum intact — and it never adds inward speed, so you're not reeled
-	// in. gravity (applied by PM_AirMove right after) then swings you along
-	// the arc, building speed at the bottom to fling out of. inside the
-	// radius the rope is slack and you fall freely until it snaps taut.
+	// when overstretched it cancels velocity heading further out while leaving
+	// every bit of tangential momentum intact — gravity (applied by PM_AirMove
+	// right after) then swings you along the arc, building speed at the bottom
+	// to fling out of. inside the radius the rope is slack and you fall freely.
+	//
+	// the rope is a SPRING, not a rigid clamp: instead of snapping you back to
+	// exact length in a single frame (which reads as a stiff jolt the instant it
+	// bites), it corrects only a fraction of the overstretch per frame so the
+	// catch eases in and the rope "gives". the damper bleeds off the outward
+	// component so the spring settles instead of trampolining. it never injects
+	// inward speed beyond the rigid solution, so you're swung, not reeled.
+	// pm_grappleSpring 1.0 + pm_grappleDamp 0 reproduces the old rigid rope.
 	if ( dist >= ropeLen ) {
 		radial = DotProduct( pm->ps->velocity, pull );	// + = toward the anchor
-		target = ( dist - ropeLen ) / pml.frametime;	// inward speed to restore length
+		target = ( dist - ropeLen ) / pml.frametime;	// inward speed to fully restore length this frame
 		if ( radial < target ) {
-			VectorMA( pm->ps->velocity, target - radial, pull, pm->ps->velocity );
+			correct = ( target - radial ) * pm_grappleSpring;
+			if ( radial < 0 ) {							// moving outward: damp the bounce
+				correct += ( -radial ) * pm_grappleDamp * pml.frametime;
+			}
+			if ( correct > target - radial ) {			// never overshoot the rigid solution (no reel-in)
+				correct = target - radial;
+			}
+			VectorMA( pm->ps->velocity, correct, pull, pm->ps->velocity );
 		}
 	}
 

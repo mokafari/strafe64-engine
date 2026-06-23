@@ -1752,6 +1752,26 @@ void BotUpdateInventory(bot_state_t *bs) {
 	bs->inventory[INVENTORY_MINES] = bs->cur_ps.ammo[WP_PROX_LAUNCHER];
 	bs->inventory[INVENTORY_BELT] = bs->cur_ps.ammo[WP_CHAINGUN];
 #endif
+	// STRAFE 64: ammo -1 means INFINITE (vectorgun rail, gauntlet, sword). botlib's
+	// weapon scorer reads the raw count and treats -1 as "no ammo", so a VECTORGUN
+	// bot never picks the rail (it falls back to melee and "doesn't shoot"). Present
+	// infinite ammo as a big positive count so the AI knows it can fire.
+	{
+		int a;
+		static const int ammoSlots[] = {
+			INVENTORY_SHELLS, INVENTORY_BULLETS, INVENTORY_GRENADES,
+			INVENTORY_CELLS, INVENTORY_LIGHTNINGAMMO, INVENTORY_ROCKETS,
+			INVENTORY_SLUGS, INVENTORY_BFGAMMO,
+#ifdef MISSIONPACK
+			INVENTORY_NAILS, INVENTORY_MINES, INVENTORY_BELT,
+#endif
+		};
+		for (a = 0; a < (int)(sizeof(ammoSlots) / sizeof(ammoSlots[0])); a++) {
+			if (bs->inventory[ammoSlots[a]] < 0) {
+				bs->inventory[ammoSlots[a]] = 999;
+			}
+		}
+	}
 	//powerups
 	bs->inventory[INVENTORY_HEALTH] = bs->cur_ps.stats[STAT_HEALTH];
 	bs->inventory[INVENTORY_TELEPORTER] = bs->cur_ps.stats[STAT_HOLDABLE_ITEM] == MODELINDEX_TELEPORTER;

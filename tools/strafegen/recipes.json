@@ -1,0 +1,54 @@
+{
+  "_doc": "Blendable arena recipes for STRAFE 64. See docs/research/06-recipes.md. An arena = one ingredient per layer. 'status': live = strafegen builds it today; planned = a knob to add (docs/research/05-strafegen-tuning.md G). Preview a blend with tools/strafegen/mapview.py.",
+  "layers": ["shell", "centerpiece", "spice", "combat", "economy", "feel"],
+  "ingredients": {
+    "shell": {
+      "sealed-box":    {"status": "live", "knobs": {"W": 1408, "H": 1600, "CW": [352, 432]}, "kind": "killbox"},
+      "velodrome-ring":{"status": "live", "note": "kind=arena; many seeds build no .aas", "kind": "arena"},
+      "tall-chimney":  {"status": "planned", "knobs": {"W": 1000, "H": 2400}},
+      "wide-pit":      {"status": "planned", "knobs": {"W": 1800, "H": 1100}},
+      "twin-linked":   {"status": "planned", "note": "two shells joined by momentum portals"}
+    },
+    "centerpiece": {
+      "spire":  {"status": "live", "arch": "spire",  "feel": "cover-dense classic; thin core, verify LOS break"},
+      "spiral": {"status": "live", "arch": "spiral", "feel": "aerial climb; highest top-speed; fall stakes"},
+      "forest": {"status": "live", "arch": "forest", "feel": "most combat-dense; close-quarters; medium speed"},
+      "ring":   {"status": "live", "arch": "ring",   "feel": "hollow colonnade; strong all-rounder"},
+      "cross":  {"status": "live", "arch": "cross",  "feel": "quadrant duels; sightline breaker"},
+      "twin":   {"status": "live", "arch": "twin",   "feel": "two-peak duel over a bridge"}
+    },
+    "spice": {
+      "corner-chimney":  {"status": "live", "knobs": {"columns": 4, "gap_u": [150, 400]}},
+      "momentum-portals":{"status": "live", "knobs": {"gates": 4, "dest_inset_u": 360}, "note": "discrete only; bots ignore"},
+      "aerial-slabs":    {"status": "partial", "knobs": {"gap_u": [150, 350], "dz_u": [0, 92]}, "note": "live in spiral"},
+      "bounce-chevrons": {"status": "planned", "knobs": {"angle_deg": 45}, "note": "never a tilted floor-bank"},
+      "slide-pads":      {"status": "planned", "knobs": {"slope": "flat-or-down"}},
+      "surf-ramps":      {"status": "planned", "knobs": {"angle_deg": [30, 50]}}
+    },
+    "combat": {
+      "bot-duel":   {"status": "live", "cvars": {"g_botSwordOnly": 1}, "bots": "Assassin"},
+      "apex-pulse": {"status": "planned", "knobs": {"wave": [1, 1, 2, 3, 5], "spacing_u": [120, 200], "min_speed_ups": 320}},
+      "quad-bait":  {"status": "partial", "knobs": {"placement": "most-committed-line"}}
+    },
+    "economy": {
+      "melee-only":             {"status": "live", "items": ["health", "armor", "mega", "quad"], "no": ["weapons", "ammo"]},
+      "rotation-ring":          {"status": "planned", "respawn_s": {"mega": 35, "armor": 25, "quad": 120}},
+      "quad-on-committed-line": {"status": "planned"}
+    },
+    "feel": {
+      "bullet-time-duel": {"status": "live", "cvars": {"g_timeBind": 1}},
+      "audio-trails":     {"status": "live", "cvars": {"cg_arenaTrails": 1}},
+      "source-dev-look":  {"status": "live", "note": "default; orange grid / grey structure / vivid accents"}
+    }
+  },
+  "presets": [
+    {"name": "Colonnade Duel", "blend": {"shell": "sealed-box", "centerpiece": "ring", "spice": ["corner-chimney", "momentum-portals"], "combat": "bot-duel", "economy": "melee-only", "feel": "bullet-time-duel"}, "generator": {"kind": "killbox", "archetype": "ring"}, "preview": "python3 mapview.py killbox 8224 --arch ring"},
+    {"name": "Ascension",      "blend": {"shell": "sealed-box", "centerpiece": "spiral", "spice": ["aerial-slabs", "momentum-portals"], "combat": "bot-duel", "economy": "quad-on-committed-line", "feel": "bullet-time-duel"}, "generator": {"kind": "killbox", "archetype": "spiral"}, "preview": "python3 mapview.py killbox 7001 --arch spiral"},
+    {"name": "Thicket",        "blend": {"shell": "sealed-box", "centerpiece": "forest", "spice": ["corner-chimney"], "combat": "bot-duel", "economy": "melee-only", "feel": "bullet-time-duel"}, "generator": {"kind": "killbox", "archetype": "forest"}, "preview": "python3 mapview.py killbox 9000 --arch forest"},
+    {"name": "Crossfire",      "blend": {"shell": "sealed-box", "centerpiece": "cross", "spice": ["momentum-portals"], "combat": "bot-duel", "economy": "melee-only", "feel": "bullet-time-duel"}, "generator": {"kind": "killbox", "archetype": "cross"}, "preview": "python3 mapview.py killbox 9999 --arch cross"},
+    {"name": "Twin Peaks",     "blend": {"shell": "sealed-box", "centerpiece": "twin", "spice": ["aerial-slabs"], "combat": "bot-duel", "economy": "melee-only", "feel": "bullet-time-duel"}, "generator": {"kind": "killbox", "archetype": "twin"}, "preview": "python3 mapview.py killbox 8888 --arch twin"},
+    {"name": "Citadel",        "blend": {"shell": "sealed-box", "centerpiece": "spire", "spice": ["corner-chimney"], "combat": "bot-duel", "economy": "melee-only", "feel": "bullet-time-duel"}, "generator": {"kind": "killbox", "archetype": "spire"}, "preview": "python3 mapview.py killbox 7001 --arch spire"},
+    {"name": "Velodrome",      "blend": {"shell": "velodrome-ring", "centerpiece": "spire", "spice": ["aerial-slabs"], "combat": "bot-duel", "economy": "melee-only", "feel": "bullet-time-duel"}, "generator": {"kind": "arena"}, "preview": "python3 mapview.py arena 7140", "note": "verify .aas before bot-testing"},
+    {"name": "Bladestorm",     "blend": {"shell": "sealed-box", "centerpiece": "forest", "spice": ["corner-chimney"], "combat": "apex-pulse", "economy": "quad-on-committed-line", "feel": "bullet-time-duel"}, "generator": {"kind": "killbox", "archetype": "forest"}, "note": "apex-pulse gates are a planned knob"}
+  ]
+}

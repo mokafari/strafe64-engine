@@ -775,6 +775,9 @@ extern	vmCvar_t	g_hotFloor;
 extern	vmCvar_t	g_flowRegen;
 extern	vmCvar_t	g_speedKnockback;
 extern	vmCvar_t	g_grapple;
+extern	vmCvar_t	g_grappleInstant;
+extern	vmCvar_t	g_grappleRange;
+extern	vmCvar_t	g_grappleSpeed;
 extern	vmCvar_t	g_vectorgun;
 extern	vmCvar_t	g_voidRise;
 extern	vmCvar_t	g_timeBind;			// SUPERHOT-style world-clock dilation by movement intent

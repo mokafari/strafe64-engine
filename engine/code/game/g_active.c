@@ -878,13 +878,21 @@ static void G_ClientDash( gentity_t *ent, usercmd_t *ucmd ) {
 	// lunge, not a slow drift (a 430u/s burst at timescale 0.06 would crawl).
 	client->dashSurge = level.time + 300;
 
-	// base direction: down the line you're already flying, else where you look
-	VectorCopy( client->ps.velocity, dir );
-	dir[2] = 0.0f;
-	if ( VectorNormalize( dir ) < 1.0f ) {
-		AngleVectors( client->ps.viewangles, dir, NULL, NULL );
-		dir[2] = 0.0f;
-		VectorNormalize( dir );
+	// base direction: where you're STEERING — held move keys relative to your
+	// full view (so the dash follows your aim pitch up and down), else straight
+	// down your crosshair. This lets a dash REVECTOR your flight toward where
+	// you point, instead of locking to the line you're already flying.
+	{
+		vec3_t	vf, vr;
+
+		AngleVectors( client->ps.viewangles, vf, vr, NULL );
+		dir[0] = vf[0] * ucmd->forwardmove + vr[0] * ucmd->rightmove;
+		dir[1] = vf[1] * ucmd->forwardmove + vr[1] * ucmd->rightmove;
+		dir[2] = vf[2] * ucmd->forwardmove;	// strafe stays level; forward carries aim pitch
+		if ( VectorNormalize( dir ) < 1.0f ) {	// no steer input: dash where you look
+			VectorCopy( vf, dir );
+			VectorNormalize( dir );
+		}
 	}
 
 	// revector toward the nearest enemy / slice-gate inside a ~70deg forward cone
@@ -927,8 +935,11 @@ static void G_ClientDash( gentity_t *ent, usercmd_t *ucmd ) {
 
 	client->ps.velocity[0] += dir[0] * g_dashSpeed.value;
 	client->ps.velocity[1] += dir[1] * g_dashSpeed.value;
-	// a little lift so an air-dash stays airborne to chain the slice
-	if ( client->ps.velocity[2] < 90.0f ) {
+	// vertical follows your aim: dash UP when you look up, DIVE when you look down
+	client->ps.velocity[2] += dir[2] * g_dashSpeed.value;
+	// keep a little lift for a level/upward dash so an air-dash stays airborne to
+	// chain a slice — but never when you're deliberately aiming down to dive
+	if ( dir[2] > -0.1f && client->ps.velocity[2] < 90.0f ) {
 		client->ps.velocity[2] = 90.0f;
 	}
 }

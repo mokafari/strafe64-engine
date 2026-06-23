@@ -246,7 +246,7 @@ void CG_AddSwordCuts( void ) {
 			verts[j].modulate[2] = 190;
 			verts[j].modulate[3] = ca;
 		}
-		trap_R_AddPolyToScene( cgs.media.swordSlashShader, 4, verts );
+		trap_R_AddPolyToScene( cgs.media.swordCutShader, 4, verts );
 	}
 }
 
@@ -317,17 +317,19 @@ void CG_AddKillBursts( void ) {
 			if ( fa > 0.0f ) {
 				memset( &re, 0, sizeof( re ) );
 				re.reType = RT_SPRITE;
-				re.customShader = cgs.media.whiteShader;
+				// trailglow is a SOFT radial glow (bright core fading to black at the
+				// edges). whiteShader is a solid white texture, so a sprite drawn with
+				// it is a hard-edged colored SQUARE — the "blocky" flash. trailglow is
+				// additive (GL_SRC_ALPHA GL_ONE, rgbGen/alphaGen vertex), so the sprite
+				// fades by shaderRGBA alpha and tints by shaderRGBA — and additive means
+				// it can never render black.
+				re.customShader = cgs.media.trailGlowShader;
 				VectorCopy( kb->origin, re.origin );
 				re.radius = ( 12.0f + 26.0f * kb->intensity ) * ( 0.6f + 0.6f * frac );
-				// whiteShader is ADDITIVE here (cf. the ghost trail in cg_view.c and
-				// cg_ents.c): it blends by RGB, not alpha. Fade by scaling the colour
-				// toward black with alpha pinned at 255, or the punch-in/out is lost
-				// and the flash just snaps on then cuts out at full brightness.
-				re.shaderRGBA[0] = (byte)( 255 * fa );
-				re.shaderRGBA[1] = (byte)( 232 * fa );
-				re.shaderRGBA[2] = (byte)( 190 * fa );
-				re.shaderRGBA[3] = 255;
+				re.shaderRGBA[0] = 255;
+				re.shaderRGBA[1] = 232;
+				re.shaderRGBA[2] = 190;
+				re.shaderRGBA[3] = (byte)( fa * 255.0f );
 				trap_R_AddRefEntityToScene( &re );
 			}
 		}
@@ -341,10 +343,9 @@ void CG_AddKillBursts( void ) {
 			float	band  = 6.0f + ( 1.0f - frac ) * 16.0f;
 			float	inner = ringR;
 			float	outer = ringR + band;
-			// additive whiteShader fades by RGB, not alpha (see flash above) —
-			// premultiply the ease-out into the colour, alpha stays 255. Peak
-			// ~0.78 keeps the ring from blowing out white over a bright floor.
-			float	rf    = alpha * 0.78f;
+			// whiteShader is an ALPHA blend (see flash above) — fade by alpha with
+			// the colour pinned, or the ring draws as an opaque box that goes black.
+			byte	ca    = (byte)( alpha * 200.0f );
 			polyVert_t	verts[4];
 
 			for ( s = 0 ; s < KILL_RING_SEGS ; s++ ) {
@@ -373,10 +374,10 @@ void CG_AddKillBursts( void ) {
 				verts[3].st[0] = 0; verts[3].st[1] = 1;
 
 				for ( j = 0 ; j < 4 ; j++ ) {
-					verts[j].modulate[0] = (byte)( 255 * rf );
-					verts[j].modulate[1] = (byte)( 220 * rf );
-					verts[j].modulate[2] = (byte)( 180 * rf );
-					verts[j].modulate[3] = 255;
+					verts[j].modulate[0] = 255;
+					verts[j].modulate[1] = 220;
+					verts[j].modulate[2] = 180;
+					verts[j].modulate[3] = ca;
 				}
 				trap_R_AddPolyToScene( cgs.media.whiteShader, 4, verts );
 			}

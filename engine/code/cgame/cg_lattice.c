@@ -16,10 +16,10 @@
 
 #include "cg_local.h"
 
-#define LAT_PTS			128		// points retained per pilot (mirrors the server ring)
-#define LAT_SAMPLE_MS	33		// sample cadence (~30 Hz), independent of render rate
-#define LAT_STEP		20.0f	// min carve distance between stored points (u)
-#define LAT_TRAIL_SEGS	64		// how many tail segments to actually draw
+#define LAT_PTS			288		// points retained per pilot (client-side render ring)
+#define LAT_SAMPLE_MS	16		// sample cadence (~60 Hz), independent of render rate
+#define LAT_STEP		8.0f	// min carve distance between stored points (u) -- finer = denser/smoother curve
+#define LAT_TRAIL_SEGS	144		// how many tail segments to actually draw
 // The wall is a band CENTRED on the pilot that fattens symmetrically with the music --
 // it emanates from the player: a thin line at the centre when quiet, growing equally up
 // and down, and at the loudest peak it reaches exactly the PLAYER BOX -- bottom at the
@@ -29,13 +29,13 @@
 #define LAT_WALL_MID		4.0f	// vertical centre = player box centre, so the wall comes FROM the pilot
 #define LAT_WALL_MIN_HALF	2.0f	// quiet half-height -- a thin centred line emanating from the player
 #define LAT_WALL_MAX_HALF	28.0f	// LOUD CAP = player half-height (centre+28 = head, centre-28 = feet/floor)
-#define LAT_ALPHA			0.82f	// head opacity (wall presence)
+#define LAT_ALPHA			0.92f	// head opacity (wall presence)
 #define LAT_WAVE_HALF		26.0f	// amplitude->half-height gain (clamped at MAX_HALF), * cg_latticeWave
 
 // ARENA velocity ribbon (cg_arenaTrails, NOT full LATTICE mode): a SHORT trail
 // that DISSOLVES on a real-time TTL, so its visible length tracks how far you
 // moved in the last few hundred ms = your speed. Stop and it fades to nothing.
-#define LAT_ARENA_SEGS		48		// max tail; the TTL below is the real limiter
+#define LAT_ARENA_SEGS		110		// max tail; the TTL below is the real limiter
 #define LAT_ARENA_TTL		360.0f	// base game-ms a point lives before it dissolves
 #define LAT_ARENA_STRETCH	3.2f	// slow-mo stretch: trail lives (1 + STRETCH*latSlow)x
 									// longer in bullet-time -> it lengthens as time dilates
@@ -44,17 +44,20 @@
 
 // Distinct per-pilot wall colours so three carving trails read apart at speed,
 // regardless of the players' chosen model colours. Indexed by client number.
-// Warm/high-contrast hues first: most arenas lean cool (blue banks, grey floor),
-// so the early pilots get colours that pop against them; cool hues come later.
+// CYBERPUNK ORANGE<->TEAL DUOTONE: the classic blockbuster pairing, kept neon and
+// saturated so it BLOOMS as coloured light rather than washing to white. Clients
+// alternate warm/cool (0 you = hot orange, 1 = electric teal -> instant arena duel
+// read), with a hot-magenta and acid-lime accent for 3+ player spice. Values are
+// pushed toward primaries (one channel near 0) so the hue survives the bloom.
 static const byte latPalette[8][3] = {
-	{ 255, 120,  30 },	// 0 hot orange
-	{ 255,  60, 200 },	// 1 magenta
-	{ 120, 255,  80 },	// 2 green
-	{ 255, 235,  60 },	// 3 yellow
-	{ 255,  60,  60 },	// 4 red
-	{  60, 230, 255 },	// 5 cyan
-	{ 170, 120, 255 },	// 6 violet
-	{ 255, 255, 255 },	// 7 white
+	{ 255,  96,   0 },	// 0 hot neon orange
+	{   0, 224, 205 },	// 1 electric teal
+	{ 255, 158,  20 },	// 2 amber / tangerine
+	{   0, 196, 255 },	// 3 aqua cyan
+	{ 255,  40, 150 },	// 4 hot magenta (accent pop)
+	{  40, 255, 170 },	// 5 spring mint-teal
+	{ 255,  70,  40 },	// 6 molten coral
+	{ 180, 110, 255 },	// 7 ultraviolet (accent pop)
 };
 
 // cheap integer hash -> pseudo-random, for the deterministic per-segment glitch
@@ -65,11 +68,45 @@ static unsigned latHash( unsigned a, unsigned b ) {
 	return h ^ ( h >> 16 );
 }
 
+// HOLOGRAPHIC RAMP: HSV->RGB (h wraps, s/v in 0..1) baked into byte rgb. The
+// datamosh chips ride this oil-slick ramp (hue swept by chip id + real time +
+// the bass band) so the corruption reads as iridescent neon film instead of
+// dim grey squares.
+static void CG_LatticeHueRGB( float h, float s, float v, byte out[3] ) {
+	float	r, g, b, f, p, q, t;
+	int		i;
+
+	h -= (float)( (int)h );			// wrap to 0..1
+	if ( h < 0.0f ) h += 1.0f;
+	i = (int)( h * 6.0f );
+	f = h * 6.0f - (float)i;
+	p = v * ( 1.0f - s );
+	q = v * ( 1.0f - s * f );
+	t = v * ( 1.0f - s * ( 1.0f - f ) );
+	switch ( i % 6 ) {
+		case 0:  r = v; g = t; b = p; break;
+		case 1:  r = q; g = v; b = p; break;
+		case 2:  r = p; g = v; b = t; break;
+		case 3:  r = p; g = q; b = v; break;
+		case 4:  r = t; g = p; b = v; break;
+		default: r = v; g = p; b = q; break;
+	}
+	out[0] = (byte)( r * 255.0f );
+	out[1] = (byte)( g * 255.0f );
+	out[2] = (byte)( b * 255.0f );
+}
+
 static vec3_t	latPts[MAX_CLIENTS][LAT_PTS];
 static float	latAmp[MAX_CLIENTS][LAT_PTS];	// music amplitude captured AS each point was laid -> the wall-top waveform
 static int		latTime[MAX_CLIENTS][LAT_PTS];	// real-ms each point was laid -> arena-trail TTL dissolve
 static int		latCount[MAX_CLIENTS];
 static int		latHead[MAX_CLIENTS];
+// live (uncommitted) head: the pilot's CURRENT position, updated every frame. The
+// leading bar stretches from here to the newest committed point, so fresh wall grows
+// in continuously instead of a full step-length bar popping in on each sample tick.
+static vec3_t	latLive[MAX_CLIENTS];
+static float	latLiveAmp[MAX_CLIENTS];	// waveform amplitude at the live head
+static qboolean	latLiveOn[MAX_CLIENTS];		// this pilot was tracked this frame
 static int		latLastSample;
 static int		latLastTime;
 static float	latWaveNow;		// current frame's amplitude sample, frozen into latAmp on each push
@@ -100,6 +137,7 @@ static void CG_LatticeReset( void ) {
 	for ( i = 0 ; i < MAX_CLIENTS ; i++ ) {
 		latCount[i] = 0;
 		latHead[i] = 0;
+		latLiveOn[i] = qfalse;
 	}
 	latLastSample = cg.time;
 }
@@ -143,6 +181,29 @@ static void CG_LatticePush( int client, const vec3_t origin ) {
 
 /*
 ================
+CG_LatticeTrack
+
+Per-frame tracking for one pilot. ALWAYS updates the live head (so the leading bar
+follows the player every frame), but only commits a new ring point on the sample
+cadence + carve-distance gate. Decoupling the two is what removes the head "pop":
+the bar grows smoothly from zero to one step, then the commit lands exactly on the
+live head, so there's no visible jump.
+================
+*/
+static void CG_LatticeTrack( int client, const vec3_t origin, qboolean commit ) {
+	if ( client < 0 || client >= MAX_CLIENTS ) {
+		return;
+	}
+	VectorCopy( origin, latLive[client] );
+	latLiveAmp[client] = latWaveNow;
+	latLiveOn[client] = qtrue;
+	if ( commit ) {
+		CG_LatticePush( client, origin );
+	}
+}
+
+/*
+================
 CG_LatticeDraw
 
 A vertical light-wall stitched through one pilot's stored points, newest-first,
@@ -160,10 +221,12 @@ static void CG_LatticeVert( polyVert_t *v, const vec3_t xyz, float s, float t,
 	// a bright peak that swells in slow-mo (never drops to 0, so it never blinks out).
 	// The music drives it too: level lifts the floor, bass slams the peak (the wall
 	// pumps on the kick) — so the lattice breathes ON THE BEAT, hardest in slow-mo.
-	float	lo    = 0.50f + 0.22f * latLevel;
-	float	hi    = 1.00f + 0.60f * slow + 0.75f * latBass;	// kick brightens, stays coloured
-	float	pulse = lo + ( hi - lo ) * 0.5f * ( 1.0f + sin( idx * 0.45f - scroll ) );
-	float	hot   = ( idx < 5 ) ? ( 1.0f - idx * 0.2f ) : 0.0f;	// molten white leading edge
+	float	lo    = 0.55f + 0.40f * latLevel;					// brighter resting floor + more level lift
+	float	hi    = 1.05f + 0.65f * slow + 1.35f * latBass;	// kick SLAMS the brightness (stays coloured)
+	// idx coefficient + molten-head span are tuned to SPATIAL wavelength: the carve
+	// step shrank (denser ring), so these scale up to keep the same physical look.
+	float	pulse = lo + ( hi - lo ) * 0.5f * ( 1.0f + sin( idx * 0.18f - scroll ) );
+	float	hot   = ( idx < 12 ) ? ( 1.0f - idx * 0.083f ) : 0.0f;	// molten white leading edge
 	// arena ribbon: an EVEN bar centred on the player (no floor-heavy gradient)
 	// and far LESS white blowout, so the neon stays saturated and rich instead of
 	// washing to white — vivid but not tacky.
@@ -234,8 +297,8 @@ static const byte latGlitchBlue[3]  = {  60,  90, 255 };
 // snares spray the wall with little corrupted squares — the "alive" detail layer.
 // Chips are pushed a hair toward the camera so they pop off the wall (no z-fight)
 // and read as floating data, not paint.
-#define LAT_BLK_CAND	5		// candidate chips considered per segment (wall)
-#define LAT_ARENA_BLK	16		// arena ribbon: denser, finer datamosh grain
+#define LAT_BLK_CAND	6		// candidate chips considered per segment (wall)
+#define LAT_ARENA_BLK	14		// arena ribbon: denser, finer datamosh grain
 static void CG_LatticeBlocks( qhandle_t shader, const vec3_t a, const vec3_t b,
 		const vec3_t perp, const byte *col, float zc, float halfH,
 		unsigned key, unsigned tbucket, float glitch, float highs, float age ) {
@@ -265,6 +328,7 @@ static void CG_LatticeBlocks( qhandle_t shader, const vec3_t a, const vec3_t b,
 		unsigned	h2 = latHash( h, 0x9E3779B9u );		// decorrelated entropy for chip shape
 		float		t, zt, szw, szh, tear, al;
 		const byte	*bc;
+		byte		irid[3];
 		vec3_t		c, du, toCam;
 		polyVert_t	v[4];
 
@@ -304,22 +368,24 @@ static void CG_LatticeBlocks( qhandle_t shader, const vec3_t a, const vec3_t b,
 		VectorNormalizeFast( toCam );
 		VectorMA( c, 1.5f, toCam, c );
 
-		if ( latArenaDraw ) {
-			// MATCH the stream: chips wear the pilot's own neon, so the datamosh
-			// reads as the ribbon corrupting rather than foreign coloured squares.
-			bc = col;
-		} else {
-			switch ( ( h >> 17 ) & 3 ) {		// corrupted channel flash
-			case 0:  bc = latGlitchWhite; break;
-			case 1:  bc = latGlitchCyan;  break;
-			case 2:  bc = latGlitchRed;   break;
-			default: bc = col;            break;
-			}
+		// HOLOGRAPHIC DATAMOSH: every chip rides the oil-slick hue ramp instead of
+		// dim pilot-grey or the old hardcoded channel flash. Hue sweeps along the
+		// segment (t), drifts on the real clock, jitters per-chip (h2) and shoves
+		// on the bass so the corruption shimmers through the full neon spectrum.
+		{
+			float hue = 0.55f					// teal-anchored start (oil-slick)
+				+ t * 0.40f						// gradient down the segment
+				+ ( ( h2 & 255 ) / 255.0f ) * 0.18f	// per-chip jitter
+				+ latRealMs * 0.00010f			// slow iridescent drift
+				+ latBass * 0.22f;				// beat shoves the band
+			CG_LatticeHueRGB( hue, 0.92f, 1.0f, irid );
+			bc = irid;
 		}
-		// arena chips are TRANSLUCENT plasma that flares on the kick (faint between,
-		// brighter on the beat); the soft glow shader + bloom lift them into neon.
-		al = ( ( latArenaDraw ? 0.30f + 0.40f * latBass : 0.55f )
-			+ ( latArenaDraw ? 0.15f : 0.45f ) * ( ( ( h >> 24 ) & 7 ) / 7.0f ) ) * age;
+		// chips glow as bright iridescent film. A real brightness FLOOR (not gated on
+		// the bass envelope, which is ~0 without strong audio) keeps them reading as
+		// neon — the kick then flares them harder on the beat.
+		al = ( ( latArenaDraw ? 0.70f + 0.40f * latBass : 0.60f )
+			+ ( latArenaDraw ? 0.22f : 0.40f ) * ( ( ( h >> 24 ) & 7 ) / 7.0f ) ) * age;
 		if ( al > 1.0f ) al = 1.0f;
 
 		// four corners of the chip: c +/- du (width along trail) +/- szh (height)
@@ -334,7 +400,97 @@ static void CG_LatticeBlocks( qhandle_t shader, const vec3_t a, const vec3_t b,
 			v[j].modulate[2] = bc[2];
 			v[j].modulate[3] = (byte)( al * 255.0f );
 		}
-		trap_R_AddPolyToScene( latArenaDraw ? cgs.media.trailGlowShader : shader, 4, v );
+		trap_R_AddPolyToScene( latArenaDraw ? cgs.media.datamoshShader : shader, 4, v );
+	}
+}
+
+// HOT-WIRE CREST: a thin, bright filament hugging the wall's TOP edge so the
+// silhouette reads as a glowing neon wire. Brightness rides level+bass and the
+// molten head, and folds in the segment's age/glitch fade (aMul). Drawn on the
+// wall shader (alpha-blended) so it fades cleanly and blooms on GL2.
+static void CG_LatticeCrest( qhandle_t shader, const vec3_t a, const vec3_t b,
+		float topA, float topB, const byte *col, int ia, int n, float aMul ) {
+	polyVert_t	v[4];
+	int			j;
+	float		age    = 1.0f - ( ia / (float)( n - 1 ) );
+	float		hot    = ( ia < 12 ) ? ( 1.0f - ia * 0.083f ) : 0.0f;
+	float		bright = ( 0.55f + 0.45f * latLevel + 1.0f * latBass ) * age * aMul;
+	float		w      = 0.55f + 0.45f * hot;		// crest is whiter than the body
+	float		thick  = 3.5f + 2.5f * latBass;		// the wire fattens on the kick
+	byte		cr, cg_, cb;
+
+	if ( bright <= 0.01f ) {
+		return;
+	}
+	if ( bright > 1.0f ) bright = 1.0f;
+	cr  = (byte)( col[0] + ( 255 - col[0] ) * w );
+	cg_ = (byte)( col[1] + ( 255 - col[1] ) * w );
+	cb  = (byte)( col[2] + ( 255 - col[2] ) * w );
+
+	VectorCopy( a, v[0].xyz ); v[0].xyz[2] += topA;         v[0].st[0]=0; v[0].st[1]=0;
+	VectorCopy( a, v[1].xyz ); v[1].xyz[2] += topA - thick; v[1].st[0]=0; v[1].st[1]=1;
+	VectorCopy( b, v[2].xyz ); v[2].xyz[2] += topB - thick; v[2].st[0]=1; v[2].st[1]=1;
+	VectorCopy( b, v[3].xyz ); v[3].xyz[2] += topB;         v[3].st[0]=1; v[3].st[1]=0;
+	for ( j = 0 ; j < 4 ; j++ ) {
+		v[j].modulate[0] = cr;
+		v[j].modulate[1] = cg_;
+		v[j].modulate[2] = cb;
+		v[j].modulate[3] = (byte)( bright * 255.0f );
+	}
+	trap_R_AddPolyToScene( shader, 4, v );
+}
+
+// CREST EMBERS: tiny soft sparks shed from the wall's top edge, twinkling on the
+// audio highs and drifting UP as they fade -- the wall bleeding energy into the
+// air. Deterministic (hash on a stable segment id + a slow time bucket) so they
+// flicker without a RNG, and camera-billboarded so they read as round glows.
+#define LAT_EMBERS	3		// candidate embers per segment
+static void CG_LatticeEmbers( const vec3_t a, const vec3_t b, float topA, float topB,
+		const byte *col, unsigned key, unsigned tbucket, float highs, float age ) {
+	int		k, j;
+
+	if ( age <= 0.05f || highs <= 0.02f ) {
+		return;
+	}
+	for ( k = 0 ; k < LAT_EMBERS ; k++ ) {
+		unsigned	h     = latHash( key * 2246822519u + k * 40503u, tbucket );
+		float		dense = 0.10f + 0.55f * highs;
+		float		t, life, lift, sz, al;
+		vec3_t		c, right, upv;
+		polyVert_t	v[4];
+
+		if ( ( h & 1023 ) / 1023.0f > dense ) {
+			continue;					// this ember is dark this tick
+		}
+		t    = ( ( h >> 4 ) & 255 ) / 255.0f;					// position along the segment
+		life = ( ( tbucket * 2654435761u + h ) & 255 ) / 255.0f;	// 0..1 drift progress
+		lift = 2.0f + life * 16.0f;								// rises off the crest as it ages
+		sz   = 1.3f + ( ( h >> 12 ) & 7 ) * 0.4f;
+		al   = ( 1.0f - life ) * age * ( 0.45f + 0.55f * highs );
+		if ( al <= 0.02f ) {
+			continue;
+		}
+		if ( al > 1.0f ) al = 1.0f;
+
+		// point on the crest line, then lifted into the air
+		VectorSubtract( b, a, c );
+		VectorMA( a, t, c, c );
+		c[2] += topA + ( topB - topA ) * t + lift;
+
+		// camera-facing billboard from the view axes
+		VectorScale( cg.refdef.viewaxis[1], sz, right );
+		VectorScale( cg.refdef.viewaxis[2], sz, upv );
+		VectorSubtract( c, right, v[0].xyz ); VectorSubtract( v[0].xyz, upv, v[0].xyz ); v[0].st[0]=0; v[0].st[1]=1;
+		VectorAdd( c, right, v[1].xyz );      VectorSubtract( v[1].xyz, upv, v[1].xyz ); v[1].st[0]=1; v[1].st[1]=1;
+		VectorAdd( c, right, v[2].xyz );      VectorAdd( v[2].xyz, upv, v[2].xyz );      v[2].st[0]=1; v[2].st[1]=0;
+		VectorSubtract( c, right, v[3].xyz ); VectorAdd( v[3].xyz, upv, v[3].xyz );      v[3].st[0]=0; v[3].st[1]=0;
+		for ( j = 0 ; j < 4 ; j++ ) {
+			v[j].modulate[0] = (byte)( col[0] + ( 255 - col[0] ) * 0.5f );
+			v[j].modulate[1] = (byte)( col[1] + ( 255 - col[1] ) * 0.5f );
+			v[j].modulate[2] = (byte)( col[2] + ( 255 - col[2] ) * 0.5f );
+			v[j].modulate[3] = (byte)( al * 255.0f );
+		}
+		trap_R_AddPolyToScene( cgs.media.trailGlowShader, 4, v );
 	}
 }
 
@@ -381,6 +537,56 @@ static void CG_LatticeDraw( int client ) {
 	scroll = latRealMs * 0.006f * ( 1.0f - 0.4f * latSlow ) * ( 1.0f + 0.6f * latMid );
 	glitch = cg_latticeGlitch.value * ( 1.0f + 1.6f * latHigh );	// hats/snares tear the wall
 	tbucket = (unsigned)( latRealMs / 70 );	// glitch re-rolls ~14x/sec (stuttery buffer)
+
+	// LEADING BAR: a live quad from the pilot's CURRENT position to the newest
+	// committed point. It is ~zero-length right after a commit (invisible) and
+	// stretches to one full step just before the next, so new wall GROWS IN
+	// instead of popping. Kept clean (no glitch/chips) — it's only the freshest
+	// step at the very head where the white-hot edge dominates anyway.
+	if ( latLiveOn[client] ) {
+		int			newest = ( latHead[client] - 1 + LAT_PTS ) % LAT_PTS;
+		vec3_t		la, lb;
+		float		halfA, halfB, topA, botA, topB, botB, aMul = 1.0f;
+		qboolean	draw = qtrue;
+
+		VectorCopy( latLive[client], la );
+		VectorCopy( latPts[client][newest], lb );
+
+		// self arena trail: hide right at the eye, matching the loop's near-eye fade
+		if ( isSelf && arena ) {
+			vec3_t	mid;
+			float	d, nf;
+			VectorAdd( la, lb, mid );
+			VectorScale( mid, 0.5f, mid );
+			d  = Distance( cg.refdef.vieworg, mid );
+			nf = ( d - 96.0f ) / 150.0f;
+			if ( nf < 0.0f ) nf = 0.0f; else if ( nf > 1.0f ) nf = 1.0f;
+			aMul = nf;
+			if ( aMul <= 0.0f ) draw = qfalse;
+		}
+
+		if ( draw ) {
+			if ( arena ) {
+				float pump = LAT_ARENA_HALF
+					* ( 0.16f + 1.05f * latBass + 0.16f * latLevel ) * cg_latticeWave.value;
+				if ( pump > LAT_ARENA_HALF * 1.5f ) pump = LAT_ARENA_HALF * 1.5f;
+				if ( pump < 1.2f ) pump = 1.2f;
+				halfA = halfB = pump;
+			} else {
+				halfA = LAT_WALL_MIN_HALF + latLiveAmp[client] * waveScale;
+				halfB = LAT_WALL_MIN_HALF + latAmp[client][newest] * waveScale;
+				if ( halfA > capHalf ) halfA = capHalf;
+				if ( halfB > capHalf ) halfB = capHalf;
+			}
+			// b-end shares the newest committed point's ragged key so the edge stays
+			// continuous with the loop's first segment; a-end keys on the slot the
+			// live head will commit into (stable until then).
+			CG_LatticeEdge( latHead[client], halfA, &topA, &botA );
+			CG_LatticeEdge( newest,          halfB, &topB, &botB );
+			CG_LatticeQuad( shader, la, lb, col, 0, 0, n, scroll, aMul, latSlow,
+				topA, botA, topB, botB );
+		}
+	}
 
 	for ( i = 0 ; i < n - 1 ; i++ ) {
 		vec3_t		a, b, dir, perp;
@@ -469,6 +675,10 @@ static void CG_LatticeDraw( int client ) {
 			if ( ( h & gmask ) == 0 ) {				// glitch this segment this tick
 				float lateral = ( (int)( ( h >> 3 ) & 63 ) - 32 ) * 0.55f * glitch;
 				torn  = qtrue;
+				// FULL datamosh in BOTH arena + wall now. The arena glitch quads used to
+				// read as BLACK blocks (alpha-blend on the lattice shader gets crushed by
+				// the GL2 HDR/tonemap), so the ghosts + chips are now drawn ADDITIVELY
+				// (dmShader below) — they bloom into neon glitch instead of going black.
 				split = 3.5f * glitch;				// chromatic-split offset
 				VectorMA( a, lateral, perp, a );	// shove the chunk sideways
 				VectorMA( b, lateral, perp, b );
@@ -487,26 +697,40 @@ static void CG_LatticeDraw( int client ) {
 
 		aMul *= arenaFade;	// arena TTL dissolve (1.0 in full LATTICE mode)
 
-		// chromatic split: faint red/blue ghosts shoved opposite ways (drawn
-		// first, under the core) — the classic datamosh colour fringe
+		// chromatic split: red/blue ghosts shoved opposite ways (drawn first, under
+		// the core) — the classic datamosh colour fringe. In ARENA they ride the
+		// ADDITIVE datamosh shader so they bloom to neon instead of crushing to black
+		// under HDR; the big LATTICE wall keeps the alpha-blend ghosts.
 		if ( torn && split > 0 ) {
+			qhandle_t	dmShader = arena ? cgs.media.datamoshShader : shader;
 			vec3_t ra, rb;
 			VectorMA( a,  split, perp, ra ); VectorMA( b,  split, perp, rb );
-			CG_LatticeQuad( shader, ra, rb, latGlitchRed, i, i + 1, n, scroll, aMul * 0.6f, latSlow, topA, botA, topB, botB );
+			CG_LatticeQuad( dmShader, ra, rb, latGlitchRed, i, i + 1, n, scroll, aMul * 0.6f, latSlow, topA, botA, topB, botB );
 			VectorMA( a, -split, perp, ra ); VectorMA( b, -split, perp, rb );
-			CG_LatticeQuad( shader, ra, rb, latGlitchBlue, i, i + 1, n, scroll, aMul * 0.6f, latSlow, topA, botA, topB, botB );
+			CG_LatticeQuad( dmShader, ra, rb, latGlitchBlue, i, i + 1, n, scroll, aMul * 0.6f, latSlow, topA, botA, topB, botB );
 		}
 
 		CG_LatticeQuad( shader, a, b, segCol, i, i + 1, n, scroll, aMul, latSlow, topA, botA, topB, botB );
 
-		// micro-glitch chips: the fine "alive" detail, sprayed by the audio highs.
-		// Uses the (possibly torn) a/b so chips follow a glitched segment's shove.
-		if ( glitch > 0 ) {
-			float halfMid = 0.5f * ( halfA + halfB );
-			float age = ( 1.0f - ( i / (float)( n - 1 ) ) ) * selfFade;	// fade own near-eye chips
-			CG_LatticeBlocks( shader, a, b, perp, segCol,
-				arena ? LAT_ARENA_MID : LAT_WALL_MID, halfMid,
-				idx0 * 2654435761u + client, tbucket, glitch, latHigh, age );
+		// --- detail layers riding this segment (shared age fade) ---
+		{
+			float	segAge  = ( 1.0f - ( i / (float)( n - 1 ) ) ) * selfFade;	// fade own near-eye detail
+			float	halfMid = 0.5f * ( halfA + halfB );
+			unsigned segKey = idx0 * 2654435761u + client;
+
+			// glowing neon filament along the top edge (the wall's "hot wire")
+			CG_LatticeCrest( shader, a, b, topA, topB, col, i, n, aMul );
+
+			// sparks shed from the crest, sprayed by the audio highs
+			CG_LatticeEmbers( a, b, topA, topB, col, segKey, tbucket, latHigh, segAge );
+
+			// micro-glitch chips: the fine "alive" detail. Uses the (possibly torn)
+			// a/b so chips follow a glitched segment's shove.
+			if ( glitch > 0 ) {
+				CG_LatticeBlocks( shader, a, b, perp, segCol,
+					arena ? LAT_ARENA_MID : LAT_WALL_MID, halfMid,
+					segKey, tbucket, glitch, latHigh, segAge );
+			}
 		}
 	}
 
@@ -544,13 +768,16 @@ static void CG_LatticeDraw( int client ) {
 			trap_R_AddLightToScene( lp, hb, lr, lg, lb );
 		}
 
+		// stride/start-back are in POINTS; the ring is ~2.5x denser now, so the
+		// numbers grow to keep the same spacing in WORLD units. A couple more lights
+		// + a bass pulse make the trail glow richer on the beat (cheap on GL2).
 		lit = 0;
-		for ( i = ( isSelf ? 18 : 0 ) ; i < n && lit < 6 ; i += 9, lit++ ) {	// every 9th point, max 6
+		for ( i = ( isSelf ? 44 : 0 ) ; i < n && lit < 9 ; i += 22, lit++ ) {
 			float fade = 1.0f - ( i / (float)( n ) );
 			lidx = ( latHead[client] - 1 - i + LAT_PTS * 2 ) % LAT_PTS;
 			VectorCopy( latPts[client][lidx], lp );
 			lp[2] += 30.0f;
-			trap_R_AddLightToScene( lp, 45.0f + 55.0f * fade, lr, lg, lb );
+			trap_R_AddLightToScene( lp, ( 45.0f + 55.0f * fade ) * ( 1.0f + 0.4f * latBass ), lr, lg, lb );
 		}
 	}
 }
@@ -660,32 +887,39 @@ void CG_LatticeFrame( void ) {
 	// (CG_LatticePush) so the height is locked to WHERE you were, not when it draws.
 	latWaveNow = latLevel * 0.6f + latBass * 0.7f;
 
+	// the live head follows every pilot EVERY frame (smooth leading bar); a new
+	// ring point is only committed on the sample cadence. Clear presence first so
+	// pilots who left this frame stop extending their live head.
+	for ( i = 0 ; i < MAX_CLIENTS ; i++ ) {
+		latLiveOn[i] = qfalse;
+	}
+
 	doSample = ( cg.time - latLastSample >= LAT_SAMPLE_MS );
 	if ( doSample ) {
 		latLastSample = cg.time;
+	}
 
-		// local pilot from the predicted state (smoother than the snapshot)
-		if ( cg.snap->ps.stats[STAT_HEALTH] > 0
-			&& cg.snap->ps.pm_type == PM_NORMAL ) {
-			CG_LatticePush( cg.snap->ps.clientNum, cg.predictedPlayerState.origin );
-		}
+	// local pilot from the predicted state (smoother than the snapshot)
+	if ( cg.snap->ps.stats[STAT_HEALTH] > 0
+		&& cg.snap->ps.pm_type == PM_NORMAL ) {
+		CG_LatticeTrack( cg.snap->ps.clientNum, cg.predictedPlayerState.origin, doSample );
+	}
 
-		// every other pilot present in this snapshot
-		for ( num = 0 ; num < cg.snap->numEntities ; num++ ) {
-			es = &cg.snap->entities[num];
-			if ( es->eType != ET_PLAYER ) {
-				continue;
-			}
-			if ( es->number == cg.snap->ps.clientNum ) {
-				continue;		// already sampled from prediction
-			}
-			if ( es->eFlags & EF_DEAD ) {
-				continue;
-			}
-			client = es->number;
-			cent = &cg_entities[client];
-			CG_LatticePush( client, cent->lerpOrigin );
+	// every other pilot present in this snapshot
+	for ( num = 0 ; num < cg.snap->numEntities ; num++ ) {
+		es = &cg.snap->entities[num];
+		if ( es->eType != ET_PLAYER ) {
+			continue;
 		}
+		if ( es->number == cg.snap->ps.clientNum ) {
+			continue;		// already sampled from prediction
+		}
+		if ( es->eFlags & EF_DEAD ) {
+			continue;
+		}
+		client = es->number;
+		cent = &cg_entities[client];
+		CG_LatticeTrack( client, cent->lerpOrigin, doSample );
 	}
 
 	// draw every pilot's wall

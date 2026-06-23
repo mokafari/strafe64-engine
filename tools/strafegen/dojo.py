@@ -134,6 +134,7 @@ def deploy_dylibs():
 
 def run_scenario(arch, cfg, batch_dir, dur, idx):
     mapname, void, bots = cfg["map"], cfg["void"], cfg["bots"]
+    skill = cfg.get("skill", 4)    # 1-5; sweepable
     tag = f"dojo_{arch}_{idx}"      # idx-isolated: unique home/jsonl/port per run
     home = os.path.join(batch_dir, tag)
     os.makedirs(os.path.join(home, "baseoa"), exist_ok=True)
@@ -145,15 +146,19 @@ def run_scenario(arch, cfg, batch_dir, dur, idx):
         "+set", "vm_game", "0", "+set", "dedicated", "1",
         "+set", "net_port", str(27990 + idx), "+set", "sv_maxclients", "16",
         "+set", "bot_enable", "1",
-        "+set", "g_spSkill", "4", "+set", "g_playtest", "1",
+        "+set", "g_spSkill", str(skill), "+set", "g_playtest", "1",
         "+set", "g_playtestTag", tag, "+set", "g_voidRise", str(void),
         "+set", "timelimit", "0", "+set", "fraglimit", "0",
+        # DOJO measures REAL movement/combat: disable the bullet-time clock
+        # (g_timeBind scales the world clock by movement intent — a still bot
+        # near-freezes time, which warps speed / stuck-ms / frag timing).
+        "+set", "g_timeBind", "0",
     ]
     for k in range(0, len(cfg.get("extra", [])), 2):
         args += ["+set", cfg["extra"][k], cfg["extra"][k + 1]]
     args += ["+map", mapname]
     for i in range(bots):
-        args += ["+addbot", BOT_NAMES[i % len(BOT_NAMES)], "4"]
+        args += ["+addbot", BOT_NAMES[i % len(BOT_NAMES)], str(skill)]
     proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=logf,
                             stderr=subprocess.STDOUT)
     time.sleep(dur)
@@ -264,16 +269,175 @@ def fmt_band(lo, hi):
     return "any"
 
 
+# --- weapon test modes: the (g_botSwordOnly, g_vectorgun) pair that selects the
+#     combat ruleset. Use with --arena to probe one map under one weapon. ---
+WEAPON_CVARS = {
+    "sword":     ["g_botSwordOnly", "1", "g_vectorgun", "0",
+                  "bot_swordBlock", "1", "bot_combatBhop", "1"],
+    "vectorgun": ["g_botSwordOnly", "0", "g_vectorgun", "1",
+                  "bot_combatBhop", "1"],
+    "kit":       ["g_botSwordOnly", "0", "g_vectorgun", "0",
+                  "bot_combatBhop", "1"],
+}
+
+
+def run_arena_probe(mapname, weapon, dur, bots):
+    """Quick single-map combat probe under a chosen weapon ruleset. Prints frags /
+    midair% / kill-speed so you can see whether bots actually FIGHT (vectorgun: a
+    0-frag result = bots holding the rail but not shooting)."""
+    if not os.path.exists(DED):
+        sys.exit(f"ioq3ded not found at {DED}")
+    deploy_dylibs()
+    cfg = {"map": mapname, "void": 0, "bots": bots,
+           "extra": WEAPON_CVARS[weapon]}
+    batch = tempfile.mkdtemp(prefix="strafe64_arena_")
+    print(f"arena probe: map={mapname}  weapon={weapon}  bots={bots}  dur={dur}s")
+    _, recs = run_scenario(f"arena_{weapon}", cfg, batch, dur, 0)
+    p = profile("arena", recs)
+    print(f"  bot-runs:    {p['n']}")
+    print(f"  frags:       {p['frags']}  ({p['frags_per_min']:.1f}/min)")
+    print(f"  midair %:    {p['midair_pct']:.0f}")
+    print(f"  kill-speed:  {p['killspd']:.0f} ups")
+    print(f"  avg/max spd: {p['avgspd']:.0f} / {p['maxspd']:.0f}")
+    print(f"  stuck ms:    {p['stuckms']:.0f}")
+    if p["frags"] > 0:
+        print(f"  => bots FIGHTING ({weapon})")
+    else:
+        hint = " (bots holding the rail but not firing?)" if weapon == "vectorgun" else ""
+        print(f"  => NO FRAGS — bots not engaging{hint}")
+    return p
+
+
+def run_arena_both(mapname, dur, bots, repeats=1):
+    """Probe BOTH weapons on a map, optionally REPEATED and MEDIAN-aggregated to
+    beat the run-to-run noise (sword stuck / vg frags swing ~30% between identical
+    runs). ALL weapon x repeat jobs run in parallel (distinct ports), so even
+    repeats=3 finishes in ~one dur, not N x dur. Prints a median row + the spread
+    so you can see how noisy each metric is before trusting a keep/revert."""
+    if not os.path.exists(DED):
+        sys.exit(f"ioq3ded not found at {DED}")
+    deploy_dylibs()
+    batch = tempfile.mkdtemp(prefix="strafe64_arena_")
+    print(f"arena probe (both weapons x{repeats} reps, parallel): "
+          f"map={mapname} bots={bots} dur={dur}s")
+    jobs, idx = [], 0
+    for w in ("vectorgun", "sword"):
+        cfg = {"map": mapname, "void": 0, "bots": bots, "extra": WEAPON_CVARS[w]}
+        for _ in range(repeats):
+            jobs.append((w, idx, cfg)); idx += 1
+    res = {"vectorgun": [], "sword": []}
+    with ThreadPoolExecutor(max_workers=min(len(jobs), 6)) as ex:
+        futs = {ex.submit(run_scenario, f"arena_{w}_{i}", cfg, batch, dur, i): w
+                for (w, i, cfg) in jobs}
+        for fu in futs:
+            w = futs[fu]
+            _, recs = fu.result()
+            res[w].append(profile("arena", recs))
+    out = {}
+    for w in ("vectorgun", "sword"):
+        profs = res[w]
+        a = median_profiles(profs) if len(profs) > 1 else profs[0]
+        out[w] = a
+        fr = [p["frags_per_min"] for p in profs]
+        st = [p["stuckms"] for p in profs]
+        spread = (f"  [frg {min(fr):.1f}-{max(fr):.1f}  stuck {min(st):.0f}-{max(st):.0f}]"
+                  if len(profs) > 1 else "")
+        print(f"  {w:<10} reps={len(profs)}  frags/min={a['frags_per_min']:.1f}  "
+              f"midair={a['midair_pct']:.0f}%  killspd={a['killspd']:.0f}  "
+              f"avg/max={a['avgspd']:.0f}/{a['maxspd']:.0f}  stuck={a['stuckms']:.0f}{spread}")
+    return out
+
+
+def run_sweep(mapname, weapons, players, skills, dur, repeats, parallel):
+    """Grid-sweep a map across weapon x player-count x skill, each config repeated
+    and MEDIAN-aggregated so iteration calls rest on stable numbers (single short
+    runs are too noisy). Prints a table and appends to sweep_results.jsonl."""
+    if not os.path.exists(DED):
+        sys.exit(f"ioq3ded not found at {DED}")
+    deploy_dylibs()
+    batch = tempfile.mkdtemp(prefix="strafe64_sweep_")
+    grid = [(w, pl, sk) for w in weapons for pl in players for sk in skills]
+    print(f"sweep: map={mapname}  {len(grid)} configs x {repeats} reps @ {dur}s  "
+          f"(weapons={weapons} players={players} skills={skills}, parallel={parallel})")
+    jobs, idx = [], 0
+    for (w, pl, sk) in grid:
+        for r in range(repeats):
+            cfg = {"map": mapname, "void": 0, "bots": pl, "skill": sk,
+                   "extra": WEAPON_CVARS[w]}
+            jobs.append((w, pl, sk, r, cfg, idx)); idx += 1
+    results = {}
+    with ThreadPoolExecutor(max_workers=parallel) as ex:
+        futs = {ex.submit(run_scenario, f"sw_{w}_{pl}_{sk}_{r}", cfg, batch, dur, ix):
+                (w, pl, sk) for (w, pl, sk, r, cfg, ix) in jobs}
+        for fu in futs:
+            key = futs[fu]
+            _, recs = fu.result()
+            results.setdefault(key, []).append(profile("arena", recs))
+    hdr = (f"{'weapon':<10}{'pl':>3}{'sk':>3}  {'runs':>5}{'frg/min':>8}"
+           f"{'midair%':>8}{'killspd':>8}{'avgspd':>7}{'maxspd':>7}{'stuck':>7}")
+    print("\n" + hdr); print("-" * len(hdr))
+    outp = os.path.join(HERE, "sweep_results.jsonl")
+    with open(outp, "a") as fout:
+        for (w, pl, sk) in grid:
+            profs = results.get((w, pl, sk), [])
+            if not profs:
+                continue
+            a = median_profiles(profs)
+            print(f"{w:<10}{pl:>3}{sk:>3}  {int(a['n']):>5}{a['frags_per_min']:>8.1f}"
+                  f"{a['midair_pct']:>8.0f}{a['killspd']:>8.0f}{a['avgspd']:>7.0f}"
+                  f"{a['maxspd']:>7.0f}{a['stuckms']:>7.0f}")
+            rec = {"map": mapname, "weapon": w, "players": pl, "skill": sk,
+                   "dur": dur, "repeats": repeats}
+            rec.update({k: a[k] for k in ("frags", "frags_per_min", "midair_pct",
+                        "killspd", "avgspd", "maxspd", "stuckms", "n")})
+            fout.write(json.dumps(rec) + "\n")
+    print(f"\nsaved -> {outp}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--archetypes", default="speed,flow,ztrick,arena")
-    ap.add_argument("--dur", type=int, default=25, help="seconds per scenario")
+    ap.add_argument("--dur", type=int, default=45, help="seconds per scenario (longer = stabler)")
     ap.add_argument("--parallel", type=int, default=4)
     ap.add_argument("--label", default="baseline", help="config tag for the journal")
+    ap.add_argument("--arena", default=None,
+                    help="quick combat probe on this map (e.g. dojo_arena or "
+                         "strafe64kb_8224) instead of the battery")
+    ap.add_argument("--weapon", default="vectorgun",
+                    choices=("sword", "vectorgun", "kit"),
+                    help="weapon ruleset for --arena")
+    ap.add_argument("--bots", type=int, default=8, help="bots for --arena probe")
+    ap.add_argument("--both", action="store_true",
+                    help="with --arena: probe BOTH weapons in parallel")
+    ap.add_argument("--sweep", default=None,
+                    help="grid-sweep this map across weapons x players x skill")
+    ap.add_argument("--weapons", default="sword,vectorgun",
+                    help="sweep weapons (comma list of sword|vectorgun|kit)")
+    ap.add_argument("--players", default="6,12",
+                    help="sweep bot counts (comma list)")
+    ap.add_argument("--skills", default="3,5",
+                    help="sweep bot skill levels 1-5 (comma list)")
+    ap.add_argument("--repeats", type=int, default=2,
+                    help="repeats per config (median-aggregated)")
     args = ap.parse_args()
 
     if not os.path.exists(DED):
         sys.exit(f"ioq3ded not found at {DED}")
+
+    if args.sweep:
+        run_sweep(args.sweep,
+                  [w.strip() for w in args.weapons.split(",") if w.strip()],
+                  [int(p) for p in args.players.split(",") if p.strip()],
+                  [int(s) for s in args.skills.split(",") if s.strip()],
+                  args.dur, args.repeats, args.parallel)
+        return
+
+    if args.arena:
+        if args.both:
+            run_arena_both(args.arena, args.dur, args.bots, args.repeats)
+        else:
+            run_arena_probe(args.arena, args.weapon, args.dur, args.bots)
+        return
 
     # The LATTICE mode's health lives in Kill-line OUTCOMES (telefrag-free spawns,
     # the rival-trail mechanic, heats resolving), not the movement telemetry the

@@ -21,3 +21,20 @@ strafe64/sword_slash
 		rgbGen vertex
 	}
 }
+// STRAFE 64 — kill slash-arc streak (CG_AddSwordCuts in cg_ragdoll.c).
+// A textured energy streak mapped st 0..1 across a single quad and faded by
+// per-vertex alpha. GL_SRC_ALPHA GL_ONE keeps it additive (never black) while
+// still honouring the cgame's alpha fade. Distinct from strafe64/sword_slash
+// above, which is the FP swing trail's flat $whiteimage ribbon.
+strafe64/sword_cut
+{
+	nomipmaps
+	nopicmip
+	cull none
+	{
+		map textures/strafe64/sword_slash.tga
+		blendFunc GL_SRC_ALPHA GL_ONE
+		rgbGen vertex
+		alphaGen vertex
+	}
+}

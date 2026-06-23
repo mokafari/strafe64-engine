@@ -1204,6 +1204,8 @@ static void CG_AddWeaponWithPowerups( refEntity_t *gun, int powerups ) {
 
 
 static void CG_SwordSlashTrail( const refEntity_t *gun );	// STRAFE 64
+static void CG_SwordSlashTrailEx( const refEntity_t *gun, int swingTime,
+		int *trailNum, int *trailLastTime, vec3_t *tipPath, vec3_t *basePath );
 
 /*
 =============
@@ -1284,13 +1286,35 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	MatrixMultiply(lerped.axis, ((refEntity_t *)parent)->axis, gun.axis);
 	gun.backlerp = parent->backlerp;
 
+	// STRAFE 64: visible guard for OTHER players/bots — there is no block torso
+	// anim, so when a third-person swordsman raises EF_BLOCKING we rotate the
+	// blade up and across the body. A held katana now reads as "guarding" at a
+	// glance, mirroring the first-person guard pose in CG_AddViewWeapon.
+	if ( !ps && weaponNum == WP_SWORD
+			&& ( cent->currentState.eFlags & EF_BLOCKING ) ) {
+		vec3_t	guardAng = { -55.0f, 0.0f, 25.0f };	// pitch the blade up, lay it across
+		vec3_t	rot[3], posed[3];
+
+		AnglesToAxis( guardAng, rot );
+		MatrixMultiply( rot, gun.axis, posed );
+		AxisCopy( posed, gun.axis );
+	}
+
 	CG_AddWeaponWithPowerups( &gun, cent->currentState.powerups );
 
-	// STRAFE 64: blade-edge slash trail, anchored to the REAL first-person
-	// weapon transform (gun.origin/axis after the tag_weapon attach) so the
-	// arc rides exactly along the blade. View weapon only (ps valid).
-	if ( ps && weaponNum == WP_SWORD ) {
-		CG_SwordSlashTrail( &gun );
+	// STRAFE 64: blade-edge slash trail, anchored to the REAL rendered weapon
+	// transform (gun.origin/axis after the tag_weapon attach) so the arc rides
+	// exactly along the blade. The local view weapon (ps valid) drives the trail
+	// from cg_t; every OTHER player/bot drives its own ribbon from its centity_t
+	// so multiple swordsmen can streak at once. Skip it while guarding (the
+	// blade is held, not swung).
+	if ( weaponNum == WP_SWORD && !( cent->currentState.eFlags & EF_BLOCKING ) ) {
+		if ( ps ) {
+			CG_SwordSlashTrail( &gun );
+		} else {
+			CG_SwordSlashTrailEx( &gun, cent->swordSwingTime, &cent->swordTrailNum,
+					&cent->swordTrailLastTime, cent->swordTipPath, cent->swordBasePath );
+		}
 	}
 
 	// add the spinning barrel
@@ -1429,7 +1453,12 @@ static void CG_SwordSlashVert( polyVert_t *v, const vec3_t xyz, float intensity 
 	v->modulate[3] = 255;
 }
 
-static void CG_SwordSlashTrail( const refEntity_t *gun ) {
+// Worker shared by the local first-person view weapon (state in cg_t) and every
+// other player/bot rendered in third person (state on their centity_t). All the
+// swing/trail bookkeeping it needs is passed in, so the ribbon is per-entity and
+// several swordsmen can streak at once.
+static void CG_SwordSlashTrailEx( const refEntity_t *gun, int swingTime,
+		int *trailNum, int *trailLastTime, vec3_t *tipPath, vec3_t *basePath ) {
 	vec3_t	base, tip;
 	int		i, n;
 
@@ -1438,8 +1467,8 @@ static void CG_SwordSlashTrail( const refEntity_t *gun ) {
 	}
 
 	// only trail around an actual swing — idle bob shouldn't streak
-	if ( cg.time - cg.swordSwingTime > SWORD_SWING_MS + 60 ) {
-		cg.swordTrailNum = 0;
+	if ( cg.time - swingTime > SWORD_SWING_MS + 60 ) {
+		*trailNum = 0;
 		return;
 	}
 
@@ -1457,26 +1486,26 @@ static void CG_SwordSlashTrail( const refEntity_t *gun ) {
 	// break the trail on a discontinuity: a new swing snaps the blade back to
 	// its wind-up pose, so don't streak a quad across the gap (or from stale
 	// samples after a weapon/teleport). Start the next swing's trail fresh.
-	if ( cg.swordTrailNum > 0 && Distance( tip, cg.swordTipPath[0] ) > 40.0f ) {
-		cg.swordTrailNum = 0;
+	if ( *trailNum > 0 && Distance( tip, tipPath[0] ) > 40.0f ) {
+		*trailNum = 0;
 	}
 
 	// record one sample per frame (newest at index 0)
-	if ( cg.time != cg.swordTrailLastTime ) {
+	if ( cg.time != *trailLastTime ) {
 		for ( i = SWORD_TRAIL_PTS - 1 ; i > 0 ; i-- ) {
-			VectorCopy( cg.swordTipPath[i - 1], cg.swordTipPath[i] );
-			VectorCopy( cg.swordBasePath[i - 1], cg.swordBasePath[i] );
+			VectorCopy( tipPath[i - 1], tipPath[i] );
+			VectorCopy( basePath[i - 1], basePath[i] );
 		}
-		VectorCopy( tip, cg.swordTipPath[0] );
-		VectorCopy( base, cg.swordBasePath[0] );
-		cg.swordTrailLastTime = cg.time;
-		if ( cg.swordTrailNum < SWORD_TRAIL_PTS ) {
-			cg.swordTrailNum++;
+		VectorCopy( tip, tipPath[0] );
+		VectorCopy( base, basePath[0] );
+		*trailLastTime = cg.time;
+		if ( *trailNum < SWORD_TRAIL_PTS ) {
+			(*trailNum)++;
 		}
 	}
 
 	// ribbon between consecutive samples, fading toward the tail
-	n = cg.swordTrailNum;
+	n = *trailNum;
 	for ( i = 0 ; i < n - 1 ; i++ ) {
 		polyVert_t	v[4];
 		float		f0 = 1.0f - ( i / (float)SWORD_TRAIL_PTS );
@@ -1485,12 +1514,17 @@ static void CG_SwordSlashTrail( const refEntity_t *gun ) {
 		// gentle fade so the streak stays readable through a fast swing
 		f0 = f0 * ( 0.4f + 0.6f * f0 );
 		f1 = f1 * ( 0.4f + 0.6f * f1 );
-		CG_SwordSlashVert( &v[0], cg.swordBasePath[i],     f0 );
-		CG_SwordSlashVert( &v[1], cg.swordTipPath[i],      f0 );
-		CG_SwordSlashVert( &v[2], cg.swordTipPath[i + 1],  f1 );
-		CG_SwordSlashVert( &v[3], cg.swordBasePath[i + 1], f1 );
+		CG_SwordSlashVert( &v[0], basePath[i],     f0 );
+		CG_SwordSlashVert( &v[1], tipPath[i],      f0 );
+		CG_SwordSlashVert( &v[2], tipPath[i + 1],  f1 );
+		CG_SwordSlashVert( &v[3], basePath[i + 1], f1 );
 		trap_R_AddPolyToScene( cgs.media.swordSlashShader, 4, v );
 	}
+}
+
+static void CG_SwordSlashTrail( const refEntity_t *gun ) {
+	CG_SwordSlashTrailEx( gun, cg.swordSwingTime, &cg.swordTrailNum,
+			&cg.swordTrailLastTime, cg.swordTipPath, cg.swordBasePath );
 }
 
 void CG_AddViewWeapon( playerState_t *ps ) {
@@ -1890,16 +1924,22 @@ void CG_FireWeapon( centity_t *cent ) {
 		qboolean	local = ( ent->number == cg.snap->ps.clientNum );
 		sfxHandle_t	sfx;
 
+		// per-entity swing bookkeeping, so OTHER players/bots seen in third person
+		// advance their own combo step and trail timing (drives CG_SwordSlashTrail
+		// from their centity_t). The local first-person arc keeps reading cg_t.
+		if ( cg.time - cent->swordSwingTime > SWORD_COMBO_WINDOW ) {
+			cent->swordSwingStep = 0;
+		} else {
+			cent->swordSwingStep++;
+		}
+		cent->swordSwingTime = cg.time;
+
 		if ( local ) {
-			if ( cg.time - cg.swordSwingTime > SWORD_COMBO_WINDOW ) {
-				cg.swordSwingStep = 0;
-			} else {
-				cg.swordSwingStep++;
-			}
-			cg.swordSwingTime = cg.time;
+			cg.swordSwingStep = cent->swordSwingStep;
+			cg.swordSwingTime = cent->swordSwingTime;
 		}
 
-		if ( local && ( cg.swordSwingStep % 3 ) == 2 && cgs.media.swordHeavySound ) {
+		if ( ( cent->swordSwingStep % 3 ) == 2 && cgs.media.swordHeavySound ) {
 			sfx = cgs.media.swordHeavySound;		// finisher cut
 		} else {
 			sfx = weap->flashSound[ rand() % 3 ];	// light cross-slash

@@ -689,6 +689,9 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		DEBUGNAME("EV_DOUBLE_JUMP");
 		// mid-air double jump: the jump grunt PLUS a kick-off dust burst at the
 		// feet — you pushed off nothing, so a sharp puff sells the kinetic kick.
+		// Also stamp the dash time so CG_Player smears a chromatic-ghost glitch
+		// trail off the kick (digital eye-candy on the key movement).
+		cent->dashGlitchTime = cg.time;
 		trap_S_StartSound (NULL, es->number, CHAN_VOICE, CG_CustomSound( es->number, "*jump1.wav" ) );
 		{
 			vec3_t	feet, down = {0, 0, -1};
