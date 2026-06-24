@@ -32,6 +32,13 @@ import struct
 import sys
 import zipfile
 
+# Graphics-recipe module: q3gl2 sun + cascaded shadows, PBR-lite hull, chrome,
+# plasma and autosprite2 beam materials + their procedural textures. See
+# docs/graphics-tricks-recipes.md. Toggle with GFX / the --no-gfx CLI flag.
+import strafegen_gfx as gfx
+
+GFX = True   # apply the graphics-recipe shaders + sun to every packed map
+
 # ======================================================================
 # Movement-mod tuning. These mirror code/game/bg_pmove.c + bg_local.h —
 # if the mod's numbers change, change them here so courses stay solvable.
@@ -144,6 +151,39 @@ textures/strafe64/wall
 	// conduit stage was removed — it read as ugly and busy. Walls are now a
 	// clean Hammer dev-grid (d_wall.tga * vertex colour), nothing animated.
 }
+// ACCENT GLOW — start / finish / checkpoints / jump-pads / gates / hazards /
+// portals. Same dev-grid base as surf/wall, PLUS a second ADDITIVE pass of the
+// same grid texture (rgbGen exactVertex) so the bright accent vertex colour is
+// laid down a second time as light. The panels read as self-illuminated neon
+// beacons that blow into colour under the GL2 HDR/bloom path, while the grid
+// lines keep the measure-grid structure. Accent faces are routed to these
+// shaders by their palette (see ACCENT_GLOW / _glow_tex) — geometry is unchanged.
+textures/strafe64/glow_floor
+{
+	surfaceparm nolightmap
+	{
+		map textures/strafe64/d_floor.tga
+		rgbGen exactVertex
+	}
+	{
+		map textures/strafe64/d_floor.tga
+		blendFunc GL_ONE GL_ONE
+		rgbGen exactVertex
+	}
+}
+textures/strafe64/glow_wall
+{
+	surfaceparm nolightmap
+	{
+		map textures/strafe64/d_wall.tga
+		rgbGen exactVertex
+	}
+	{
+		map textures/strafe64/d_wall.tga
+		blendFunc GL_ONE GL_ONE
+		rgbGen exactVertex
+	}
+}
 // soft plasma glow for the arena speed-trail datamosh chips. Alpha-scaled
 // additive (GL_SRC_ALPHA GL_ONE) so the per-chip alpha controls translucency,
 // rgbGen/alphaGen vertex so each blob wears the pilot's stream hue. The radial
@@ -175,18 +215,21 @@ textures/strafe64/sky
 	// stages run the full tcMod pipeline — so soft clouds (env/clouds) DRIFT
 	// overhead. Two layers at different scale/scroll give parallax; a slow sine
 	// rgbGen breathes the upper layer. Additive so only the cloud crests show.
+	// The cloud TILE is warm/amber (sun-lit, see _build_clouds) and both stages
+	// run at ~60% level (rgbGen const/wave below) so the clouds stay wispy and
+	// the dusk gradient reads THROUGH them — thinner, sunlit, less overcast.
 	skyparms textures/strafe64/env/synth 512 -
 	{
 		map textures/strafe64/env/clouds.tga
 		blendFunc GL_ONE GL_ONE
-		rgbGen identity
+		rgbGen const ( 0.60 0.60 0.60 )
 		tcMod scale 2 2
 		tcMod scroll 0.006 0.0020
 	}
 	{
 		map textures/strafe64/env/clouds.tga
 		blendFunc GL_ONE GL_ONE
-		rgbGen wave sin 0.6 0.4 0 0.05
+		rgbGen wave sin 0.40 0.16 0 0.05
 		tcMod scale 3.5 3.5
 		tcMod scroll -0.010 0.0035
 	}
@@ -205,8 +248,11 @@ textures/strafe64/fog
 	surfaceparm nonsolid
 	surfaceparm trans
 	// denser, dusk-tinted haze (purple-blue): closes the world in sooner so the
-	// scene reads moodier/foggier and distant geometry melts into the dusk.
-	fogparms ( 0.09 0.07 0.15 ) 4200
+	// scene reads moodier/foggier and distant geometry melts into the dusk. The
+	// arenas are ~3400u across, so 2800 puts the far walls/sky in real haze while
+	// the near fight stays clear — the heavy light/bloom/neon then glows THROUGH
+	// the murk instead of floating on a flat-bright box.
+	fogparms ( 0.09 0.07 0.15 ) 2000
 }
 // the rising void plane, drawn client-side by the cgame race layer
 strafe64/void
@@ -358,8 +404,8 @@ def build_detail_textures():
     # (rgbGen exactVertex), so dropping the near-white base from ~235 to ~165
     # darkens every floor/wall globally (via the override pk3) — a moodier scene
     # that lets the glowing dusk sky + fog do the work.
-    floor = _measure_grid(138)
-    wall  = _measure_grid(132)
+    floor = _measure_grid(118)
+    wall  = _measure_grid(116)
 
     # --- accent: near-black with faint vertical conduit lines + nodes,
     # added back as a scrolling, section-tinted glow on walls ---
@@ -478,7 +524,11 @@ def _build_clouds(n=128):
             # haze rather than bright clouds.
             c = max(0.0, (s - 0.40) / 0.60)
             c = c ** 1.4
-            px.append((_clamp8(c * 150), _clamp8(c * 150), _clamp8(c * 168)))
+            # SUN-LIT tint: warm amber crests (R>G>B) so the clouds read as lit by
+            # the dusk sun rather than a cold grey-blue veil. The shader stages run
+            # these additive at ~60% (rgbGen const/wave below) so they stay wispy
+            # and the dusk gradient shows through — "more transparent" clouds.
+            px.append((_clamp8(c * 190), _clamp8(c * 132), _clamp8(c * 90)))
     return _tga32(n, n, px)
 
 
@@ -620,22 +670,27 @@ def _build_synthsky(n=256):
             t2 = min(1.0, -el / 0.25)
             c = [c[i] * (1.0 - t2) + GROUND[i] * t2 for i in range(3)]
 
-        # the sun itself: a bright warm core + a wide halo, strongest exactly at
-        # the sun direction (blooms under the GL2 HDR path)
+        # the sun itself: a CONTAINED warm-gold glow, not a wide near-white blob.
+        # The old core pushed toward (255,236,190) over a ~70deg halo, so the GL2
+        # bloom clipped it to a flat white wall whenever you looked skyward. Now
+        # the core is SATURATED dusk gold (high R, low B): even when bloom lifts
+        # it, it blooms gold rather than white. Tighter halo (~40deg) + small disc.
         cosd = dx * sun[0] + dy * sun[1] + dz * sun[2]
         ang = math.acos(max(-1.0, min(1.0, cosd)))
-        halo = max(0.0, 1.0 - ang / 1.25) ** 3.0
-        disc = 1.0 if ang < 0.05 else 0.0
-        c[0] += (255 - c[0]) * min(1.0, 1.05 * halo + disc)
-        c[1] += (236 - c[1]) * min(1.0, 0.90 * halo + disc)
-        c[2] += (190 - c[2]) * min(1.0, 0.55 * halo + disc * 0.9)
+        halo = max(0.0, 1.0 - ang / 0.70) ** 3.5
+        disc = 1.0 if ang < 0.045 else 0.0
+        SUN_R, SUN_G, SUN_B = 255, 168, 78          # saturated dusk gold
+        c[0] += (SUN_R - c[0]) * min(1.0, 0.95 * halo + disc)
+        c[1] += (SUN_G - c[1]) * min(1.0, 0.80 * halo + disc)
+        c[2] += (SUN_B - c[2]) * min(1.0, 0.42 * halo + disc * 0.85)
 
-        # a wide low warm WASH toward the sun: lifts the whole bright wedge near
-        # the horizon so the sun side reads as a glowing atmosphere, not a disc
-        wash = w * max(0.0, 1.0 - abs(el) / 0.55) * 0.55
-        c[0] += 64 * wash
-        c[1] += 36 * wash
-        c[2] += 14 * wash
+        # a gentle low warm WASH toward the sun: lifts the bright wedge near the
+        # horizon so the sun side reads as glowing atmosphere — softened (0.55 ->
+        # 0.32) so it no longer overdrives the bloom into a white wall.
+        wash = w * max(0.0, 1.0 - abs(el) / 0.50) * 0.32
+        c[0] += 48 * wash
+        c[1] += 26 * wash
+        c[2] += 9 * wash
 
         # stars on the dark side: only where the sky is cool/high, fading out
         # toward the bright sun side
@@ -728,6 +783,29 @@ PAL_KB_DECK   = SRC_ORANGE
 PAL_KB_WALL   = SRC_GREY
 PAL_KB_NEON   = (90, 230, 255)     # cyan: portals, edges, the spire crown (accent)
 PAL_KB_COLUMN = (210, 90, 255)     # magenta wall-jump columns (accent)
+
+# Accent palettes that should read as self-illuminated NEON BEACONS rather than
+# matte dev panels. Faces wearing one of these are routed (by _glow_tex, at
+# shader-selection time) to the additive glow_floor/glow_wall shaders, so the
+# bright accent colour blooms under the GL2 HDR path. Geometry is untouched —
+# only which shader the face references changes. The bulk orange/grey dev base
+# (SRC_ORANGE/SRC_GREY) is deliberately excluded so the track stays readable.
+ACCENT_GLOW = frozenset((
+    PAL_START, PAL_FINISH, PAL_CHECK, PAL_PAD, PAL_GATE, PAL_DANGER,
+    PAL_KB_NEON, PAL_KB_COLUMN,
+))
+TEX_FLOOR_GLOW = "textures/strafe64/glow_floor"
+TEX_WALL_GLOW  = "textures/strafe64/glow_wall"
+
+
+def _glow_tex(tex, palette):
+    """Map an accent-coloured floor/wall face to its additive glow shader."""
+    if palette in ACCENT_GLOW:
+        if tex == TEX_FLOOR:
+            return TEX_FLOOR_GLOW
+        if tex == TEX_WALL:
+            return TEX_WALL_GLOW
+    return tex
 
 # music lanes (see ART_DIRECTION.md) — tracker modules in baseoa/music/.
 # A map's worldspawn "music" key is picked deterministically from its seed so
@@ -1866,14 +1944,20 @@ class Arena:
         t1, t3 = 56.0, 176.0
         rim = 74.0
         assert LEDGE_SJ < rim < LEDGE_DJ
+        # GFX: dress the centerpiece + pillars in the machined-metal recipes
+        # (vectorgun/sword arena reads as an industrial neon pit). hull/chrome
+        # are opaque & solid, so this is a pure draw-shader swap — collision
+        # unchanged. Falls back to the dev palette when --no-gfx.
+        HULL   = gfx.TEX_HULL   if GFX else None
+        CHROME = gfx.TEX_CHROME if GFX else None
         if center == "tower":
             self.sections.append(("center tower", {"tiers": 3}))
             self.solids.append(make_box((-256, -256, 0), (256, 256, t1),
-                                        palette=PAL_CENTER))
+                                        tex=HULL or TEX_FLOOR, palette=PAL_CENTER))
             self.solids.append(make_box((-160, -160, t1), (160, 160, 120),
-                                        palette=PAL_CENTER))
+                                        tex=HULL or TEX_FLOOR, palette=PAL_CENTER))
             self.solids.append(make_box((-96, -96, 120), (96, 96, t3),
-                                        palette=PAL_CENTER))
+                                        tex=CHROME or TEX_FLOOR, palette=PAL_CENTER))
             self.place("item_quad", 0, 0, t3 + 24)
             self.place("item_health_large", 208, 208, t1 + 24)
             self.place("item_health_large", -208, -208, t1 + 24)
@@ -1888,11 +1972,11 @@ class Arena:
                                ((-288, -176), (-176, 176))):
                 self.solids.append(make_box(
                     (mins[0], mins[1], 0), (maxs[0], maxs[1], rim),
-                    palette=PAL_CENTER))
+                    tex=HULL or TEX_FLOOR, palette=PAL_CENTER))
             self.solids.append(make_box((-176, -176, 0), (176, 176, 8),
-                                        palette=PAL_DANGER))
+                                        palette=PAL_DANGER))   # keep red hazard cue
             self.solids.append(make_box((-64, -64, 8), (64, 64, 32),
-                                        palette=PAL_LEDGE))
+                                        tex=CHROME or TEX_FLOOR, palette=PAL_LEDGE))
             self.place("item_quad", 0, 0, 56)
             for mins, maxs in (((-176, 80), (176, 176)),
                                ((-176, -176), (176, -80)),
@@ -1939,7 +2023,7 @@ class Arena:
             tall = rng.randrange(256, 385, 32)
             self.solids.append(make_box((px - half, py - half, 0),
                                         (px + half, py + half, tall),
-                                        tex=TEX_WALL, palette=PAL_PILLAR))
+                                        tex=HULL or TEX_WALL, palette=PAL_PILLAR))
             spawn_blockers.append((px, py, half))
 
         # jump pads arcing onto the center
@@ -2096,10 +2180,19 @@ class Killbox:
         self.solids.append(make_box((x0, y0, z), (x0 + t, y1, z + h), palette=pal))
         self.solids.append(make_box((x1 - t, y0, z), (x1, y1, z + h), palette=pal))
 
+    def _hull(self, fallback=TEX_WALL):
+        """GFX: route a structural mass to the machined-metal hull material
+        (opaque PBR-lite — pure draw swap, collision unchanged). The neon rim
+        caps stay as the wall-jump/edge cue. Falls back to the dev grid for
+        --no-gfx (where the hull shader isn't shipped)."""
+        return gfx.TEX_HULL if GFX else fallback
+
     def column(self, cx, cy, half, top, pal=PAL_KB_COLUMN):
-        """A wall-jump column / cover pillar with a glowing neon cap."""
+        """A wall-jump column / cover pillar with a glowing neon cap. The shaft
+        is machined hull metal (GFX); the neon rim cap keeps marking it as a
+        wall-jump surface."""
         self.solids.append(make_box((cx - half, cy - half, 0), (cx + half, cy + half, top),
-                                    tex=TEX_WALL, palette=pal))
+                                    tex=self._hull(), palette=pal))
         self.rim(cx - half, cy - half, cx + half, cy + half, top)
 
     # --- centerpiece ARCHETYPES ------------------------------------------
@@ -2110,9 +2203,11 @@ class Killbox:
     def _cp_spire(self, rng, ci, blk):
         """Solid stepped pyramid + 4 corner columns + 4 cover pillars (classic)."""
         self.sections.append(("centerpiece", {"kind": "spire"}))
-        self.solids.append(make_box((-320, -320, 0), (320, 320, 288), palette=PAL_KB_WALL))
+        self.solids.append(make_box((-320, -320, 0), (320, 320, 288),
+                                    tex=self._hull(TEX_FLOOR), palette=PAL_KB_WALL))
         self.rim(-320, -320, 320, 320, 288)
-        self.solids.append(make_box((-224, -224, 288), (224, 224, 560), palette=PAL_KB_WALL))
+        self.solids.append(make_box((-224, -224, 288), (224, 224, 560),
+                                    tex=self._hull(TEX_FLOOR), palette=PAL_KB_WALL))
         self.rim(-224, -224, 224, 224, 560)
         self.solids.append(make_box((-128, -128, 560), (128, 128, 700), palette=PAL_KB_NEON))
         self.place("item_quad", 0, 0, 724)
@@ -2241,6 +2336,32 @@ class Killbox:
             cx, cy = (0, s * 820) if axis else (s * 820, 0)
             self.column(cx, cy, 80, 440); blk.append((cx, cy, 80))
 
+    def _cp_court(self, rng, ci, blk):
+        """COURT — purpose-built from the tuning campaign. A central low DAIS holds
+        the quad as a reachable, contested objective (single-jump up, z64 — the
+        floating/high quad never got contested), ringed by SIX wall-jump columns
+        spaced to the research wall-jump band (~640u arc, varied height) for deck
+        cover + verticality WITHOUT the clutter that spiked stuck on the spire. It
+        fuses the campaign's winners: forest's fight-around cover, a ring/twin-style
+        central focal point, all on the dialed shared shell (central spawns etc.)."""
+        self.sections.append(("centerpiece", {"kind": "court"}))
+        # central dais: low + bot-reachable (z64 = single-jump ledge) so the quad
+        # is actually fought over; two-tone rim reads it as the arena's heart
+        dr, dh = 300.0, 64.0
+        self.solids.append(make_box((-dr, -dr, 0), (dr, dr, dh), palette=PAL_KB_DECK))
+        self.rim(-dr, -dr, dr, dr, dh, t=14.0, h=10.0)
+        self.solids.append(make_box((-120, -120, dh), (120, 120, dh + 14),
+                                    palette=PAL_KB_NEON))       # quad pad, glows
+        self.place("item_quad", 0, 0, dh + 58)
+        blk.append((0, 0, dr))
+        # ring of 6 wall-jump columns, evenly spaced (~640u arc) + a launch shard
+        a0 = rng.uniform(0, 2 * math.pi)
+        for k in range(6):
+            a = a0 + k * math.pi / 3
+            px, py = 640.0 * math.cos(a), 640.0 * math.sin(a)
+            self.column(px, py, 84, float(rng.randrange(360, 621, 40)))
+            blk.append((px, py, 84))
+
     def build(self):
         rng = self.rng
         # BIG: sized for 16 players. Everything downstream is relative to W/ci,
@@ -2304,9 +2425,12 @@ class Killbox:
         #     + the quad, and fills spawn_blockers so deck spawns nudge clear. ---
         self.col_in = col_in
         spawn_blockers = []
+        # "court" is the campaign-distilled archetype: explicit-only (via the
+        # archetype hook / --arch), kept OUT of the random rotation so existing
+        # seed->archetype mappings stay stable.
         arch = self.archetype or rng.choice(
             ("spire", "spiral", "forest", "ring", "cross", "twin"))
-        {"spire": self._cp_spire, "spiral": self._cp_spiral,
+        {"spire": self._cp_spire, "spiral": self._cp_spiral, "court": self._cp_court,
          "forest": self._cp_forest, "ring": self._cp_ring,
          "cross": self._cp_cross, "twin": self._cp_twin}[arch](rng, ci, spawn_blockers)
 
@@ -2505,12 +2629,34 @@ class _Store:
         return self.index[key]
 
 
-def _face_brightness(n):
-    if n[2] > 0.7:
-        return 1.0
-    if n[2] < -0.7:
-        return 0.45
-    return 0.80 if abs(n[0]) >= abs(n[1]) else 0.64
+# ---- dusk vertex lighting -------------------------------------------------
+# The world is vertex-lit (no lightmaps), so all "lighting" is a per-channel
+# RGB multiplier baked into the vertex colour at emit time — zero runtime cost,
+# still N64-crisp. The old model was a flat 4-tier grey scalar (top 1.0 / sides
+# 0.8,0.64 / bottom 0.45) which read mood-dead. This replaces it with a small
+# physically-flavoured model aligned to the VISIBLE sky sun (_build_synthsky:
+# SUN_AZ 0, SUN_EL ~0.10 — a low warm sun toward +x):
+#   * a HEMISPHERIC ambient — cool dusk skylight from above, a dim warm-violet
+#     bounce from below, lerped by the face's up-ness — so floors read cool and
+#     undersides fall to warm shadow;
+#   * a warm SUN KEY added where a face turns toward the sun, so the +x-facing
+#     walls glow warm and bright while the shadow side stays cool and dark.
+# Net: real directional form + a warm/cool dusk palette, with more contrast than
+# the old flat tiers, while floors stay bright enough to read the track at MACH.
+_SUN_DIR = (0.9950, 0.0, 0.0998)        # toward the sky sun: +x, ~6deg elevation
+_KEY_RGB = (0.55, 0.40, 0.23)           # warm sun key, added per-channel * n.l
+_SKY_AMB = (0.80, 0.84, 0.96)           # cool skylight (up-facing ambient)
+_GND_AMB = (0.36, 0.31, 0.34)           # dim warm-violet bounce (down-facing)
+
+
+def _face_light(n):
+    """Per-channel RGB light multiplier for a face with world normal n."""
+    t = 0.5 * (n[2] + 1.0)              # 0 straight down .. 1 straight up
+    ndl = n[0] * _SUN_DIR[0] + n[1] * _SUN_DIR[1] + n[2] * _SUN_DIR[2]
+    if ndl < 0.0:
+        ndl = 0.0
+    return [_GND_AMB[i] + (_SKY_AMB[i] - _GND_AMB[i]) * t + _KEY_RGB[i] * ndl
+            for i in range(3)]
 
 
 def _face_st(p, n):
@@ -2558,13 +2704,15 @@ class BspWriter:
         is_nonsolid = brush.contents in (CONTENTS_TRIGGER, CONTENTS_FOG)
         cflags = brush.contents if is_nonsolid else CONTENTS_SOLID
         main_sid = self.shader_id(
-            brush.faces[0].tex, SURF_NODRAW if is_nonsolid else 0, cflags)
+            _glow_tex(brush.faces[0].tex, brush.faces[0].palette),
+            SURF_NODRAW if is_nonsolid else 0, cflags)
         faces = []
         for f in brush.faces:
             sflags = SURF_NODRAW if (not f.draw or is_nonsolid) else 0
             if f.tex == TEX_SKY:
                 sflags |= SURF_SKY | SURF_NOIMPACT
-            faces.append((f, self.shader_id(f.tex, sflags, cflags),
+            faces.append((f, self.shader_id(_glow_tex(f.tex, f.palette),
+                                            sflags, cflags),
                           self.plane_id(f.normal, f.dist)))
         face_sid_by_pid = {pid: sid for _, sid, pid in faces}
         # CM_BoundBrush derives brush bounds from sides 0-5 and assumes
@@ -2595,8 +2743,8 @@ class BspWriter:
     def emit_face(self, f, shader_id):
         poly = list(reversed(f.poly))  # engine winding: CW from outside
         first_vert = len(self.verts)
-        br = _face_brightness(f.normal)
-        color = tuple(min(255, int(c * br)) for c in f.palette) + (255,)
+        lt = _face_light(f.normal)
+        color = tuple(min(255, int(c * lt[i])) for i, c in enumerate(f.palette)) + (255,)
         for p in poly:
             s, t = _face_st(p, f.normal)
             self.verts.append(struct.pack(
@@ -2695,7 +2843,16 @@ class BspWriter:
         n = bounds[0] * bounds[1] * bounds[2]
         if n <= 0 or n * 8 > 0x800000:
             return b""
-        return bytes((105, 105, 118, 150, 145, 135, 96, 32)) * n
+        # one uniform cell repeated over the grid — this lights the DYNAMIC
+        # entities (players, weapons, items, gibs) that the vertex-lit world
+        # can't. Tuned to the same dusk mood as the world vertex lighting:
+        #   bytes 0-2 ambient  -> cool blue-violet skylight fill
+        #   bytes 3-5 directed -> a warm sun key
+        #   byte 6 lng, byte 7 lat (tr_light.c: z=cos(lng), x=cos(lat)*sin(lng))
+        #     lng=60 (~84deg from zenith, low) + lat=0 (+x) aims the key at the
+        #     visible sky sun, so models get a warm sunward rim and a cool
+        #     shadow side that matches the surrounding geometry.
+        return bytes((92, 98, 124, 188, 150, 104, 60, 0)) * n
 
     # ---- assembly -------------------------------------------------------
     def write(self, path):
@@ -2983,15 +3140,24 @@ def write_pk3(bsp_path, name, out_dir, aas_path=None):
     bots = 'bots "sarge major grunt"\n' if aas_path else ""
     arena = (f'{{\nmap "{name}"\nlongname "STRAFE64 {name}"\n'
              f'type "ffa tourney"\n{bots}}}\n')
+    shader = gfx.augment(SHADER_SCRIPT) if GFX else SHADER_SCRIPT
     pk3 = os.path.join(out_dir, f"{name}.pk3")
     with zipfile.ZipFile(pk3, "w", zipfile.ZIP_DEFLATED) as z:
         z.write(bsp_path, f"maps/{name}.bsp")
         if aas_path:
             z.write(aas_path, f"maps/{name}.aas")
         z.writestr(f"scripts/{name}.arena", arena)
-        z.writestr("scripts/strafe64.shader", SHADER_SCRIPT)
+        z.writestr("scripts/strafe64.shader", shader)
         for arc, data in build_detail_textures().items():
             z.writestr(arc, data)
+        if GFX:
+            for arc, data in gfx.gfx_textures().items():
+                z.writestr(arc, data)
+    if GFX:
+        # sibling cfg for booting the map directly with the full GL2 look
+        # (parallax + ssao default off; the rest already default on).
+        with open(os.path.join(out_dir, f"{name}_gfx.cfg"), "w") as f:
+            f.write(gfx.render_cfg())
     return pk3
 
 
@@ -3364,7 +3530,7 @@ class SurfTurn:
 def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
              arena=False, name=None, void=True, voidrise=None,
              voiddelay=None, dojo=None, surf=False, killbox=False,
-             latticearena=False, combat=False):
+             latticearena=False, combat=False, archetype=None):
     os.makedirs(out_dir, exist_ok=True)
     if latticearena:
         lite = latticearena == "lite"
@@ -3372,9 +3538,10 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
         name = name or (f"{base}_{seed}" if seed else base)
         course = LatticeArena(seed, weapons=not lite).build()  # 16-pilot heat arena
     elif killbox:
-        name = name or (f"strafe64kb_{seed}"
-                        + ("" if difficulty == 1 else f"_d{difficulty}"))
-        course = Killbox(seed, difficulty).build()
+        if not name:
+            base = f"strafe64kb_{archetype}" if archetype else "strafe64kb"
+            name = f"{base}_{seed}" + ("" if difficulty == 1 else f"_d{difficulty}")
+        course = Killbox(seed, difficulty, archetype=archetype).build()
     elif surf == "turn":
         name = name or (f"surfturn_{seed}" if seed else "surfturn_64")
         course = SurfTurn(seed).build()  # banked surf-turn test (human feel-validated)
@@ -3491,6 +3658,10 @@ def main():
                     help="futuristic vertical melee arena: wall-jump columns, "
                          "a central spire and momentum portals for the "
                          "hack-and-slash / time-bind game")
+    ap.add_argument("--arch", default=None,
+                    choices=("spire", "spiral", "forest", "ring", "cross",
+                             "twin", "court"),
+                    help="force the killbox centerpiece archetype (else seed-random)")
     ap.add_argument("--combat", action="store_true",
                     help="combat-flow course: the speed->flow->spice arc laced "
                          "with slice-gate enemies (apex gates + 2-3 enemy "
@@ -3528,7 +3699,14 @@ def main():
                     help="override void rise rate in ups/s")
     ap.add_argument("--voiddelay", type=float, default=None,
                     help="override void grace period in seconds")
+    ap.add_argument("--no-gfx", action="store_true",
+                    help="omit the graphics-recipe shaders (sun/shadows, PBR "
+                         "hull, chrome, plasma, beam) — vanilla identity look")
     args = ap.parse_args()
+
+    global GFX
+    if args.no_gfx:
+        GFX = False
 
     if args.check:
         stats = check_bsp(args.check)
@@ -3584,7 +3762,7 @@ def main():
         ap.error("a seed is required (or use --daily / --check / --selftest)")
     generate(args.seed, args.difficulty, length, args.out,
              args.map, args.pk3, arena=args.arena, killbox=args.killbox,
-             combat=args.combat,
+             combat=args.combat, archetype=args.arch,
              name=name, void=not args.no_void, voidrise=args.voidrise,
              voiddelay=args.voiddelay)
 
