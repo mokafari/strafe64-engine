@@ -707,6 +707,14 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 						  cgs.media.smokePuffShader );
 		}
 		break;
+
+	case EV_DASH:
+		DEBUGNAME("EV_DASH");
+		// STRAFE 64: SHIFT revector dash — same chromatic-ghost strobe trail as the
+		// air-dash, no sound (the dash is its own silent lunge).
+		cent->dashGlitchTime = cg.time;
+		break;
+
 	case EV_TAUNT:
 		DEBUGNAME("EV_TAUNT");
 		trap_S_StartSound (NULL, es->number, CHAN_VOICE, CG_CustomSound( es->number, "*taunt.wav" ) );

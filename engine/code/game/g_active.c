@@ -942,6 +942,9 @@ static void G_ClientDash( gentity_t *ent, usercmd_t *ucmd ) {
 	if ( dir[2] > -0.1f && client->ps.velocity[2] < 90.0f ) {
 		client->ps.velocity[2] = 90.0f;
 	}
+
+	// STRAFE 64: fire the chromatic-ghost strobe trail off the dash (cgame EV_DASH).
+	G_AddPredictableEvent( ent, EV_DASH, 0 );
 }
 
 static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {

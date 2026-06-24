@@ -2403,6 +2403,92 @@ static void CG_WallGripPose( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 
 /*
 ===============
+CG_DashGlitchGhost
+
+STRAFE 64: a short, audio-reactive chromatic after-image left on an air-dash
+(EV_DOUBLE_JUMP). Re-renders the pilot's body a few steps back along the dash
+velocity, split into red / cyan copies on the additive ghost shader and fading
+over the dash window — a glitchy neon speed-trail flourish on the key movement.
+===============
+*/
+#define DASH_GLITCH_MS		300
+#define DASH_GHOST_STEPS	5
+
+static void CG_DashGlitchGhost( centity_t *cent, const refEntity_t *legs,
+		const refEntity_t *torso, const refEntity_t *head ) {
+	int					dt = cg.time - cent->dashGlitchTime;
+	float				life, audio, bright, speed, gap, fringe;
+	vec3_t				vel;
+	const refEntity_t	*parts[3];
+	int					step, p, c;
+
+	if ( cg_dashGlitch.value <= 0 || cent->dashGlitchTime <= 0
+			|| dt < 0 || dt > DASH_GLITCH_MS ) {
+		return;
+	}
+	// nothing to ghost on our own first-person body
+	if ( cent->currentState.number == cg.snap->ps.clientNum && !cg.renderingThirdPerson ) {
+		return;
+	}
+
+	life   = 1.0f - dt / (float)DASH_GLITCH_MS;					// 1 -> 0 over the window
+	audio  = 1.0f + 1.4f * au_level.value + 1.0f * au_bass.value;	// pump on the track
+	bright = life * cg_dashGlitch.value;
+
+	// trail axis: directly BEHIND the dash, along the full velocity (an air-dash
+	// can climb/dive, so keep z) — copies stack back down the motion line.
+	VectorCopy( cent->currentState.pos.trDelta, vel );
+	speed = VectorNormalize( vel );
+	if ( speed < 1.0f ) {
+		VectorSet( vel, 1, 0, 0 );			// degenerate: shove along x
+	}
+
+	gap    = ( 13.0f + 0.022f * speed ) * cg_dashGlitch.value;	// strobe spacing behind
+	fringe = 3.0f + 3.0f * audio;								// chromatic split ALONG the trail
+
+	parts[0] = legs; parts[1] = torso; parts[2] = head;
+
+	for ( step = 1 ; step <= DASH_GHOST_STEPS ; step++ ) {
+		// STROBE: discrete frozen frames trailing behind. Brightness fades down the
+		// trail AND every other frame punches dim, so the after-image flickers like
+		// a strobe instead of a smooth smear.
+		float	fade   = 1.0f - ( step - 1 ) / (float)DASH_GHOST_STEPS;
+		float	strobe = ( step & 1 ) ? 1.0f : 0.40f;	// alternate bright / dim
+		float	f       = bright * fade * strobe;
+		float	back    = gap * step;
+
+		if ( f <= 0.0f ) {
+			continue;
+		}
+		for ( p = 0 ; p < 3 ; p++ ) {
+			// chromatic aberration: red shoved a touch further back, cyan a touch
+			// nearer, so each strobed frame carries a red/cyan fringe down the trail.
+			for ( c = 0 ; c < 2 ; c++ ) {
+				refEntity_t	g = *parts[p];
+				float		off = back + ( ( c == 0 ) ? fringe : -fringe );
+
+				g.customShader = cgs.media.glitchGhostShader;
+				g.renderfx &= ~RF_SHADOW_PLANE;		// ghosts cast no blob shadow
+				if ( c == 0 ) {						// red, trailing edge
+					g.shaderRGBA[0] = (byte)( 255 * f );
+					g.shaderRGBA[1] = (byte)(  20 * f );
+					g.shaderRGBA[2] = (byte)(  50 * f );
+				} else {							// cyan, leading edge
+					g.shaderRGBA[0] = (byte)(  30 * f );
+					g.shaderRGBA[1] = (byte)( 200 * f );
+					g.shaderRGBA[2] = (byte)( 255 * f );
+				}
+				g.shaderRGBA[3] = 255;				// additive: fade lives in RGB
+				VectorMA( g.origin, -off, vel, g.origin );
+				VectorMA( g.lightingOrigin, -off, vel, g.lightingOrigin );
+				trap_R_AddRefEntityToScene( &g );
+			}
+		}
+	}
+}
+
+/*
+===============
 CG_Player
 ===============
 */
@@ -2779,6 +2865,9 @@ void CG_Player( centity_t *cent ) {
 		glowOrg[2] += 28;		// chest height
 		trap_R_AddLightToScene( glowOrg, 110.0f + 90.0f * cg_playerGlow.value, r, g, b );
 	}
+
+	// STRAFE 64: chromatic-ghost glitch trail on a fresh air-dash
+	CG_DashGlitchGhost( cent, &legs, &torso, &head );
 
 	//
 	// add the gun / barrel / flash

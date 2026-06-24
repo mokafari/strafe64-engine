@@ -507,7 +507,8 @@ typedef enum {
 
 	EV_DISMEMBER,			// STRAFE 64: sword sever — origin2 = cut direction, eventParm = cut type
 	EV_SWORD_HIT,			// STRAFE 64: blade connected (fired on attacker) — eventParm = finisher flag
-	EV_DOUBLE_JUMP			// STRAFE 64: mid-air double jump (air-dash kick-off) — jump sound + ground-burst puff
+	EV_DOUBLE_JUMP,			// STRAFE 64: mid-air double jump (air-dash kick-off) — jump sound + ground-burst puff
+	EV_DASH					// STRAFE 64: SHIFT revector dash (G_ClientDash) — chromatic-ghost strobe trail
 
 } entity_event_t;
 
