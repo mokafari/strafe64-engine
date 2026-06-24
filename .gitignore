@@ -2,6 +2,8 @@
 engine/build/
 # bundled third-party / generated assets (~1 GB binaries, mp4s, pk3s, model packs — not ours to version)
 /assets/
+# local map/asset backup tarballs (regenerable snapshots, ~tens of MB)
+backups/
 # generated courses / tool artifacts (regenerable)
 tools/strafegen/generated/
 tools/strafegen/generated_fog/
