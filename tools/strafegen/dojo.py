@@ -221,6 +221,7 @@ def profile(arch, recs):
         "flowpct": mean([r.get("flowpct") for r in recs]),
         "airpct": mean([r.get("airpct") for r in recs]),
         "wallrunpct": mean([r.get("wallrunpct") for r in recs]),
+        "slidepct": mean([r.get("slidepct") for r in recs]),
         "maxbhop": max([r.get("maxbhop", 0) for r in recs], default=0),
         "stuckms": mean([r.get("stuckms") for r in recs]),
         "frags": sum(r.get("frags", 0) for r in recs),
@@ -526,7 +527,7 @@ def main():
         # a few always-useful context numbers
         print(f"    .. avgspd {p['avgspd']:.0f}  maxspd {p['maxspd']:.0f}  "
               f"flow {p['flowpct']:.0f}%  air {p['airpct']:.0f}%  "
-              f"wallrun {p['wallrunpct']:.0f}%  stuck {p['stuckms']:.0f}ms  "
+              f"wallrun {p['wallrunpct']:.0f}%  slide {p['slidepct']:.0f}%  stuck {p['stuckms']:.0f}ms  "
               f"frags {p['frags']} (midair {p['midair']})")
         journal_rows.append({
             "archetype": a, "gate_ok": ok, "verdict": verdict,
