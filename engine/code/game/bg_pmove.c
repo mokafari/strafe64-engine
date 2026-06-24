@@ -364,6 +364,37 @@ static void PM_Accelerate( vec3_t wishdir, float wishspeed, float accel ) {
 }
 
 
+/*
+==============
+PM_StrafeTickAccel / PM_OptimalStrafeAngle
+
+The one source of truth for the pure-A/D air-strafe optimum, shared by the HUD
+strafe meter (cg_draw.c) and the bots (ai_main.c) so the two can never drift.
+
+PM_Accelerate adds at most A = pm_strafeAccelerate * frameSec * wishspeed along
+wishdir before the pm_wishSpeedClamp cap clips (v.wishdir). |v'| over the strafe
+angle peaks exactly at the tick boundary, where (v.wishdir) = clamp - A, i.e.
+cos(phi_opt) = (clamp - A) / |v|. A is TIMESCALE-INDEPENDENT: PM_AirMove feeds
+accel/timeScale but PM_Accelerate then scales by frameSec = scaled-clock msec,
+so timeScale cancels — do NOT reintroduce it here. frameSec is the pmove tick in
+seconds (pmove_msec/1000).
+==============
+*/
+float PM_StrafeTickAccel( float frameSec ) {
+	return pm_strafeAccelerate * frameSec * pm_wishSpeedClamp;
+}
+
+float PM_OptimalStrafeAngle( float speed, float frameSec ) {
+	float cosOpt;
+	if ( speed <= pm_wishSpeedClamp ) {
+		return 0.0f;	// below the cap every angle gains; no distinct optimum
+	}
+	cosOpt = ( pm_wishSpeedClamp - PM_StrafeTickAccel( frameSec ) ) / speed;
+	if ( cosOpt > 1.0f ) { cosOpt = 1.0f; } else if ( cosOpt < -1.0f ) { cosOpt = -1.0f; }
+	return (float)acos( cosOpt ) * 180.0f / (float)M_PI;
+}
+
+
 
 /*
 ============

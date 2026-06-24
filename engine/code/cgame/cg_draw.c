@@ -2965,7 +2965,7 @@ and your aim exceeds acos(30/|v|). That threshold climbs toward 90 deg as you
 speed up.
 
 The OPTIMUM is not 90 deg. Per pmove tick PM_Accelerate adds at most
-  A = (pm_strafeAccelerate/timeScale) * (pmove_msec/1000) * wishspeed
+  A = pm_strafeAccelerate * (pmove_msec/1000) * wishspeed
 along wishdir, then clamps so (v.wishdir) never passes the 30 cap. Maximising
 |v'| over the angle puts the peak exactly at the tick boundary, where
 (v.wishdir) = wishspeed - A, i.e. cos(phi_opt) = (30 - A)/|v|. That sits a few
@@ -2973,10 +2973,22 @@ degrees inside the dead-zone edge (always > acos(30/|v|)) and creeps toward —
 but never reaches — 90 deg as you speed up. The fixed-90 model only holds in
 the limit of infinite accel; this tracks the real per-tick optimum instead.
 
+A is timescale-INDEPENDENT: PM_AirMove feeds PM_Accelerate accel/timeScale,
+but PM_Accelerate then scales by frametime = (scaled game-clock msec)/1000 ~
+realMsec*timeScale, so the timeScale cancels and the real-time accel is the
+same in bullet-time as at full speed. (Dividing A by timescale here was a bug
+that pushed phi_opt past 90 deg in slowmo — telling you to aim into the loss
+zone, where you bleed speed instead of gaining it.)
+
+Past ~90 deg you start adding velocity AGAINST your motion: (v.wishdir) is
+still under the cap so PM_Accelerate keeps pushing, but the push now shortens
+|v|. Gain only holds up to phi_hi = acos(-A/(2|v|)), a hair past 90; beyond
+that the band is speed LOSS, not gain, so it's drawn red, not green.
+
 A horizontal strip under the crosshair:
   - center      = your velocity heading (wishdir aligned with motion, 0 gain)
   - +/- ticks   = the perfect-strafe targets at +/-phi_opt (bright green),
-    which shift with speed / framerate / timescale to follow the real optimum
+    which shift with speed / framerate to follow the real optimum
   - red dead-zone = angles where (v.wishdir) >= 30 so you gain nothing; it
     WIDENS as you speed up — the skill ceiling made visible
   - green band  = where you actually accelerate
@@ -2996,9 +3008,8 @@ static void CG_DrawStrafeMeter( void ) {
 	float			fmove, smove, wl;
 	float			wishdir[2], vdir[2];
 	float			speed, dot, phi, thetaMin, crossz, prox;
-	float			tickAccel, cosOpt, phiOpt, ts;
+	float			tickAccel, phiOpt, phiHi, cosHi;
 	float			cx, half, y0, barH, x;
-	char			tsbuf[32];
 	vec4_t			col;
 	qboolean		active;
 
@@ -3050,16 +3061,18 @@ static void CG_DrawStrafeMeter( void ) {
 
 	thetaMin = (float)acos( 30.0f / speed ) * 180.0f / M_PI;	// gain threshold
 
-	// true per-tick optimum: PM_Accelerate adds at most tickAccel along wishdir
-	// (accel/timeScale * frametime * wishspeed) before the 30 cap clips it, and
-	// |v'| peaks where (v.wishdir) lands exactly on wishspeed - tickAccel.
-	trap_Cvar_VariableStringBuffer( "timescale", tsbuf, sizeof( tsbuf ) );
-	ts = atof( tsbuf );
-	if ( ts <= 0.01f ) { ts = 1.0f; }
-	tickAccel = ( pm_strafeAccelerate / ts ) * ( pmove_msec.integer * 0.001f ) * 30.0f;
-	cosOpt = ( 30.0f - tickAccel ) / speed;
-	if ( cosOpt > 1.0f ) { cosOpt = 1.0f; } else if ( cosOpt < -1.0f ) { cosOpt = -1.0f; }
-	phiOpt = (float)acos( cosOpt ) * 180.0f / M_PI;	// in (thetaMin, 180], near 90 at speed
+	// true per-tick optimum, from the SHARED helper the bots also strafe at, so
+	// what the meter teaches and what the AI does can't drift. tickAccel = max
+	// along-wishdir add before the 30 cap clips; phiOpt = the peak-gain angle.
+	// Timescale-independent by construction (see PM_OptimalStrafeAngle).
+	tickAccel = PM_StrafeTickAccel( pmove_msec.integer * 0.001f );
+	phiOpt = PM_OptimalStrafeAngle( speed, pmove_msec.integer * 0.001f );	// (thetaMin, 90)
+
+	// upper edge of real speed GAIN: past here the push points enough against
+	// |v| that magnitude shrinks even though (v.wishdir) is still under the cap.
+	cosHi = -tickAccel / ( 2.0f * speed );
+	if ( cosHi > 1.0f ) { cosHi = 1.0f; } else if ( cosHi < -1.0f ) { cosHi = -1.0f; }
+	phiHi = (float)acos( cosHi ) * 180.0f / M_PI;	// a hair past 90
 
 	cx = 320.0f; half = 130.0f; y0 = 366.0f; barH = 7.0f;
 #define SX(P) ( cx + ( (P) / 180.0f ) * half )
@@ -3068,12 +3081,22 @@ static void CG_DrawStrafeMeter( void ) {
 	col[0]=0.10f; col[1]=0.12f; col[2]=0.16f; col[3]=0.55f*vis;
 	CG_FillRect( cx - half, y0, 2.0f*half, barH, col );
 
-	// green gain band on the strafing side (thetaMin .. 180)
+	// green gain band on the strafing side (thetaMin .. phiHi) — only where |v|
+	// actually grows; the stretch past phiHi is speed loss and gets the red wash
 	col[0]=0.40f; col[1]=1.00f; col[2]=0.50f; col[3]=0.16f*vis;
 	if ( phi < 0 ) {
-		CG_FillRect( SX(-180.0f), y0, SX(-thetaMin)-SX(-180.0f), barH, col );
+		CG_FillRect( SX(-phiHi), y0, SX(-thetaMin)-SX(-phiHi), barH, col );
 	} else {
-		CG_FillRect( SX(thetaMin), y0, SX(180.0f)-SX(thetaMin), barH, col );
+		CG_FillRect( SX(thetaMin), y0, SX(phiHi)-SX(thetaMin), barH, col );
+	}
+
+	// red loss band (phiHi .. 180): still "accelerating" along wishdir, but the
+	// push fights your motion so speed bleeds — aiming here is the trap
+	col[0]=1.00f; col[1]=0.12f; col[2]=0.16f; col[3]=0.18f*vis;
+	if ( phi < 0 ) {
+		CG_FillRect( SX(-180.0f), y0, SX(-phiHi)-SX(-180.0f), barH, col );
+	} else {
+		CG_FillRect( SX(phiHi), y0, SX(180.0f)-SX(phiHi), barH, col );
 	}
 
 	// red dead-zone (|phi| < thetaMin) — widens with speed
@@ -3092,11 +3115,12 @@ static void CG_DrawStrafeMeter( void ) {
 	// the needle
 	x = SX( phi );
 	if ( x < cx-half ) { x = cx-half; } else if ( x > cx+half ) { x = cx+half; }
-	if ( fabs( phi ) > thetaMin ) {
+	if ( fabs( phi ) > thetaMin && fabs( phi ) < phiHi ) {
 		prox = 1.0f - (float)fabs( fabs(phi) - phiOpt ) / 90.0f;	// 1 at phi_opt
 		if ( prox < 0.0f ) { prox = 0.0f; }
 		col[0]=0.40f; col[1]=1.00f; col[2]=0.50f; col[3]=(0.55f+0.45f*prox)*vis;
 	} else {
+		// dead zone (no gain) or past phiHi (bleeding speed) — both are red
 		col[0]=1.00f; col[1]=0.12f; col[2]=0.16f; col[3]=0.95f*vis;
 	}
 	CG_FillRect( x-1.5f, y0-5.0f, 3.0f, barH+10.0f, col );

@@ -223,6 +223,12 @@ extern float	pm_airaccelerate;
 extern float	pm_airStopAccelerate;
 extern float	pm_airControlAmount;
 
+// shared pure-A/D air-strafe optimum (defined in bg_pmove.c). The HUD strafe
+// meter and the bots both read these so the displayed optimum and the angle the
+// bots actually carve at can never drift apart. frameSec = pmove tick (msec/1000).
+float	PM_StrafeTickAccel( float frameSec );			// max along-wishdir add per tick
+float	PM_OptimalStrafeAngle( float speed, float frameSec );	// peak-gain angle, degrees
+
 //===================================================================================
 
 
