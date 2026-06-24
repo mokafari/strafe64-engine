@@ -166,12 +166,30 @@ textures/strafe64/sky
 	surfaceparm nolightmap
 	surfaceparm nomarks
 	surfaceparm sky
-	// 90s vector / synthwave geometric-landscape skybox: a real 6-face box
-	// (env/synth_{rt,lf,ft,bk,up,dn}) built by _build_synthsky from one
-	// direction->colour function, so the cube is seamless. Outrun sunset +
-	// scanline sun + jagged neon ridgeline above the horizon, a receding
-	// neon grid below it. Replaces the old scrolling star dome.
+	// BRYCE 3D sky. A STATIC box (env/synth_{rt,lf,ft,bk,up,dn} from
+	// _build_synthsky: a soft dusk gradient, a big hazy sun, and SMOOTH fractal
+	// mountain ranges receding into atmospheric haze) PLUS two ANIMATED cloud
+	// layers for gentle motion. idTech3 renders a sky shader's stages as cloud
+	// layers on the dome (R_BuildCloudData -> RB_StageIteratorGeneric in
+	// tr_sky.c) when skyparms sets a cloud height (the 512 below), and those
+	// stages run the full tcMod pipeline — so soft clouds (env/clouds) DRIFT
+	// overhead. Two layers at different scale/scroll give parallax; a slow sine
+	// rgbGen breathes the upper layer. Additive so only the cloud crests show.
 	skyparms textures/strafe64/env/synth 512 -
+	{
+		map textures/strafe64/env/clouds.tga
+		blendFunc GL_ONE GL_ONE
+		rgbGen identity
+		tcMod scale 2 2
+		tcMod scroll 0.006 0.0020
+	}
+	{
+		map textures/strafe64/env/clouds.tga
+		blendFunc GL_ONE GL_ONE
+		rgbGen wave sin 0.6 0.4 0 0.05
+		tcMod scale 3.5 3.5
+		tcMod scroll -0.010 0.0035
+	}
 }
 // global atmospheric fog volume. The whole play area is wrapped in one
 // CONTENTS_FOG brush (see write()), and every non-sky world surface is tagged
@@ -186,7 +204,9 @@ textures/strafe64/fog
 	surfaceparm nomarks
 	surfaceparm nonsolid
 	surfaceparm trans
-	fogparms ( 0.05 0.04 0.10 ) 7000
+	// denser, dusk-tinted haze (purple-blue): closes the world in sooner so the
+	// scene reads moodier/foggier and distant geometry melts into the dusk.
+	fogparms ( 0.09 0.07 0.15 ) 4200
 }
 // the rising void plane, drawn client-side by the cgame race layer
 strafe64/void
@@ -236,6 +256,34 @@ strafe64/ghost
 		blendFunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA
 		rgbGen entity
 		alphaGen entity
+	}
+}
+// MATRIX RAIN — wall-of-death / velodrome banking. Green digital-rain streaks
+// cascade down: a SOLID dark base (so only the scrolling layers show — a static
+// full-bright copy would drown the motion and freeze the rain) plus two additive
+// layers scrolling at different speeds/scales for parallax depth. Purely
+// time-driven (sin waves), NO audio reactivity. The brush stays solid and
+// walkable; this is visual only. matrix.tga is generated procedurally
+// (build_detail_textures) and bundled in every strafegen pk3.
+textures/strafe64/matrix
+{
+	surfaceparm nolightmap
+	{
+		map $whiteimage
+		rgbGen const ( 0.00 0.05 0.02 )
+	}
+	{
+		map textures/strafe64/matrix.tga
+		blendFunc GL_ONE GL_ONE
+		rgbGen identity
+		tcMod scroll 0 -0.60
+	}
+	{
+		map textures/strafe64/matrix.tga
+		blendFunc GL_ONE GL_ONE
+		rgbGen wave sin 0.50 0.50 0 0.5
+		tcMod scale 0.5 0.75
+		tcMod scroll 0 -1.05
 	}
 }
 """
@@ -306,8 +354,12 @@ def build_detail_textures():
                 out.append((g, g, g))
         return out
 
-    floor = _measure_grid(236)
-    wall  = _measure_grid(230)
+    # LOWER the map light: the detail map multiplies the vertex colour
+    # (rgbGen exactVertex), so dropping the near-white base from ~235 to ~165
+    # darkens every floor/wall globally (via the override pk3) — a moodier scene
+    # that lets the glowing dusk sky + fog do the work.
+    floor = _measure_grid(138)
+    wall  = _measure_grid(132)
 
     # --- accent: near-black with faint vertical conduit lines + nodes,
     # added back as a scrolling, section-tinted glow on walls ---
@@ -362,16 +414,72 @@ def build_detail_textures():
             iv = _clamp8(gv * 255)
             glow.append((iv, iv, iv))
 
+    # --- matrix digital-rain: green streaks on black for the velodrome
+    # wall-of-death (textures/strafe64/matrix). Each column gets a few rain
+    # "heads" with a tail fading upward; the tail wraps vertically (mod n) so
+    # the tile scrolls seamlessly under tcMod scroll. The shader is additive,
+    # so black reads as transparent and only the streaks glow under HDR. ---
+    mrng = random.Random(0x4D7258)        # 'MRX'
+    mbright = [0.0] * (n * n)
+    MTAIL = 18
+    for x in range(n):
+        if mrng.random() < 0.40:          # ~40% of columns stay dry
+            continue
+        for hy in mrng.sample(range(n), mrng.randint(1, 3)):
+            for d in range(MTAIL):
+                yy = ((hy + d) % n) * n + x
+                b = 1.0 - d / MTAIL
+                if b > mbright[yy]:
+                    mbright[yy] = b
+            mbright[hy * n + x] = 1.0      # bright head pip
+    matrix = []
+    for y in range(n):
+        for x in range(n):
+            b = mbright[y * n + x]
+            matrix.append((_clamp8(b * 50), _clamp8(b * 255), _clamp8(b * 80)))
+
     tex = {
         "textures/strafe64/d_floor.tga": _tga32(n, n, floor),
         "textures/strafe64/d_wall.tga": _tga32(n, n, wall),
         "textures/strafe64/accent.tga": _tga32(n, n, accent),
         "textures/strafe64/void_hex.tga": _tga32(n, n, voidtex),
         "textures/strafe64/trailglow.tga": _tga32(n, n, glow),
+        "textures/strafe64/matrix.tga": _tga32(n, n, matrix),
         "textures/strafe64/sky_stars.tga": _build_starfield(),
+        "textures/strafe64/env/clouds.tga": _build_clouds(),
     }
-    tex.update(_build_synthsky())   # 90s geometric-landscape skybox (6 faces)
+    tex.update(_build_synthsky())   # 90s holographic-renderer skybox (6 faces)
     return tex
+
+
+def _build_clouds(n=128):
+    """Seamless soft cloud tile for the sky's animated cloud layers.
+
+    The sky shader maps this onto the dome as slow-scrolling cloud stages
+    (idTech3 renders shader stages as cloud layers when skyparms sets a cloud
+    height) so soft Bryce-style clouds DRIFT overhead — gentle real motion in the
+    sky. Built from a seamless sum-of-sines field (every frequency an integer
+    number of cycles, so it wraps) pushed through a soft high-end ramp: only the
+    crests become bright puffs, everything else is black so the additive
+    (GL_ONE GL_ONE) stage adds only the clouds, not a grey wash.
+    """
+    tau = 2.0 * math.pi
+    waves = [(1, 0, 0.0), (0, 1, 1.1), (2, 1, 2.3),
+             (1, 2, 0.6), (3, 1, 1.7), (1, 3, 2.9)]
+    px = []
+    for y in range(n):
+        v = y / n
+        for x in range(n):
+            u = x / n
+            s = sum(math.sin(tau * (fx * u + fy * v) + ph) for fx, fy, ph in waves)
+            s = s / len(waves) * 0.5 + 0.5                   # 0..1 smooth field
+            # HAZY veil: lower threshold = broader coverage, gentler power = soft
+            # diffuse edges (not crisp puffs), and dimmer so it reads as drifting
+            # haze rather than bright clouds.
+            c = max(0.0, (s - 0.40) / 0.60)
+            c = c ** 1.4
+            px.append((_clamp8(c * 150), _clamp8(c * 150), _clamp8(c * 168)))
+    return _tga32(n, n, px)
 
 
 def _build_starfield():
@@ -435,26 +543,35 @@ _SYNTHSKY_CACHE = None
 
 
 def _build_synthsky(n=256):
-    """Six-face procedural skybox — a 90s vector / synthwave geometric landscape.
+    """Six-face procedural skybox — a COLOURFUL DIRECTIONAL DUSK.
 
     Every face samples one direction->colour function, so the cube is seamless
     by construction (a shared edge resolves to the same world direction on both
-    faces). Above the horizon: an Outrun sunset gradient, a big horizontal-
-    scanline sun, and a jagged neon ridgeline. Below it: the iconic perspective
-    neon grid receding into the horizon glow. Pure vector-era look, friendly to
-    the PSX point-sampling preset. Emits textures/strafe64/env/synth_<side>.tga
-    for side in rt/lf/ft/bk/up/dn (the Q3 skyparms box).
+    faces). The look is a realistic single-scatter dusk: a big bright sun low on
+    the horizon, with the whole warm bright sky (orange->coral->pink->magenta)
+    concentrated AROUND the sun's bearing and falling to a cool deep-blue night
+    on the far side and overhead. No mountains — clean sky; drifting soft clouds
+    are added on top by the sky shader's animated cloud stages. Emits
+    textures/strafe64/env/synth_<side>.tga for rt/lf/ft/bk/up/dn (Q3 skyparms).
     """
     global _SYNTHSKY_CACHE
     if _SYNTHSKY_CACHE is not None:
         return _SYNTHSKY_CACHE
 
-    SUN_EL, SUN_R = 0.27, 0.40
-    sun = (math.cos(SUN_EL), 0.0, math.sin(SUN_EL))          # low, toward +x
-    cos_sun_r = math.cos(SUN_R)
-    SKY = [(0.00, (255, 146, 46)), (0.10, (255, 80, 120)), (0.30, (150, 44, 132)),
-           (0.60, (52, 26, 96)), (1.00, (12, 8, 34))]        # horizon -> zenith
-    SUNC = [(0.0, (255, 250, 235)), (0.5, (255, 176, 70)), (1.0, (255, 70, 150))]
+    # COLOURFUL DUSK, DIRECTIONAL (realistic single-scatter). Two vertical
+    # gradients, blended by how close the view is to the sun's azimuth: SKY_SUN
+    # (warm, bright — orange horizon up through coral/pink/magenta to a night
+    # zenith) on the sun side, SKY_ANTI (cool, dark blue) on the far side. So the
+    # whole bright warm wedge sits AROUND the sun and the sky falls to cool night
+    # away from it — no mountains, just sky + drifting clouds.
+    SKY_SUN = [(0.00, (255, 150, 46)), (0.09, (255, 100, 78)),
+               (0.20, (236, 72, 120)), (0.34, (154, 62, 158)),
+               (0.54, (78, 52, 150)), (0.78, (28, 28, 92)),
+               (1.00, (6, 8, 30))]                            # horizon -> zenith
+    SKY_ANTI = [(0.00, (48, 60, 116)), (0.18, (42, 50, 122)),
+                (0.44, (38, 38, 108)), (0.68, (20, 22, 80)),
+                (1.00, (6, 8, 30))]
+    GROUND = (10, 9, 22)                                       # below-horizon haze
 
     def grad(stops, t):
         if t <= stops[0][0]:
@@ -478,50 +595,56 @@ def _build_synthsky(n=256):
     def fline(v):                                            # dist to integer
         return abs(v - round(v))
 
+    # a big bright sun low toward +x — the brightest point in the sky
+    SUN_AZ, SUN_EL = 0.0, 0.10
+    sun = (math.cos(SUN_EL) * math.cos(SUN_AZ),
+           math.cos(SUN_EL) * math.sin(SUN_AZ),
+           math.sin(SUN_EL))
+
     def color(dx, dy, dz):
-        el = dz
-        if el < 0.0:                                         # lower hemisphere
-            # DARK ground, not a mirrored neon grid: a bright grid floor below
-            # the horizon mirrors the sky above and reads as a rendering glitch
-            # (and fights the actual level geometry for legibility). Keep it a
-            # deep, near-black gradient so the world reads clearly against it,
-            # with only a thin horizon glow line right at el~0 for the sunset.
-            depth = min(1.0, -el / 0.30)
-            r = 14 - 12 * depth
-            gg = 8 - 7 * depth
-            b = 30 - 22 * depth
-            if el > -0.03:                                   # thin horizon glow
-                hg = 1.0 + el / 0.03
-                r += 120 * hg
-                gg += 70 * hg
-                b += 110 * hg
-            return (_clamp8(r), _clamp8(gg), _clamp8(b))
-
+        el = dz                                              # -1..1, +z up
         az = math.atan2(dy, dx)
-        c = grad(SKY, math.sqrt(el))
 
-        mh = ridge(az)                                       # mountain silhouette
-        if el <= mh:
-            if mh - el < 0.006:
-                return (90, 255, 235)                        # glowing crest wire
-            sh = 0.35 + 0.65 * (el / mh)
-            c = [18 * sh + 10, 10 * sh + 6, 30 * sh + 16]
-            if fline((mh - el) * 60.0) < 0.10:              # contour wireframe
-                c = [c[0] + 26, c[1] + 80, c[2] + 80]
+        # azimuthal proximity to the sun (1 at the sun bearing, 0 opposite),
+        # smoothstepped — this is what concentrates the bright warm sky AROUND
+        # the sun and lets it fall to cool night on the far side.
+        dazi = abs(math.atan2(math.sin(az - SUN_AZ), math.cos(az - SUN_AZ)))
+        w = 1.0 - dazi / math.pi
+        w = w * w * (3.0 - 2.0 * w)
+        f = max(0.0, el) ** 0.55                             # horizon-weighted vertical
+        warm = grad(SKY_SUN, f)
+        cool = grad(SKY_ANTI, f)
+        c = [cool[i] + (warm[i] - cool[i]) * w for i in range(3)]
 
-        cosang = dx * sun[0] + dy * sun[1] + dz * sun[2]
-        if cosang > cos_sun_r and el >= mh:                 # scanline sun
-            ang = math.acos(max(-1.0, min(1.0, cosang)))
-            band = (el - (SUN_EL - SUN_R)) / (2.0 * SUN_R)
-            stripe = (SUN_EL - el) * 26.0
-            gap = band < 0.60 and (stripe - math.floor(stripe)) < 0.35 + 0.5 * (0.60 - band)
-            if not gap:
-                c = grad(SUNC, ang / SUN_R)
+        if el < 0.0:                                         # dark haze below horizon
+            t2 = min(1.0, -el / 0.25)
+            c = [c[i] * (1.0 - t2) + GROUND[i] * t2 for i in range(3)]
 
-        if el > 0.35:                                        # sparse high stars
-            hx, hy = int((az + math.pi) * 240.0), int(el * 240.0)
-            if ((hx * 73856093) ^ (hy * 19349663)) & 1023 == 0:
-                c = [c[0] + 170, c[1] + 170, c[2] + 190]
+        # the sun itself: a bright warm core + a wide halo, strongest exactly at
+        # the sun direction (blooms under the GL2 HDR path)
+        cosd = dx * sun[0] + dy * sun[1] + dz * sun[2]
+        ang = math.acos(max(-1.0, min(1.0, cosd)))
+        halo = max(0.0, 1.0 - ang / 1.25) ** 3.0
+        disc = 1.0 if ang < 0.05 else 0.0
+        c[0] += (255 - c[0]) * min(1.0, 1.05 * halo + disc)
+        c[1] += (236 - c[1]) * min(1.0, 0.90 * halo + disc)
+        c[2] += (190 - c[2]) * min(1.0, 0.55 * halo + disc * 0.9)
+
+        # a wide low warm WASH toward the sun: lifts the whole bright wedge near
+        # the horizon so the sun side reads as a glowing atmosphere, not a disc
+        wash = w * max(0.0, 1.0 - abs(el) / 0.55) * 0.55
+        c[0] += 64 * wash
+        c[1] += 36 * wash
+        c[2] += 14 * wash
+
+        # stars on the dark side: only where the sky is cool/high, fading out
+        # toward the bright sun side
+        if el > 0.2:
+            dark = (1.0 - w) * min(1.0, (el - 0.2) / 0.5)
+            if dark > 0.22:
+                hx, hy = int((az + math.pi) * 180.0), int(el * 180.0)
+                if ((hx * 73856093) ^ (hy * 19349663)) & 3071 == 0:
+                    c = [c[i] + 150 * dark for i in range(3)]
 
         return (_clamp8(c[0]), _clamp8(c[1]), _clamp8(c[2]))
 
@@ -1996,8 +2119,9 @@ class Killbox:
         co = ci - self.col_in
         for sx, sy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
             self.column(sx * co, sy * co, 88, 760); blk.append((sx * co, sy * co, 88))
-        for px, py in ((760, 0), (-760, 0), (0, 760), (0, -760)):
-            self.column(px, py, 80, 480); blk.append((px, py, 80))
+        # (iter: removed the 4 mid-deck cover pillars — same clearing that helped
+        #  the ring; spire was the most cluttered archetype, highest stuck. Corner
+        #  columns + the stepped spire still provide cover.)
 
     def _cp_spiral(self, rng, ci, blk):
         """A helix of ascending slabs winding up to the quad — climb fighting.
