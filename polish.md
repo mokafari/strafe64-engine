@@ -146,7 +146,7 @@ mandate — it's a curated backlog of "this could be cleaner" cleanups.
 
 ---
 
-## 9. tooling/scripts — shells, engine_api, dojo
+## 9. tooling/scripts — shells, engine_api, dojo  ✅ FIXED (items 3,4,5,6,8,10; 1 SKIPPED — set -e breaks showcase.sh's `[ ] &&` idiom; 2,7 SKIPPED — path target ambiguous, may be intentional reference install)
 
 1. **`showcase.sh` lacks `set -euo pipefail`** — `scripts/showcase.sh:1` — no strict mode; unquoted vars / unhandled failures pass silently in batch/CI.
 2. **`play.sh` hardcoded `/Users/gustav` paths** — `tools/strafegen/play.sh:20` — `ENGINE`/`OA` absolute paths are non-portable; derive from repo root or env override like dojo does.

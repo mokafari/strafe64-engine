@@ -113,9 +113,11 @@ DEFAULT_DOSSIER = {
 
 
 def sh(cmd):
+    # used only for best-effort metadata (git hash, etc.); a missing tool or
+    # non-zero exit should degrade to "?" but never swallow Ctrl-C / interpreter exit
     try:
-        return subprocess.check_output(cmd, cwd=HERE, text=True).strip()
-    except Exception:
+        return subprocess.check_output(cmd, cwd=HERE, text=True, timeout=30).strip()
+    except (subprocess.SubprocessError, OSError):
         return "?"
 
 
@@ -164,7 +166,7 @@ def run_scenario(arch, cfg, batch_dir, dur, idx):
     time.sleep(dur)
     try:
         proc.stdin.write(b"quit\n"); proc.stdin.flush()
-    except Exception:
+    except OSError:                       # broken pipe: engine already gone
         pass
     try:
         proc.wait(timeout=8)
