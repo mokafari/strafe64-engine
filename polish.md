@@ -82,7 +82,7 @@ mandate — it's a curated backlog of "this could be cleaner" cleanups.
 
 ---
 
-## 5. client/sound — audio & varispeed
+## 5. client/sound — audio & varispeed  ✅ FIXED (items 3,5; items 2,4,7,9 FALSE — already guarded; 10 skipped — rename breaks configs)
 
 1. **Magic `256` volume scale** — `snd_dma.c:1004,1006` — raw-sample volume calc uses bare `256`; name it (`VOICE_VOLUME_SCALE`) since the pattern repeats.
 2. **Fixed `raw[30000]` decode buffer** — `snd_dma.c:1437` — music decode buffer is a hardcoded stack array with only a "mac stack frame" comment; no const/bounds guard if a chunk exceeds it.
