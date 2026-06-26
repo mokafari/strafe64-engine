@@ -880,6 +880,11 @@ void CG_NewClientInfo( int clientNum ) {
 	const char	*v;
 	char		*slash;
 
+	if ( clientNum < 0 || clientNum >= MAX_CLIENTS ) {
+		CG_Error( "CG_NewClientInfo: bad clientNum %i", clientNum );
+		return;
+	}
+
 	ci = &cgs.clientinfo[clientNum];
 
 	configstring = CG_ConfigString( clientNum + CS_PLAYERS );

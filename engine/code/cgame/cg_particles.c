@@ -145,6 +145,9 @@ static float	shaderAnimSTRatio[MAX_SHADER_ANIMS] = {
 #define		MAX_PARTICLES 1024
 #endif
 
+// Particles farther than this from the viewer are culled before rendering.
+#define		PARTICLE_CULL_DIST	1024
+
 cparticle_t	*active_particles, *free_particles;
 cparticle_t	particles[MAX_PARTICLES];
 int		cl_numparticles = MAX_PARTICLES;
@@ -267,7 +270,7 @@ void CG_AddParticleToScene (cparticle_t *p, vec3_t org, float alpha)
 		}
 		
 		// Ridah, had to do this or MAX_POLYS is being exceeded in village1.bsp
-		if (Distance( cg.snap->ps.origin, org ) > 1024) {
+		if (Distance( cg.snap->ps.origin, org ) > PARTICLE_CULL_DIST) {
 			return;
 		}
 		// done.
@@ -428,7 +431,7 @@ void CG_AddParticleToScene (cparticle_t *p, vec3_t org, float alpha)
 	else if (p->type == P_SMOKE || p->type == P_SMOKE_IMPACT)
 	{// create a front rotating facing polygon
 
-		if ( p->type == P_SMOKE_IMPACT && Distance( cg.snap->ps.origin, org ) > 1024) {
+		if ( p->type == P_SMOKE_IMPACT && Distance( cg.snap->ps.origin, org ) > PARTICLE_CULL_DIST) {
 			return;
 		}
 

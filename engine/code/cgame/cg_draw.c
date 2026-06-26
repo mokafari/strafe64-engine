@@ -147,8 +147,6 @@ void CG_Text_Paint(float x, float y, float scale, vec4_t color, const char *text
 		count = 0;
 		while (s && *s && count < len) {
 			glyph = &font->glyphs[*s & 255];
-      //int yadj = Assets.textFont.glyphs[text[i]].bottom + Assets.textFont.glyphs[text[i]].top;
-      //float yadj = scale * (Assets.textFont.glyphs[text[i]].imageHeight - Assets.textFont.glyphs[text[i]].height);
 			if ( Q_IsColorString( s ) ) {
 				memcpy( newColor, g_color_table[ColorIndex(*(s+1))], sizeof( newColor ) );
 				newColor[3] = color[3];
@@ -700,7 +698,7 @@ static float CG_DrawAttacker( float y ) {
 		Q_CleanStr( clean );
 		ac[0] = 1.0f; ac[1] = 0.12f; ac[2] = 0.16f; ac[3] = 1.0f;
 		nw = CG_MatrixStringWidth( clean, 1.3f );
-		CG_DrawMatrixString( 632 - nw, y, clean, 1.3f, ac );
+		CG_DrawMatrixString( 616 - nw, y, clean, 1.3f, ac );
 	}
 
 	return y + 16;
@@ -2765,10 +2763,7 @@ static int CG_MatrixGlyphIndex( char c ) {
 static void CG_LedDrawString( float x, float y, const char *s, float cell, const float *color ) {
 	const char	*p;
 	float		lit = cell * 0.82f, cx = x;
-	vec4_t		shadow;
 
-	shadow[0] = shadow[1] = shadow[2] = 0.0f;
-	shadow[3] = ( color ? color[3] : 1.0f ) * 0.7f;
 	for ( p = s; *p; p++ ) {
 		int idx = CG_MatrixGlyphIndex( *p ), row, col;
 		if ( idx < 0 ) {
@@ -2780,7 +2775,6 @@ static void CG_LedDrawString( float x, float y, const char *s, float cell, const
 			for ( col = 0; col < 5; col++ ) {
 				if ( bits & ( 0x10 >> col ) ) {
 					float lx = cx + col * cell, ly = y + row * cell;
-					CG_FillRect( lx + 1.0f, ly + 1.0f, lit, lit, shadow );
 					CG_FillRect( lx, ly, lit, lit, color );
 				}
 			}
@@ -2819,8 +2813,6 @@ void CG_DrawMatrixString( float x, float y, const char *s, float cell, const flo
 	const glyphInfo_t	*g;
 	const char			*p;
 	float				scale, ax, ay, aw, ah, cx;
-	int					pass;
-	vec4_t				shadow;
 
 	if ( !CG_HudFontReady() ) {
 		CG_LedDrawString( x, y, s, cell, color );		// no FreeType -> LED dots
@@ -2828,22 +2820,17 @@ void CG_DrawMatrixString( float x, float y, const char *s, float cell, const flo
 	}
 	scale = cell * 0.16f * cg_hudFont.glyphScale;
 	y += 6.0f * cell;		// call sites pass the top edge; TrueType y is the baseline
-	shadow[0] = shadow[1] = shadow[2] = 0.0f;
-	shadow[3] = ( color ? color[3] : 1.0f ) * 0.7f;
-	for ( pass = 0; pass < 2; pass++ ) {
-		float off = pass ? 0.0f : 1.0f;		// pass 0 = drop shadow
-		trap_R_SetColor( pass ? color : shadow );
-		cx = x;
-		for ( p = s; *p; p++ ) {
-			g = &cg_hudFont.glyphs[ *p & 255 ];
-			ax = cx + off;
-			ay = y - g->top * scale + off;
-			aw = g->imageWidth * scale;
-			ah = g->imageHeight * scale;
-			CG_AdjustFrom640( &ax, &ay, &aw, &ah );
-			trap_R_DrawStretchPic( ax, ay, aw, ah, g->s, g->t, g->s2, g->t2, g->glyph );
-			cx += g->xSkip * scale;
-		}
+	trap_R_SetColor( color );
+	cx = x;
+	for ( p = s; *p; p++ ) {
+		g = &cg_hudFont.glyphs[ *p & 255 ];
+		ax = cx;
+		ay = y - g->top * scale;
+		aw = g->imageWidth * scale;
+		ah = g->imageHeight * scale;
+		CG_AdjustFrom640( &ax, &ay, &aw, &ah );
+		trap_R_DrawStretchPic( ax, ay, aw, ah, g->s, g->t, g->s2, g->t2, g->glyph );
+		cx += g->xSkip * scale;
 	}
 	trap_R_SetColor( NULL );
 }
@@ -3534,7 +3521,7 @@ static void CG_DrawCombo( void ) {
 
 		Com_sprintf( str, sizeof( str ), "X%.1f", cg.comboMult );
 		w = CG_MatrixStringWidth( str, 2.2f );
-		CG_DrawMatrixString( 632 - w, y, str, 2.2f, color );
+		CG_DrawMatrixString( 616 - w, y, str, 2.2f, color );
 		y += 22.0f;
 	}
 
@@ -3542,7 +3529,7 @@ static void CG_DrawCombo( void ) {
 	if ( cg.styleScore > 0.0f ) {
 		Com_sprintf( str, sizeof( str ), "STYLE %i", (int)cg.styleScore );
 		w = CG_MatrixStringWidth( str, 1.4f );
-		CG_DrawMatrixString( 632 - w, y, str, 1.4f, nerv_cyan );
+		CG_DrawMatrixString( 616 - w, y, str, 1.4f, nerv_cyan );
 		y += 18.0f;
 	}
 
@@ -3554,7 +3541,7 @@ static void CG_DrawCombo( void ) {
 		Vector4Copy( nerv_green, tc );
 		tc[3] = 1.0f - age / 700.0f;
 		w = CG_MatrixStringWidth( cg.trickName, 1.2f );
-		CG_DrawMatrixString( 632 - w, y, cg.trickName, 1.2f, tc );
+		CG_DrawMatrixString( 616 - w, y, cg.trickName, 1.2f, tc );
 	}
 }
 
