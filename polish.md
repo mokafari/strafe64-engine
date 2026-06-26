@@ -129,7 +129,7 @@ mandate — it's a curated backlog of "this could be cleaner" cleanups.
 
 ---
 
-## 8. renderer — GL2 post-stack & shaders
+## 8. renderer — GL2 post-stack & shaders  ✅ FIXED (items 8,9; 1-6,7,10 SKIPPED — stock upstream ioq3 code, don't churn/diverge)
 
 > ⚠️ Perf-sensitive: prefer naming / comment / DRY polish over behavioural change.
 

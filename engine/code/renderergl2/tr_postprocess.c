@@ -500,6 +500,10 @@ live-tunable (r_bloom intensity / r_bloomBlur spread, neither latched).
 */
 void RB_Bloom(FBO_t *srcFbo, ivec4_t srcBox)
 {
+	// CRITICAL: the whole chain below relies on an EVEN count of FBO_Blit
+	// (Y-flipping) blits so the glow composites right-side-up. Do not swap any
+	// FBO_Blit here for FBO_FastBlit (or vice versa) without re-counting the
+	// flips — see the parity note on the downsample step below.
 	vec4_t color;
 	float intensity = r_bloom->value;
 	float blur = r_bloomBlur->value;
