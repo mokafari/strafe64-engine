@@ -112,7 +112,7 @@ mandate — it's a curated backlog of "this could be cleaner" cleanups.
 
 ---
 
-## 7. bg_pmove / physics — movement model
+## 7. bg_pmove / physics — movement model  ✅ FIXED (items 3,4,5,8,9; 1 already commented; 2,6,10 deferred — helper refactors too risky in feel code; 7 deferred)
 
 > ⚠️ Feel-critical code: every item here is **naming / comment / structure** polish — name the constant, don't change the value.
 
