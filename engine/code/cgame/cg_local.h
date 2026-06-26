@@ -1283,6 +1283,10 @@ extern	vmCvar_t		cg_latticeAudio;
 extern	vmCvar_t		cg_latticeWave;
 extern	vmCvar_t		cg_arenaTrails;		// render the lattice speed-trails in ANY mode (visual only, no damage)
 extern	vmCvar_t		cg_playerGlow;		// each fighter casts a faint dynamic light in their own colour
+extern	vmCvar_t		cg_playerGlowSat;	// hue saturation of the glow (overlaps mix as colour, not white)
+extern	vmCvar_t		cg_playerGlowClamp;	// count-aware soft clamp so N pilots don't sum to white
+extern	vmCvar_t		cg_playerGlowAudio;	// per-pilot music-band spectrum -> out-of-phase flares, colours mix over time
+extern	vmCvar_t		cg_playerGlowHue;	// blend glow toward a distinct per-clientNum rainbow hue so pilots differ
 extern	vmCvar_t		cg_dashGlitch;		// 0-2: chromatic-ghost glitch trail intensity on air-dash
 extern	vmCvar_t		au_bass;
 extern	vmCvar_t		au_mid;

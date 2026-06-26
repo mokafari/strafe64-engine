@@ -163,6 +163,10 @@ vmCvar_t	cg_latticeAudio;	// 0-2: how hard the lattice pulses to the music bands
 vmCvar_t	cg_latticeWave;		// 0-2: how hard the wall-top rides the music amplitude (waveform drawn as you run)
 vmCvar_t	cg_arenaTrails;		// draw the audio-reactive speed-trails for every player/bot in ANY mode (visual, no damage)
 vmCvar_t	cg_playerGlow;		// 0-2: each fighter casts a faint dynamic light in their own colour
+vmCvar_t	cg_playerGlowSat;	// hue saturation of the glow (0=raw colour, higher=purer hue -> overlaps MIX, not white)
+vmCvar_t	cg_playerGlowClamp;	// 0-1: count-aware soft clamp so N pilots' lights don't sum to white (1=full 1/sqrt(N))
+vmCvar_t	cg_playerGlowAudio;	// 0-2: each pilot reacts to a DIFFERENT music band (per-clientNum spectrum) -> they flare out of phase, colours mix over time
+vmCvar_t	cg_playerGlowHue;	// 0-1: blend the glow toward a DISTINCT per-clientNum rainbow hue (0=player's own colour, 1=full rainbow spread) so pilots aren't all the same colour
 vmCvar_t	cg_dashGlitch;		// 0-2: chromatic-ghost glitch trail intensity on air-dash
 vmCvar_t	cg_ragdoll;				// 1: dead bodies ragdoll; 0: stock death animation
 vmCvar_t	cg_ragdollDamp;			// Verlet velocity retention per step (0..1)
@@ -271,6 +275,10 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_latticeWave, "cg_latticeWave", "1", CVAR_ARCHIVE },
 	{ &cg_arenaTrails, "cg_arenaTrails", "0", CVAR_ARCHIVE },
 	{ &cg_playerGlow, "cg_playerGlow", "0.8", CVAR_ARCHIVE },
+	{ &cg_playerGlowSat, "cg_playerGlowSat", "1.0", CVAR_ARCHIVE },
+	{ &cg_playerGlowClamp, "cg_playerGlowClamp", "0.7", CVAR_ARCHIVE },
+	{ &cg_playerGlowAudio, "cg_playerGlowAudio", "1.0", CVAR_ARCHIVE },
+	{ &cg_playerGlowHue, "cg_playerGlowHue", "0.85", CVAR_ARCHIVE },
 	{ &cg_dashGlitch, "cg_dashGlitch", "1.0", CVAR_ARCHIVE },
 	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },
 	{ &cg_ragdollDamp, "cg_ragdollDamp", "0.97", CVAR_ARCHIVE },
