@@ -158,6 +158,12 @@ typedef struct {
 	// frame: 0 = free, magnitude -> how fully the body leans onto the wall,
 	// sign = wall side (+ right / - left), matching STAT_WALLRUN's convention.
 	float			wallGrip;
+
+	// STRAFE 64: procedural crouch-slide pose. Eased 0 -> 1 while EF_SLIDING is
+	// set, 0 = upright, 1 = fully reclined into the slide. slideLean carries the
+	// signed bank from lateral velocity (+ leaning right / - leaning left).
+	float			slide;
+	float			slideLean;
 } playerEntity_t;
 
 //=================================================
@@ -1292,11 +1298,17 @@ extern	vmCvar_t		au_bass;
 extern	vmCvar_t		au_mid;
 extern	vmCvar_t		au_high;
 extern	vmCvar_t		au_level;
+extern	vmCvar_t		cg_dofBulletTime;	// STRAFE 64: rack DoF focus as bullet-time slows
+extern	vmCvar_t		cg_dofBase;
+extern	vmCvar_t		cg_dofMax;
+extern	vmCvar_t		cg_dofFocusTrace;
 extern	vmCvar_t		cg_ragdoll;
 extern	vmCvar_t		cg_ragdollDamp;
 extern	vmCvar_t		cg_ragdollIterations;
 extern	vmCvar_t		cg_wallGrip;		// STRAFE 64: procedural wall-grip body lean (0 off)
 extern	vmCvar_t		cg_wallGripScale;	// overall strength multiplier on the grip pose
+extern	vmCvar_t		cg_slidePose;		// STRAFE 64: procedural crouch-slide body recline (0 off)
+extern	vmCvar_t		cg_slidePoseScale;	// overall strength multiplier on the slide pose
 extern	vmCvar_t		cg_zoomFov;
 extern	vmCvar_t		cg_thirdPersonRange;
 extern	vmCvar_t		cg_thirdPersonAngle;
@@ -1489,6 +1501,7 @@ qhandle_t CG_StatusHandle(int task);
 // cg_player.c
 //
 void CG_Player( centity_t *cent );
+int  CG_GlowPilotCount( void );		// # of ET_PLAYER glow lights this frame (count-clamp)
 void CG_ResetPlayerEntity( centity_t *cent );
 void CG_AddRefEntityWithPowerups( refEntity_t *ent, entityState_t *state, int team );
 void CG_NewClientInfo( int clientNum );

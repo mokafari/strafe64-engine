@@ -1255,7 +1255,7 @@ static void CG_GhostTrail( int idx, float frac ) {
 	// the cool lattice speed-trail: the same vertical light-wall the LATTICE
 	// pilots leave, now stitched behind the racing ghost (clean overlay — no
 	// audio glitch/chip layer)
-	CG_LatticeTrailWall( pts, count, col, cg_ghostAlpha.value );
+	CG_LatticeTrailWall( (const vec3_t *)pts, count, col, cg_ghostAlpha.value );
 }
 
 /*
@@ -1419,6 +1419,81 @@ void CG_RaceFrame( void ) {
 }
 
 //=========================================================================
+
+/*
+=================
+CG_UpdateDoF
+
+Drives the renderer's depth of field from the game each frame:
+
+  * blur AMOUNT racks with the live slow-mo factor (crisp at full speed, shallow
+    and dreamy in deep bullet-time) -- estimates the timescale from the real
+    clock vs the dilated game clock, same trick as the lattice wall, then lerps
+    r_dofAmount from cg_dofBase to cg_dofMax. (cg_dofBulletTime)
+
+  * focus DISTANCE tracks the surface/enemy under the reticle via a forward
+    trace, EASED toward it with a real-time one-pole "focus pull" so it glides
+    instead of snapping -- the camera-like feel real games use, and far steadier
+    than the shader sampling a single centre pixel. Hands the eased distance to
+    the shader and turns its own centre auto-focus off. (cg_dofFocusTrace)
+
+Both are inert unless r_dof is on (the DoF pass no-ops without its depth texture)
+and leave the cvars manually tunable when their toggle is off.
+=================
+*/
+static void CG_UpdateDoF( void ) {
+	static int   prevReal = 0, prevCg = 0;
+	static float slow = 0.0f;
+	static float smoothFocal = 512.0f;
+	static float lastAmount = -1.0f;
+	int    real, dr = 0;
+
+	real = trap_Milliseconds();
+	if ( prevReal > 0 ) {
+		dr = real - prevReal;
+	}
+
+	// --- blur amount racked by the slow-mo clock ---
+	if ( cg_dofBulletTime.integer ) {
+		float amount, d;
+		if ( dr > 0 ) {
+			float ts = ( cg.time - prevCg ) / (float)dr;
+			if ( ts < 0.0f ) ts = 0.0f; else if ( ts > 1.0f ) ts = 1.0f;
+			slow += ( ( 1.0f - ts ) - slow ) * 0.15f;	// 0 = full speed, 1 = frozen
+		}
+		amount = cg_dofBase.value + ( cg_dofMax.value - cg_dofBase.value ) * slow;
+		d = amount - lastAmount;
+		if ( lastAmount < 0.0f || d > 0.05f || d < -0.05f ) {
+			trap_Cvar_Set( "r_dofAmount", va( "%.2f", amount ) );
+			lastAmount = amount;
+		}
+	}
+
+	// --- focus distance: forward trace under the reticle, eased (focus pull) ---
+	if ( cg_dofFocusTrace.integer && cg.snap ) {
+		trace_t	tr;
+		vec3_t	end;
+		float	target, k;
+
+		VectorMA( cg.refdef.vieworg, 8192.0f, cg.refdef.viewaxis[0], end );
+		CG_Trace( &tr, cg.refdef.vieworg, NULL, NULL, end,
+				  cg.snap->ps.clientNum, MASK_SHOT );
+		target = tr.fraction * 8192.0f;
+		if ( target < 80.0f ) target = 80.0f;		// never focus right on the lens
+
+		// real-time one-pole pull (~0.25s constant); clocked in REAL time so the
+		// rack eases over real seconds regardless of how deep the slow-mo is
+		k = ( dr > 0 ) ? ( dr / 250.0f ) : 1.0f;
+		if ( k > 1.0f ) k = 1.0f; else if ( k < 0.0f ) k = 0.0f;
+		smoothFocal += ( target - smoothFocal ) * k;
+
+		trap_Cvar_Set( "r_dofFocalDist", va( "%.1f", smoothFocal ) );
+		trap_Cvar_Set( "r_dofAutoFocus", "0" );		// use our eased CPU focal
+	}
+
+	prevReal = real;
+	prevCg = cg.time;
+}
 
 /*
 =================
@@ -1594,6 +1669,9 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 			trap_Cvar_Set("timescale", va("%f", cg_timescale.value));
 		}
 	}
+
+	// drive depth-of-field (amount from slow-mo, focus from a forward trace)
+	CG_UpdateDoF();
 
 	// actually issue the rendering calls
 	CG_DrawActive( stereoView );

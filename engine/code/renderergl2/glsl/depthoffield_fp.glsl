@@ -3,10 +3,11 @@
 // A single-pass "gather" DoF: each pixel reconstructs linear scene depth, forms
 // a circle of confusion (CoC) from its distance to the focal plane, then gathers
 // neighbours on a golden-angle spiral whose radius scales with the CoC. Samples
-// are weighted by their OWN CoC, so a blurred foreground spills softly over a
-// sharp background while the sharp background never bleeds into the blur -- the
-// cheap trick that keeps focal edges believable. In-focus pixels keep a CoC of
-// ~0 and stay pixel-crisp.
+// are weighted by their own CoC (so blurred foreground spills over a sharp
+// background but the background never bleeds into the blur) and by luminance (so
+// bright neon points fatten into soft bokeh discs -- the cinematic tell). The
+// spiral is per-pixel rotated to trade banding for fine noise. In-focus pixels
+// keep a CoC of ~0 and stay pixel-crisp.
 //
 // Pairs with bullet-time: drive u_DepthOfField.z (blur amount) from the game's
 // timescale to rack focus as the world slows.
@@ -19,7 +20,7 @@ uniform vec4 u_DepthOfField;   // focalDist(world), focalRange(world), maxBlur(p
 
 varying vec2 var_ScreenTex;
 
-#define DOF_TAPS 28
+#define DOF_TAPS 43
 #define GOLDEN_ANGLE 2.39996323
 
 // world-space linear depth from the hardware depth sample
@@ -29,6 +30,19 @@ float dofLinearDepth(vec2 uv)
 	return (1.0 / mix(u_ViewInfo.x, 1.0, d)) * u_ViewInfo.y;
 }
 
+// stabilised auto-focus: average depth over a small centre cross so a thin object
+// (a blade, a far gap) flickering across the exact middle pixel doesn't pop focus
+float dofAutoFocusDepth()
+{
+	vec2 t = u_ViewInfo.zw * 3.0;
+	float d  = dofLinearDepth(vec2(0.5, 0.5));
+	d += dofLinearDepth(vec2(0.5, 0.5) + vec2( t.x, 0.0));
+	d += dofLinearDepth(vec2(0.5, 0.5) + vec2(-t.x, 0.0));
+	d += dofLinearDepth(vec2(0.5, 0.5) + vec2(0.0,  t.y));
+	d += dofLinearDepth(vec2(0.5, 0.5) + vec2(0.0, -t.y));
+	return d * 0.2;
+}
+
 void main()
 {
 	vec2  uv     = var_ScreenTex;
@@ -36,15 +50,17 @@ void main()
 	float range  = max(u_DepthOfField.y, 1.0);
 	float maxR   = u_DepthOfField.z;
 
-	// focal distance: auto-focus on whatever sits under screen centre (great for
-	// duels/bullet-time -- the target stays sharp), else a fixed world distance.
-	float focal  = (u_DepthOfField.w > 0.5)
-	             ? dofLinearDepth(vec2(0.5, 0.5))
-	             : u_DepthOfField.x;
+	float focal  = (u_DepthOfField.w > 0.5) ? dofAutoFocusDepth() : u_DepthOfField.x;
 
-	vec3  center   = texture2D(u_ScreenImageMap, uv).rgb;
-	float depth    = dofLinearDepth(uv);
-	float centerCoC = clamp(abs(depth - focal) / range, 0.0, 1.0);
+	// the in-focus band widens with focal distance (hyperfocal-like): things far
+	// away keep more in focus, so the sharp zone breathes instead of gliding
+	// through the world as a thin fixed slab
+	float effRange = range * (1.0 + focal * 0.0009);
+
+	vec3  center    = texture2D(u_ScreenImageMap, uv).rgb;
+	float depth     = dofLinearDepth(uv);
+	// smoothstep falloff eases the sharp->blur transition (no hard slab edge)
+	float centerCoC = smoothstep(0.0, 1.0, clamp(abs(depth - focal) / effRange, 0.0, 1.0));
 
 	float radius = centerCoC * maxR;
 	if (radius < 0.75)
@@ -54,6 +70,9 @@ void main()
 		return;
 	}
 
+	// per-pixel spiral rotation breaks up the repeating tap pattern into noise
+	float rot = fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831853;
+
 	vec3  accum = center;
 	float wsum  = 1.0;
 
@@ -61,16 +80,22 @@ void main()
 	{
 		float t = float(i);
 		float r = radius * sqrt(t / float(DOF_TAPS));
-		float a = t * GOLDEN_ANGLE;
+		float a = t * GOLDEN_ANGLE + rot;
 		vec2  suv = uv + vec2(cos(a), sin(a)) * r * texel;
 
+		vec3  sCol   = texture2D(u_ScreenImageMap, suv).rgb;
 		float sDepth = dofLinearDepth(suv);
-		float sCoC   = clamp(abs(sDepth - focal) / range, 0.0, 1.0);
+		float sCoC   = smoothstep(0.0, 1.0, clamp(abs(sDepth - focal) / effRange, 0.0, 1.0));
 
-		// a neighbour only contributes as far as its own blur disc reaches; this
-		// lets blurred foreground bleed outward but blocks sharp background bleed
-		float w = sCoC;
-		accum += texture2D(u_ScreenImageMap, suv).rgb * w;
+		// neighbour contributes as far as its own blur disc reaches; nearer
+		// (foreground) samples are allowed to spill fully over the centre
+		float w = (sDepth < depth) ? max(sCoC, centerCoC) : sCoC;
+
+		// luminance weighting: bright points bloom into soft bokeh discs
+		float lum = dot(sCol, vec3(0.299, 0.587, 0.114));
+		w *= 1.0 + lum * lum * 1.5;
+
+		accum += sCol * w;
 		wsum  += w;
 	}
 

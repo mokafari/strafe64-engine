@@ -173,10 +173,16 @@ vmCvar_t	cg_ragdollDamp;			// Verlet velocity retention per step (0..1)
 vmCvar_t	cg_ragdollIterations;	// constraint relaxation passes per frame
 vmCvar_t	cg_wallGrip;			// 1: procedural wall-grip body lean; 0: stock pose
 vmCvar_t	cg_wallGripScale;		// overall strength multiplier on the grip pose
+vmCvar_t	cg_slidePose;			// 1: procedural crouch-slide body recline; 0: stock pose
+vmCvar_t	cg_slidePoseScale;		// overall strength multiplier on the slide pose
 vmCvar_t	au_bass;			// music band envelopes (set by snd_codec_mod), read for reactivity
 vmCvar_t	au_mid;
 vmCvar_t	au_high;
 vmCvar_t	au_level;
+vmCvar_t	cg_dofBulletTime;	// STRAFE 64: rack DoF focus as bullet-time slows
+vmCvar_t	cg_dofBase;			// r_dofAmount at full speed (px)
+vmCvar_t	cg_dofMax;			// r_dofAmount at deepest slow-mo (px)
+vmCvar_t	cg_dofFocusTrace;	// focus on the surface under the reticle, eased
 vmCvar_t	cg_zoomFov;
 vmCvar_t	cg_thirdPerson;
 vmCvar_t	cg_thirdPersonRange;
@@ -285,10 +291,16 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_ragdollIterations, "cg_ragdollIterations", "6", CVAR_ARCHIVE },
 	{ &cg_wallGrip, "cg_wallGrip", "1", CVAR_ARCHIVE },
 	{ &cg_wallGripScale, "cg_wallGripScale", "1", CVAR_ARCHIVE },
+	{ &cg_slidePose, "cg_slidePose", "1", CVAR_ARCHIVE },
+	{ &cg_slidePoseScale, "cg_slidePoseScale", "1", CVAR_ARCHIVE },
 	{ &au_bass, "au_bass", "0", 0 },
 	{ &au_mid, "au_mid", "0", 0 },
 	{ &au_high, "au_high", "0", 0 },
 	{ &au_level, "au_level", "0", 0 },
+	{ &cg_dofBulletTime, "cg_dofBulletTime", "1", CVAR_ARCHIVE },
+	{ &cg_dofBase, "cg_dofBase", "0", CVAR_ARCHIVE },
+	{ &cg_dofMax, "cg_dofMax", "14", CVAR_ARCHIVE },
+	{ &cg_dofFocusTrace, "cg_dofFocusTrace", "1", CVAR_ARCHIVE },
 	{ &cg_viewsize, "cg_viewsize", "100", CVAR_ARCHIVE },
 	{ &cg_shadows, "cg_shadows", "1", CVAR_ARCHIVE  },
 	{ &cg_gibs, "cg_gibs", "1", CVAR_ARCHIVE  },
