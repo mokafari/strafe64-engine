@@ -161,7 +161,7 @@ mandate — it's a curated backlog of "this could be cleaner" cleanups.
 
 ---
 
-## 10. docs & cfg — design specs, autoexec, presets
+## 10. docs & cfg — design specs, autoexec, presets  ✅ FIXED (items 2,4,9; 1,7 FALSE — intentional [[memory]] links; 10 FALSE — arena.cfg already lists variants; 5 already commented; 3,6,8 low-value/deferred)
 
 1. **Wiki-style `[[...]]` links in docs** — `docs/q3-map-study.md:16,80,87,99` — `[[strafe64-q3map2-macos-build]]`/`[[strafe64-bryce-sky]]` are memory-slug backrefs that render as dead links; convert to real markdown links or inline references.
 2. **No docs index** — `docs/` — 13 specs (MOVEMENT, MAP_DESIGN, ROADMAP, VISUALS, forge spec, …) with no `INDEX.md`/TOC; add one so readers can orient.
@@ -184,5 +184,22 @@ removal, the overflow guards in §5, the frozen-cvar fix in §3, the "do-not-edi
 markers in §6) and treat the feel-critical (§7) and perf-sensitive (§8) sections
 as naming/comment-only unless deliberately retuning.
 
-_Loop complete — see the closing message to stop the 5-minute cron._
+_Gather pass complete (100 items)._
+
+## Fix pass
+
+All 10 subsections worked through, one per loop turn, each built/verified +
+committed + pushed on `arena-tuning-followup`. Commits: a4b6c45 (cgame),
+edcad7f (q3_ui), 680d52b (game/bots), f9f640c (strafegen), bf112c6 (sound),
+c2e30a9 (license), 4e06d62 (physics), 75dd553 (renderer), e9b018d (tooling),
++ this one (docs/cfg).
+
+**Big lesson:** roughly a third of the 100 findings were FALSE on inspection —
+already-guarded overflows (§5), correct crypto (§6), code that already had the
+clamp/comment claimed missing, or "fixes" that would have broken things
+(§9.1 set -e vs the `[ ] &&` idiom, §3.6 `& 1024`, the intentional `[[memory]]`
+links). Every applied fix was verified in-context and built green first; every
+skip is annotated with why. Net: ~45 real fixes landed, feel-critical (§7) and
+perf/upstream (§8) code touched name/comment-only.
+
 
