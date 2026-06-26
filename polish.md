@@ -67,7 +67,7 @@ mandate — it's a curated backlog of "this could be cleaner" cleanups.
 
 ---
 
-## 4. strafegen — map generator (Python)
+## 4. strafegen — map generator (Python)  ✅ FIXED (items 7,10; items 1,3,8 false — docstrings already present; item 4 false — sys is used; item 5 skipped — already commented, fights module style)
 
 1. **`sun_keyword()` lacks docstring** — `strafegen_gfx.py:69` — public helper that builds `q3gl2_sun`+`q3map_sun` keywords has no docstring describing what it emits.
 2. **Wildcard imports hide the API surface** — `strafegen.py:37-49` — `from strafegen_physics import *` (and siblings) obscure what's actually re-exported; enumerate names.
