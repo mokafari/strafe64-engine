@@ -97,7 +97,7 @@ mandate — it's a curated backlog of "this could be cleaner" cleanups.
 
 ---
 
-## 6. qcommon — license, common, net
+## 6. qcommon — license, common, net  ✅ FIXED (item 10 only; 1,3,4,5,7,8,9 FALSE — code already correct/documented; 2 infeasible; 6 intentional)
 
 1. **Prefix read before length check** — `license.c:110` — `Lic_DecodeKey` reads `p[0..2]` before confirming the string is ≥3 chars; guard against OOB on short keys.
 2. **Missing `const` on `licenseInfo_t` fields** — `license.c:40-43` — `tier`/`flags`/`issueDays` are write-once after verify; const-qualify to signal intent.
