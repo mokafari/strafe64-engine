@@ -52,7 +52,7 @@ mandate — it's a curated backlog of "this could be cleaner" cleanups.
 
 ---
 
-## 3. game — server logic & bots
+## 3. game — server logic & bots  ✅ FIXED (items 3,4,10; item 1 was a false finding — bot_brake already registered+updated)
 
 1. **`bot_brake` missing `trap_Cvar_Update`** — `ai_main.c:2088` — registered but never updated in `BotAISetup()`, so it's frozen at its registration value (the known frozen-vmCvar footgun); add the update call.
 2. **Unnamed sword-duel rhythm constants** — `ai_main.c:1122-1132` — orbit/dance timers use magic literals `777/2600/520/1500`; name them so the cadence is legible and rebalanceable.

@@ -173,8 +173,8 @@ static void G_LoadArenas( void ) {
 	dirptr  = dirlist;
 	for (i = 0; i < numdirs; i++, dirptr += dirlen+1) {
 		dirlen = strlen(dirptr);
-		strcpy(filename, "scripts/");
-		strcat(filename, dirptr);
+		Q_strncpyz(filename, "scripts/", sizeof(filename));
+		Q_strcat(filename, sizeof(filename), dirptr);
 		G_LoadArenasFromFile(filename);
 	}
 	trap_Print( va( "%i arenas parsed\n", g_numArenas ) );
@@ -426,6 +426,11 @@ void G_CheckMinimumPlayers( void ) {
 	trap_Cvar_Update(&bot_minplayers);
 	minplayers = bot_minplayers.integer;
 	if (minplayers <= 0) return;
+	// No nav data (e.g. a forged map whose bspc pass failed) -> bots can't
+	// navigate and BotAISetupClient would just fail every attempt. Skip the
+	// auto-fill so the map stays playable solo without the "AAS not initialized"
+	// churn. (Once AAS finishes loading on a normal map this passes.)
+	if (!trap_AAS_Initialized()) return;
 
 	if (g_gametype.integer >= GT_TEAM) {
 		if (minplayers >= g_maxclients.integer / 2) {
@@ -591,6 +596,10 @@ static void G_AddBot( const char *name, float skill, const char *team, int delay
 	char			*model;
 	char			*headmodel;
 	char			userinfo[MAX_INFO_STRING];
+
+	// clamp skill at the source so a console-set or stray caller value can't
+	// push an out-of-range skill into the bot's userinfo (valid range 1..5)
+	skill = Com_Clamp( 1.0f, 5.0f, skill );
 
 	// have the server allocate a client slot
 	clientNum = trap_BotAllocateClient();
@@ -957,8 +966,8 @@ static void G_LoadBots( void ) {
 	dirptr  = dirlist;
 	for (i = 0; i < numdirs; i++, dirptr += dirlen+1) {
 		dirlen = strlen(dirptr);
-		strcpy(filename, "scripts/");
-		strcat(filename, dirptr);
+		Q_strncpyz(filename, "scripts/", sizeof(filename));
+		Q_strcat(filename, sizeof(filename), dirptr);
 		G_LoadBotsFromFile(filename);
 	}
 	trap_Print( va( "%i bots parsed\n", g_numBots ) );
