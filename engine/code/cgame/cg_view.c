@@ -1478,15 +1478,26 @@ static void CG_UpdateDoF( void ) {
 #define DOF_FOCUS_REACH		8192.0f
 #define DOF_FOCUS_MAX		2200.0f		// cap: never focus past here (incl. void)
 #define DOF_FOCUS_SPREAD	150.0f		// lateral cone radius at full reach (~1deg)
-		static const float offX[5] = { 0.0f,  1.0f, -1.0f,  0.0f,  0.0f };
-		static const float offY[5] = { 0.0f,  0.0f,  0.0f,  1.0f, -1.0f };
+#define DOF_GAP_RATIO		3.0f		// centre this much past the near ring = gap
+		// the 4 ring offsets sampled around the centre ray
+		static const float offX[4] = {  1.0f, -1.0f,  0.0f,  0.0f };
+		static const float offY[4] = {  0.0f,  0.0f,  1.0f, -1.0f };
 		trace_t	tr;
 		vec3_t	end;
-		float	target = DOF_FOCUS_MAX;
+		float	centerDist = DOF_FOCUS_MAX, nearRing = DOF_FOCUS_MAX, target;
 		float	k;
 		int		i;
 
-		for ( i = 0; i < 5; i++ ) {
+		// centre ray: what you're actually aiming at (keeps ramps/corners sharp)
+		VectorMA( cg.refdef.vieworg, DOF_FOCUS_REACH, cg.refdef.viewaxis[0], end );
+		CG_Trace( &tr, cg.refdef.vieworg, NULL, NULL, end,
+				  cg.snap->ps.clientNum, MASK_SHOT );
+		if ( tr.fraction < 1.0f && !( tr.surfaceFlags & SURF_SKY ) ) {
+			centerDist = tr.fraction * DOF_FOCUS_REACH;
+		}
+
+		// ring: nearest surrounding surface, used only to detect a gap punch-through
+		for ( i = 0; i < 4; i++ ) {
 			float dist;
 			VectorMA( cg.refdef.vieworg, DOF_FOCUS_REACH, cg.refdef.viewaxis[0], end );
 			VectorMA( end, offX[i] * DOF_FOCUS_SPREAD, cg.refdef.viewaxis[1], end );
@@ -1494,12 +1505,19 @@ static void CG_UpdateDoF( void ) {
 			CG_Trace( &tr, cg.refdef.vieworg, NULL, NULL, end,
 					  cg.snap->ps.clientNum, MASK_SHOT );
 			if ( tr.fraction >= 1.0f || ( tr.surfaceFlags & SURF_SKY ) ) {
-				continue;					// void / sky: not a focus target
+				continue;
 			}
 			dist = tr.fraction * DOF_FOCUS_REACH;
-			if ( dist < target ) {
-				target = dist;				// nearest real surface in the cone wins
+			if ( dist < nearRing ) {
+				nearRing = dist;
 			}
+		}
+
+		// trust the centre (sharp ramps/corners); only fall to the near ring when
+		// the centre clearly slipped THROUGH a gap to something far beyond it
+		target = centerDist;
+		if ( nearRing < DOF_FOCUS_MAX && centerDist > nearRing * DOF_GAP_RATIO ) {
+			target = nearRing;
 		}
 		if ( target < 80.0f ) target = 80.0f;		// never focus right on the lens
 

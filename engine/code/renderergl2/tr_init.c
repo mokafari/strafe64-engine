@@ -1348,7 +1348,7 @@ void R_Register( void )
 	// tune live; toggling r_dof itself needs a vid_restart (it allocates the depth
 	// texture at init, like r_ssao) and r_depthPrepass on (default 1). Drive
 	// r_dofAmount from bullet-time for a focus rack as the world slows.
-	r_dof = ri.Cvar_Get( "r_dof", "0", CVAR_ARCHIVE );
+	r_dof = ri.Cvar_Get( "r_dof", "0", CVAR_ARCHIVE | CVAR_LATCH );	// allocates the depth texture at init, like r_ssao
 	r_dofAmount = ri.Cvar_Get( "r_dofAmount", "6.0", CVAR_ARCHIVE );
 	r_dofFocalDist = ri.Cvar_Get( "r_dofFocalDist", "512", CVAR_ARCHIVE );
 	r_dofFocalRange = ri.Cvar_Get( "r_dofFocalRange", "768", CVAR_ARCHIVE );

@@ -89,6 +89,9 @@ if [ -n "$GEN" ]; then
 		echo "generating $MAP (graphics-current) ..."
 		python3 "$STRAFEGEN/strafegen.py" $GEN --pk3 --out "$STRAFEGEN/generated" || exit 1
 		cp "$STRAFEGEN/generated/$MAP.pk3" "$OA/baseoa/" || exit 1
+		# shared shader+textures now ship in ONE deduped pak — deploy it too,
+		# else the lean map pk3 renders with the default grey shader.
+		cp "$STRAFEGEN/generated/zzz_strafe64_shader.pk3" "$OA/baseoa/" 2>/dev/null
 	fi
 fi
 
@@ -162,6 +165,8 @@ exec "$APP" \
 	+set r_forceToneMap 1 +set r_forceToneMapMin -5.5 +set r_forceToneMapAvg -2.1 +set r_forceToneMapMax 0.1 \
 	+set r_mapOverBrightBits 1 \
 	+set r_bloom 0.18 +set r_bloomBlur 1.1 \
+	+set r_dof 1 +set r_dofFocalRange 420 \
+	+set cg_dofBulletTime 1 +set cg_dofMax 12 +set cg_dofFocusTrace 1 \
 	+set r_pbr 1 +set r_cubeMapping 1 +set r_specularMapping 1 \
 	+set r_normalMapping 1 +set r_deluxeMapping 1 \
 	+set r_ssao 0 \
