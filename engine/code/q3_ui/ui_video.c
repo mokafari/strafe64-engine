@@ -273,6 +273,7 @@ typedef struct {
 	menulist_s  	colordepth;
 	menulist_s  	geometry;
 	menulist_s  	filter;
+	menulist_s  	dof;			// STRAFE 64: cinematic depth of field on/off
 	menutext_s		driverinfo;
 
 	menubitmap_s	apply;
@@ -289,6 +290,7 @@ typedef struct
 	int texturebits;
 	int geometry;
 	int filter;
+	int dof;
 	int driver;
 	qboolean extensions;
 } InitialVideoOptions_s;
@@ -478,6 +480,7 @@ static void GraphicsOptions_GetInitialVideo( void )
 	s_ivo.lighting    = s_graphicsoptions.lighting.curvalue;
 	s_ivo.geometry    = s_graphicsoptions.geometry.curvalue;
 	s_ivo.filter      = s_graphicsoptions.filter.curvalue;
+	s_ivo.dof         = s_graphicsoptions.dof.curvalue;
 	s_ivo.texturebits = s_graphicsoptions.texturebits.curvalue;
 }
 
@@ -640,6 +643,10 @@ static void GraphicsOptions_UpdateMenuItems( void )
 	{
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
+	if ( s_ivo.dof != s_graphicsoptions.dof.curvalue )
+	{
+		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
+	}
 
 	GraphicsOptions_CheckConfig();
 }	
@@ -714,6 +721,7 @@ static void GraphicsOptions_ApplyChanges( void *unused, int notification )
 		break;
 	}
 	trap_Cvar_SetValue( "r_vertexLight", s_graphicsoptions.lighting.curvalue );
+	trap_Cvar_SetValue( "r_dof", s_graphicsoptions.dof.curvalue );
 
 	if ( s_graphicsoptions.geometry.curvalue == 2 )
 	{
@@ -896,6 +904,7 @@ static void GraphicsOptions_SetMenuItems( void )
 	}
 
 	s_graphicsoptions.lighting.curvalue = trap_Cvar_VariableValue( "r_vertexLight" ) != 0;
+	s_graphicsoptions.dof.curvalue = trap_Cvar_VariableValue( "r_dof" ) != 0;
 	switch ( ( int ) trap_Cvar_VariableValue( "r_texturebits" ) )
 	{
 	default:
@@ -1217,6 +1226,15 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.filter.generic.x	    = 400;
 	s_graphicsoptions.filter.generic.y	    = y;
 	s_graphicsoptions.filter.itemnames      = filter_names;
+	y += BIGCHAR_HEIGHT+2;
+
+	// references/modifies "r_dof" (STRAFE 64 cinematic depth of field)
+	s_graphicsoptions.dof.generic.type      = MTYPE_SPINCONTROL;
+	s_graphicsoptions.dof.generic.name	    = "Depth of Field:";
+	s_graphicsoptions.dof.generic.flags	    = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_graphicsoptions.dof.generic.x	        = 400;
+	s_graphicsoptions.dof.generic.y	        = y;
+	s_graphicsoptions.dof.itemnames         = enabled_names;
 	y += 2*BIGCHAR_HEIGHT;
 
 	s_graphicsoptions.driverinfo.generic.type     = MTYPE_PTEXT;
@@ -1271,6 +1289,7 @@ void GraphicsOptions_MenuInit( void )
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.tq );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.texturebits );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.filter );
+	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.dof );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.driverinfo );
 
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.back );

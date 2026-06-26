@@ -1041,6 +1041,11 @@ qboolean UI_ConsoleCommand( int realTime ) {
 		return qtrue;
 	}
 
+	if ( Q_stricmp (cmd, "ui_graphics") == 0 ) {
+		UI_GraphicsOptionsMenu();
+		return qtrue;
+	}
+
 	if ( Q_stricmp (cmd, "ui_credits") == 0 ) {
 		UI_CreditMenu();
 		return qtrue;
