@@ -1469,16 +1469,38 @@ static void CG_UpdateDoF( void ) {
 		}
 	}
 
-	// --- focus distance: forward trace under the reticle, eased (focus pull) ---
+	// --- focus distance: a small cone of forward traces under the reticle, taking
+	// the NEAREST real surface, eased (focus pull). The cone + nearest-hit stops
+	// focus from punching through a thin gap/doorway and latching onto the far
+	// wall or the void (which would blur everything with nothing sharp to anchor),
+	// and sky/void hits are ignored so looking at open air doesn't rack to infinity.
 	if ( cg_dofFocusTrace.integer && cg.snap ) {
+#define DOF_FOCUS_REACH		8192.0f
+#define DOF_FOCUS_MAX		2200.0f		// cap: never focus past here (incl. void)
+#define DOF_FOCUS_SPREAD	150.0f		// lateral cone radius at full reach (~1deg)
+		static const float offX[5] = { 0.0f,  1.0f, -1.0f,  0.0f,  0.0f };
+		static const float offY[5] = { 0.0f,  0.0f,  0.0f,  1.0f, -1.0f };
 		trace_t	tr;
 		vec3_t	end;
-		float	target, k;
+		float	target = DOF_FOCUS_MAX;
+		float	k;
+		int		i;
 
-		VectorMA( cg.refdef.vieworg, 8192.0f, cg.refdef.viewaxis[0], end );
-		CG_Trace( &tr, cg.refdef.vieworg, NULL, NULL, end,
-				  cg.snap->ps.clientNum, MASK_SHOT );
-		target = tr.fraction * 8192.0f;
+		for ( i = 0; i < 5; i++ ) {
+			float dist;
+			VectorMA( cg.refdef.vieworg, DOF_FOCUS_REACH, cg.refdef.viewaxis[0], end );
+			VectorMA( end, offX[i] * DOF_FOCUS_SPREAD, cg.refdef.viewaxis[1], end );
+			VectorMA( end, offY[i] * DOF_FOCUS_SPREAD, cg.refdef.viewaxis[2], end );
+			CG_Trace( &tr, cg.refdef.vieworg, NULL, NULL, end,
+					  cg.snap->ps.clientNum, MASK_SHOT );
+			if ( tr.fraction >= 1.0f || ( tr.surfaceFlags & SURF_SKY ) ) {
+				continue;					// void / sky: not a focus target
+			}
+			dist = tr.fraction * DOF_FOCUS_REACH;
+			if ( dist < target ) {
+				target = dist;				// nearest real surface in the cone wins
+			}
+		}
 		if ( target < 80.0f ) target = 80.0f;		// never focus right on the lens
 
 		// real-time one-pole pull (~0.25s constant); clocked in REAL time so the
