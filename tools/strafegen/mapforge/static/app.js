@@ -724,7 +724,7 @@ async function loadCatalog() {
 function buildPartLib() {
   const groups = {};
   C.catalog.forEach(p => (groups[p.group] = groups[p.group] || []).push(p));
-  const order = ['start', 'opener', 'flow', 'spice', 'climb', 'finish'];
+  const order = ['start', 'opener', 'flow', 'spice', 'climb', 'finish', 'primitive'];
   $('partLib').innerHTML = order.filter(g => groups[g]).map(g =>
     `<div style="margin:6px 0 2px;color:var(--dim);text-transform:uppercase;font-size:10px">${g}</div>`
     + groups[g].map(p => `<button class="sm" data-part="${p.key}" style="width:100%;text-align:left;margin:2px 0">${p.label}</button>`).join('')

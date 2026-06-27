@@ -458,34 +458,87 @@ SECTION_PARTS = [
     ("tower",   "sec_tower",   "Double-jump tower", "climb"),
     ("finish",  "sec_finish",  "Finish gate",      "finish"),
 ]
-_PART_SPEC = {k: (m, lbl, grp) for (k, m, lbl, grp) in SECTION_PARTS}
+# Geometric PRIMITIVES — parametric building blocks (not procedural sections) so
+# you can route a map ANY direction and shape it freely. Same part contract
+# (entry at origin facing +Y, an exit connector), so they slot into compose/snap/
+# export unchanged. Turns are the key unlock: sections only run +Y, turns reorient.
+PRIMITIVE_PARTS = [
+    ("floor",      "Floor (straight)", "primitive"),
+    ("ramp_up",    "Ramp up",          "primitive"),
+    ("ramp_down",  "Ramp down",        "primitive"),
+    ("stairs",     "Stairs up",        "primitive"),
+    ("turn_left",  "Turn left 90°",    "primitive"),
+    ("turn_right", "Turn right 90°",   "primitive"),
+    ("arena",      "Open arena pad",   "primitive"),
+]
+_SECTION_METHOD = {k: m for (k, m, _l, _g) in SECTION_PARTS}
+_PART_META = {k: (lbl, grp) for (k, _m, lbl, grp) in SECTION_PARTS}
+_PART_META.update({k: (lbl, grp) for (k, lbl, grp) in PRIMITIVE_PARTS})
+_PRIM_KEYS = {k for (k, _l, _g) in PRIMITIVE_PARTS}
 _PART_CACHE = {}
 
 
+def _build_primitive(key):
+    """Construct a primitive's geometry directly (make_box / make_prism) with
+    entry (0,0,0 facing +Y) and an exit connector. Returns a part dict."""
+    S = []
+    box = lambda mn, mx, pal=sg.SRC_ORANGE, tex=sg.TEX_FLOOR: \
+        S.append(sg.make_box(mn, mx, tex=tex, palette=pal))
+    exit_ = ((0.0, 512.0, 0.0), (0, 1))
+    if key == "floor":
+        box((-128, 0, -24), (128, 512, 0))
+    elif key == "ramp_up":
+        S.append(sg.make_prism([(-128, 0), (128, 0), (128, 512), (-128, 512)],
+                               -24, [0, 0, 256, 256], tex=sg.TEX_WALL, palette=sg.SRC_GREY))
+        exit_ = ((0.0, 512.0, 256.0), (0, 1))
+    elif key == "ramp_down":
+        S.append(sg.make_prism([(-128, 0), (128, 0), (128, 512), (-128, 512)],
+                               -280, [0, 0, -256, -256], tex=sg.TEX_WALL, palette=sg.SRC_GREY))
+        exit_ = ((0.0, 512.0, -256.0), (0, 1))
+    elif key == "stairs":
+        for i in range(8):
+            box((-128, i * 64, -24), (128, (i + 1) * 64, (i + 1) * 32), pal=sg.SRC_TRIM)
+        exit_ = ((0.0, 512.0, 256.0), (0, 1))
+    elif key == "turn_left":
+        box((-256, 0, -24), (256, 512, 0))
+        exit_ = ((-256.0, 256.0, 0.0), (-1, 0))
+    elif key == "turn_right":
+        box((-256, 0, -24), (256, 512, 0))
+        exit_ = ((256.0, 256.0, 0.0), (1, 0))
+    elif key == "arena":
+        box((-512, 0, -24), (512, 1024, 0))
+        exit_ = ((0.0, 1024.0, 0.0), (0, 1))
+    else:
+        raise ValueError(f"unknown primitive: {key}")
+    return {"key": key, "solids": S, "entities": [], "triggers": [], "movers": [],
+            "entry": ((0.0, 0.0, 0.0), (0, 1)), "exit": exit_}
+
+
 def _build_part(key):
-    """Build one section standalone at the origin (entry at 0,0,0 facing +Y) and
-    capture only the geometry/entities it emits + the exit connector (the cursor
-    after it runs). Cached — sections are deterministic at a fixed seed."""
+    """Build one section/primitive standalone at the origin (entry at 0,0,0 facing
+    +Y), capturing its geometry + exit connector. Cached (deterministic)."""
     if key in _PART_CACHE:
         return _PART_CACHE[key]
-    method = _PART_SPEC[key][0]
-    c = sg.Course(1337, 1, 1)
-    c.pos = [0.0, 0.0, 0.0]
-    c.dir = (0, 1)
-    s0, e0, t0, m0 = (len(c.solids), len(c.entities), len(c.triggers), len(c.movers))
-    getattr(c, method)()
-    part = {"key": key,
-            "solids": c.solids[s0:], "entities": c.entities[e0:],
-            "triggers": c.triggers[t0:], "movers": c.movers[m0:],
-            "entry": ((0.0, 0.0, 0.0), (0, 1)),
-            "exit": (tuple(c.pos), tuple(c.dir))}
+    if key in _PRIM_KEYS:
+        part = _build_primitive(key)
+    else:
+        c = sg.Course(1337, 1, 1)
+        c.pos = [0.0, 0.0, 0.0]
+        c.dir = (0, 1)
+        s0, e0, t0, m0 = (len(c.solids), len(c.entities), len(c.triggers), len(c.movers))
+        getattr(c, _SECTION_METHOD[key])()
+        part = {"key": key,
+                "solids": c.solids[s0:], "entities": c.entities[e0:],
+                "triggers": c.triggers[t0:], "movers": c.movers[m0:],
+                "entry": ((0.0, 0.0, 0.0), (0, 1)),
+                "exit": (tuple(c.pos), tuple(c.dir))}
     _PART_CACHE[key] = part
     return part
 
 
 def serialize_part(key):
     P = _build_part(key)
-    method, label, group = _PART_SPEC[key]
+    label, group = _PART_META[key]
     axs = [aabb(b) for b in P["solids"]] or [[0, 0, 0, 1, 1, 1]]
     bounds = [min(a[0] for a in axs), min(a[1] for a in axs), min(a[2] for a in axs),
               max(a[3] for a in axs), max(a[4] for a in axs), max(a[5] for a in axs)]
@@ -500,7 +553,8 @@ def serialize_part(key):
 
 
 def parts_catalog():
-    return {"parts": [serialize_part(k) for (k, *_rest) in SECTION_PARTS]}
+    keys = [k for (k, *_r) in SECTION_PARTS] + [k for (k, *_r) in PRIMITIVE_PARTS]
+    return {"parts": [serialize_part(k) for k in keys]}
 
 
 def _rotxy(x, y, yaw):

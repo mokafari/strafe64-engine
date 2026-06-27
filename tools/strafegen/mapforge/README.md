@@ -26,7 +26,11 @@ Two modes, switched at the top of the left panel:
 
 Build a course by hand from reusable section parts — start pad, strafe gaps,
 bhop lane, fork, slalom, slide ramp, walljump hall, hurdles, movers, hazard
-pits, double-jump tower, finish gate.
+pits, double-jump tower, finish gate — **and geometric primitives**: straight
+floor, ramp up/down, stairs, **turn left/right** (reorient the route 90°), and an
+open arena pad. The sections all run +Y; the turn primitives let a layout route
+in any direction and the ramps/stairs change elevation, so you can shape an
+arbitrary map, not just a straight chain.
 
 - **Add** a section from the library — it auto-chains onto the last open exit.
 - **Drag** a section in the 3D view to move it; as a connection dot nears a
