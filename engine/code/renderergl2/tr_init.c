@@ -170,6 +170,13 @@ cvar_t  *r_gradeSaturation;
 cvar_t  *r_gradeTemp;
 cvar_t  *r_vignette;
 cvar_t  *r_filmGrain;
+cvar_t  *r_legacySpecular;
+cvar_t  *r_rimLight;
+cvar_t  *r_rimScale;
+cvar_t  *r_rimExp;
+cvar_t  *r_rimColorR;
+cvar_t  *r_rimColorG;
+cvar_t  *r_rimColorB;
 cvar_t  *r_bodycam;
 cvar_t  *r_bodycamWarp;
 cvar_t  *r_bodycamChroma;
@@ -1386,22 +1393,42 @@ void R_Register( void )
 	r_vignette = ri.Cvar_Get( "r_vignette", "0.18", CVAR_ARCHIVE );
 	r_filmGrain = ri.Cvar_Get( "r_filmGrain", "0.03", CVAR_ARCHIVE );
 
-	// STRAFE 64 bodycam finish pass: the cheap-vest-cam look (barrel warp,
-	// sensor crunch, chromatic aberration, rolling-shutter scanlines, sensor
-	// grain, heavy vignette, blown highlights). Runs as the present blit after
-	// the colour grade. Everything keys off the output resolution so it reads
-	// the same at any res. Always compiled -> every knob tunes live (r_bodycam 0
-	// skips the whole pass). Defaults are the Unrecord-strong look; for a
-	// subtle/plays-clean preset try warp 0.05 / chroma 0.5 / crunch 0.95 /
-	// scanline 0.02 / grain 0.04 / vignette 0.35.
+	// STRAFE 64: character look. rend2 doesn't evaluate the old idTech3
+	// `alphaGen lightingSpecular` gloss pass, so OA player shaders re-add their
+	// full lit texture additively -> the blown-out "wet plastic" sheen (worst on
+	// the red team skin, amplified by bloom). r_legacySpecular scales that pass;
+	// 0 removes it for a clean matte read. The rim then gives characters a cool
+	// fresnel edge so they pop against the world without the plastic blowout.
+	// All tune live (the rim uniform is always present; r_rimLight 0 / r_rimScale 0
+	// skips it). Defaults are deliberately subtle.
+	r_legacySpecular = ri.Cvar_Get( "r_legacySpecular", "0", CVAR_ARCHIVE );
+	r_rimLight = ri.Cvar_Get( "r_rimLight", "1", CVAR_ARCHIVE );
+	r_rimScale = ri.Cvar_Get( "r_rimScale", "0.32", CVAR_ARCHIVE );
+	r_rimExp = ri.Cvar_Get( "r_rimExp", "2.7", CVAR_ARCHIVE );
+	r_rimColorR = ri.Cvar_Get( "r_rimColorR", "0.42", CVAR_ARCHIVE );
+	r_rimColorG = ri.Cvar_Get( "r_rimColorG", "0.66", CVAR_ARCHIVE );
+	r_rimColorB = ri.Cvar_Get( "r_rimColorB", "1.0", CVAR_ARCHIVE );
+
+	// STRAFE 64 bodycam finish pass: a real-camera/vest-cam look (wide-lens
+	// barrel warp, light sensor crunch, edge chromatic aberration, a whisper of
+	// rolling-shutter, sensor grain, lens vignette, auto-exposure highlight
+	// blowout). Runs as the present blit after the colour grade. Everything keys
+	// off the output resolution so it reads the same at any res. Always compiled
+	// -> every knob tunes live (r_bodycam 0 skips the whole pass).
+	//
+	// Defaults are tuned for PHOTOREAL handheld footage: scanlines almost off,
+	// near-native sharpness, aberration only as subtle edge fringing -- the lens
+	// (warp + clip + vignette) carries the look, not retro glitch. For the
+	// heavier "Unrecord-strong" / found-footage VHS read, push: chroma ~1.4,
+	// crunch ~0.85, scanline ~0.06, grain ~0.10, vignette ~0.55.
 	r_bodycam = ri.Cvar_Get( "r_bodycam", "0", CVAR_ARCHIVE );
-	r_bodycamWarp = ri.Cvar_Get( "r_bodycamWarp", "0.12", CVAR_ARCHIVE );
-	r_bodycamChroma = ri.Cvar_Get( "r_bodycamChroma", "1.4", CVAR_ARCHIVE );
-	r_bodycamCrunch = ri.Cvar_Get( "r_bodycamCrunch", "0.85", CVAR_ARCHIVE );
-	r_bodycamScanline = ri.Cvar_Get( "r_bodycamScanline", "0.06", CVAR_ARCHIVE );
-	r_bodycamGrain = ri.Cvar_Get( "r_bodycamGrain", "0.10", CVAR_ARCHIVE );
-	r_bodycamVignette = ri.Cvar_Get( "r_bodycamVignette", "0.55", CVAR_ARCHIVE );
-	r_bodycamClip = ri.Cvar_Get( "r_bodycamClip", "0.04", CVAR_ARCHIVE );
+	r_bodycamWarp = ri.Cvar_Get( "r_bodycamWarp", "0.13", CVAR_ARCHIVE );
+	r_bodycamChroma = ri.Cvar_Get( "r_bodycamChroma", "0.7", CVAR_ARCHIVE );
+	r_bodycamCrunch = ri.Cvar_Get( "r_bodycamCrunch", "0.95", CVAR_ARCHIVE );
+	r_bodycamScanline = ri.Cvar_Get( "r_bodycamScanline", "0.008", CVAR_ARCHIVE );
+	r_bodycamGrain = ri.Cvar_Get( "r_bodycamGrain", "0.07", CVAR_ARCHIVE );
+	r_bodycamVignette = ri.Cvar_Get( "r_bodycamVignette", "0.4", CVAR_ARCHIVE );
+	r_bodycamClip = ri.Cvar_Get( "r_bodycamClip", "0.06", CVAR_ARCHIVE );
 
 	r_sunlightMode = ri.Cvar_Get( "r_sunlightMode", "1", CVAR_ARCHIVE | CVAR_LATCH );
 
