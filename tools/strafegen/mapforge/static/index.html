@@ -116,7 +116,12 @@
 
       <h2>Layout</h2>
       <div id="placedList" class="muted">no sections placed yet</div>
-      <button class="sm danger" id="clearCompose" style="width:100%;margin-top:8px">clear layout</button>
+      <div class="row" style="margin-top:8px">
+        <button class="sm" id="saveLayout">💾 save</button>
+        <button class="sm" id="loadLayout">📂 load</button>
+        <button class="sm danger" id="clearCompose">clear</button>
+      </div>
+      <input type="file" id="layoutFile" accept=".json" style="display:none">
     </div>
   </div>
 

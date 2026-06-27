@@ -723,6 +723,9 @@ function wire() {
   $('clearCompose').onclick = () => { C.placed = []; C.brushes = []; C.entities = []; C.sel = null; composeRefresh(); };
   $('addBoxC').onclick = addBoxC;
   $('placeEntC').onclick = () => { C.placingEnt = $('addEntC').value; toast(`click in the view to place a ${C.placingEnt}`); };
+  $('saveLayout').onclick = saveLayout;
+  $('loadLayout').onclick = () => $('layoutFile').click();
+  $('layoutFile').onchange = e => { if (e.target.files[0]) loadLayoutFile(e.target.files[0]); e.target.value = ''; };
   $('autoBtn').onclick = () => autoLayout(parseInt($('autoSeed').value) || 0);
   $('autoRand').onclick = () => { $('autoSeed').value = Math.floor(Math.random() * 1e6); autoLayout(parseInt($('autoSeed').value)); };
   $('cExport').onclick = composeExport;
@@ -1060,6 +1063,33 @@ function trySnap(inst) {
 }
 
 function composeRefresh() { renderCompose3d(); drawCompose2d(); renderComposeInspector(); renderPlacedList(); status(); }
+
+function saveLayout() {
+  if (!C.placed.length && !C.brushes.length && !C.entities.length) { toast('nothing to save', true); return; }
+  const data = { mapforge: 1, placed: C.placed, brushes: C.brushes, entities: C.entities };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = ($('cName').value || 'forge_layout') + '.json';
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('layout saved');
+}
+function applyLayout(L) {
+  C.placed = (L.placed || []).map(p => ({ ...p }));
+  C.brushes = (L.brushes || []).map(b => ({ ...b }));
+  C.entities = (L.entities || []).map(e => ({ ...e }));
+  C.seq = C.placed.reduce((m, p) => Math.max(m, p.id + 1), 0);
+  C.brushSeq = C.brushes.reduce((m, b) => Math.max(m, b.id + 1), 0);
+  C.entSeq = C.entities.reduce((m, e) => Math.max(m, e.id + 1), 0);
+  C.sel = null;
+  composeRefresh(); frameCompose();
+  toast(`loaded ${C.placed.length} sections, ${C.brushes.length} brushes, ${C.entities.length} entities`);
+}
+function loadLayoutFile(file) {
+  const r = new FileReader();
+  r.onload = () => { try { applyLayout(JSON.parse(r.result)); }
+    catch (e) { toast('bad layout file: ' + e.message, true); } };
+  r.readAsText(file);
+}
 
 function renderComposeInspector() {
   const el = $('composeInspector');

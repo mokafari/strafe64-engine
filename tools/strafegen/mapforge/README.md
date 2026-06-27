@@ -53,6 +53,9 @@ arbitrary map, not just a straight chain.
 - **Place entities** — drop items, weapons, and extra spawns from the palette
   (click to place), drag/retype/delete them; baked into the export. Geometry +
   entities = complete map authoring.
+- **Save / load** — a composed layout (parts + freeform brushes + entities)
+  saves to a `.json` and loads back, so you can keep iterating on a map across
+  sessions.
 - **Export** bakes the placed parts into one sealed map — geometry transformed
   and merged, a sky enclosure + rising-void rescue added automatically, race
   triggers carried from the start/finish parts — then writes `.bsp` / `.map` /
