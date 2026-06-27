@@ -47,8 +47,9 @@ freeform boxes, entity placement, save/load, and export (.bsp/.map/.pk3) all wor
 9. **Patches** (curved surfaces) are approximated by their control grid
    (faceted), not Bézier-tessellated; non-axis brushes over-approximate to an
    AABB in the trace.
-10. **Trace caps at 1500 brushes** (large maps truncated); no greedy box-merge to
-    simplify the traced solids.
+10. **Greedy box-merge** now fuses contiguous coplanar same-colour boxes on trace
+    (footprint-hash + sweep, O(n log n)/axis) — biggest win on surface-thickened
+    maps. *Still:* trace caps at 1500 brushes (large maps truncated).
 11. **Learning feedback is shallow** — only platform/height feed `calibrate`.
     Item mix, jump-pad arcs, room/section types, and texture vocabulary aren't
     fed into generation or auto-layout.

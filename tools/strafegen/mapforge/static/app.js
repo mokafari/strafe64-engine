@@ -586,27 +586,61 @@ async function analyzeMaps() {
 const hexToRgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 const rgbHex = c => `#${c.map(v => Math.max(0, Math.min(255, v | 0)).toString(16).padStart(2, '0')).join('')}`;
 
+// Greedy merge of axis-aligned boxes: fuse contiguous runs that share a 2-axis
+// footprint (and colour) along the free axis. One pass per axis, hashed by
+// footprint, sorted sweep — O(n log n)/axis, repeated a few times to chain.
+function _mergeAxis(boxes, ax) {
+  const o1 = (ax + 1) % 3, o2 = (ax + 2) % 3, groups = {};
+  for (const b of boxes) {
+    const a = b.aabb;
+    const key = `${a[o1]},${a[o1 + 3]},${a[o2]},${a[o2 + 3]},${b.color || b.role}`;
+    (groups[key] = groups[key] || []).push(b);
+  }
+  const out = [];
+  for (const k in groups) {
+    const g = groups[k].sort((x, y) => x.aabb[ax] - y.aabb[ax]);
+    let cur = null;
+    for (const b of g) {
+      const a = b.aabb;
+      if (cur && a[ax] <= cur.aabb[ax + 3] + 0.5) cur.aabb[ax + 3] = Math.max(cur.aabb[ax + 3], a[ax + 3]);
+      else { cur = { ...b, aabb: [...a] }; out.push(cur); }
+    }
+  }
+  return out;
+}
+function mergeBoxes(boxes) {
+  let r = boxes.map(b => ({ ...b, aabb: [...b.aabb] }));
+  let n = r.length;
+  for (let pass = 0; pass < 4; pass++) {
+    for (const ax of [2, 0, 1]) r = _mergeAxis(r, ax);
+    if (r.length === n) break;          // converged
+    n = r.length;
+  }
+  return r;
+}
+
 function importToCompose() {
   if (!S.base || !S.imported) { toast('decompile a map first (Import), then edit it here', true); return; }
   C.placed = []; C.brushes = []; C.entities = []; C.brushSeq = 0; C.sel = null;
-  let note = '';
+  let note = '', raw = [];
   if (S.base.edit_boxes && S.base.edit_boxes.length) {
     // clean exact solids decompiled from the collision brush lump
-    for (const b of S.base.edit_boxes)
-      C.brushes.push({ id: C.brushSeq++, aabb: [...b.aabb], role: 'structure', color: hexToRgb(b.color) });
+    raw = S.base.edit_boxes.map(b => ({ aabb: [...b.aabb], role: 'structure', color: hexToRgb(b.color) }));
   } else {
     // fallback: thicken drawn surfaces into solids
     const T = 16, CAP = 800;
-    const src = S.base.brushes.filter(b => b.role !== 'sky/enclosure').slice(0, CAP);
-    for (const b of src) {
+    for (const b of S.base.brushes.filter(b => b.role !== 'sky/enclosure').slice(0, CAP)) {
       let [x0, y0, z0, x1, y1, z1] = b.aabb;
       if (z1 - z0 < T) z0 = z1 - T;
       if (x1 - x0 < T) { x0 -= T / 2; x1 += T / 2; }
       if (y1 - y0 < T) { y0 -= T / 2; y1 += T / 2; }
-      C.brushes.push({ id: C.brushSeq++, aabb: [x0, y0, z0, x1, y1, z1], role: 'structure', color: hexToRgb(b.color) });
+      raw.push({ aabb: [x0, y0, z0, x1, y1, z1], role: 'structure', color: hexToRgb(b.color) });
     }
     note = ' (surface trace)';
   }
+  const merged = mergeBoxes(raw);                 // fuse contiguous coplanar boxes
+  C.brushes = merged.map(b => ({ ...b, id: C.brushSeq++ }));
+  if (merged.length < raw.length) note += ` · merged ${raw.length}→${merged.length}`;
   // bring the map's placeable entities (spawns / items / weapons) along too
   C.entities = []; C.entSeq = 0;
   const placeable = /^(item_|weapon_|ammo_|holdable_|info_player_deathmatch)/;
