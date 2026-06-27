@@ -87,14 +87,17 @@ def _compose_export(req):
     """Bake placed section parts into a sealed map and write the formats."""
     placed = req.get("placed") or []
     opts = req.get("opts") or {}
+    brushes = req.get("brushes") or []
     formats = set(req.get("formats") or ["bsp"])
     name = (req.get("name") or "").strip() or "strafe64_forged"
     name = "".join(c for c in name if c.isalnum() or c in "_-")
     os.makedirs(GENERATED, exist_ok=True)
 
-    sg.validate_spawns(scene.compose(placed, opts))    # fail fast on a bad layout
+    def build():
+        return scene.compose(placed, opts, brushes)
+    sg.validate_spawns(build())                         # fail fast on a bad layout
     bsp_path = os.path.join(GENERATED, f"{name}.bsp")
-    stats = sg.BspWriter(scene.compose(placed, opts)).write(bsp_path)  # fresh course
+    stats = sg.BspWriter(build()).write(bsp_path)       # fresh course (write mutates)
     sg.check_bsp(bsp_path)
     out = {"name": name, "bsp": os.path.relpath(bsp_path, STRAFEGEN), "stats": stats,
            "outputs": [os.path.relpath(bsp_path, STRAFEGEN)]}
@@ -105,7 +108,7 @@ def _compose_export(req):
             out["outputs"].append(os.path.relpath(aas_path, STRAFEGEN))
     if "map" in formats:
         map_path = os.path.join(GENERATED, f"{name}.map")
-        sg.write_map(scene.compose(placed, opts), map_path)
+        sg.write_map(build(), map_path)
         out["map"] = os.path.relpath(map_path, STRAFEGEN)
         out["outputs"].append(out["map"])
     if "pk3" in formats:

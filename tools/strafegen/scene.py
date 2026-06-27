@@ -598,11 +598,13 @@ def _xform_entity(e, yaw, tx):
     return d
 
 
-def compose(placed, opts=None):
-    """Bake placed+transformed section parts into one sealed, playable course.
+def compose(placed, opts=None, brushes=None):
+    """Bake placed+transformed section parts (and any free-form box brushes) into
+    one sealed, playable course.
 
-    placed: [{key, yaw, translate:[x,y,z]}].  Returns a course-like object
-    (solids/entities/triggers/movers/seed) ready for BspWriter / write_map."""
+    placed:  [{key, yaw, translate:[x,y,z]}]   — section/primitive parts
+    brushes: [{aabb:[6], role}]                — free-form boxes in world space
+    Returns a course-like object ready for BspWriter / write_map."""
     import types
     opts = opts or {}
     solids, entities, triggers, movers = [], [], [], []
@@ -614,8 +616,11 @@ def compose(placed, opts=None):
         entities += [_xform_entity(e, yaw, tx) for e in P["entities"]]
         triggers += [(_xform_brush(b, yaw, tx), dict(info)) for b, info in P["triggers"]]
         movers += [(_xform_brush(b, yaw, tx), dict(info)) for b, info in P["movers"]]
+    for fb in (brushes or []):
+        a = fb["aabb"]
+        solids.append(_new_box(a[:3], a[3:], fb.get("role", "structure")))
     if not solids:
-        raise ValueError("no sections placed — add at least one")
+        raise ValueError("nothing placed — add a section or a brush")
     # guarantee a spawn (+ rescue dest) so the map loads even without a start part
     if not any(e.get("classname", "").startswith("info_player_deathmatch")
                for e in entities):

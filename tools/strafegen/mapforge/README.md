@@ -40,6 +40,10 @@ arbitrary map, not just a straight chain.
 - Each join is a real seam: snapped sections butt together into a continuous,
   playable run. The connection readout tracks open connectors and whether a
   start + finish are present.
+- **Freeform box brushes** — drop arbitrary boxes (walls, platforms, cover)
+  anywhere with `+ add box brush`, edit their AABB + role, drag them in the view;
+  they bake into the export alongside the sections. A map can be sections, free
+  brushes, or any mix — a real "build any geometry" editor.
 - **Export** bakes the placed parts into one sealed map — geometry transformed
   and merged, a sky enclosure + rising-void rescue added automatically, race
   triggers carried from the start/finish parts — then writes `.bsp` / `.map` /

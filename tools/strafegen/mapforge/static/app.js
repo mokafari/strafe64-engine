@@ -653,7 +653,8 @@ function wire() {
   $('t2d').onclick = () => setView('2d');
   $('modeGen').onclick = () => switchMode('generate');
   $('modeCompose').onclick = () => switchMode('compose');
-  $('clearCompose').onclick = () => { C.placed = []; C.sel = null; composeRefresh(); };
+  $('clearCompose').onclick = () => { C.placed = []; C.brushes = []; C.sel = null; composeRefresh(); };
+  $('addBoxC').onclick = addBoxC;
   $('cExport').onclick = composeExport;
   $('importBtn').onclick = importMap;
   $('mapRefresh').onclick = loadMapList;
@@ -673,7 +674,8 @@ function setView(v) {
 
 // ================================================================= COMPOSE
 // Kit-bash mode: place section "parts" and snap their entry/exit connectors.
-const C = { catalog: null, byKey: {}, placed: [], seq: 0, sel: null, drag: null };
+const C = { catalog: null, byKey: {}, placed: [], seq: 0, sel: null, drag: null,
+            brushes: [], brushSeq: 0 };
 const SNAP = 160;   // world-unit snap radius for connectors
 
 const yawOf = d => d[0] === 1 ? 0 : d[1] === 1 ? 90 : d[0] === -1 ? 180 : 270;
@@ -743,9 +745,19 @@ function addPart(key) {
   } else if (C.placed.length) {
     inst.translate = [0, 0, 0];   // first/extra free piece at origin
   }
-  C.placed.push(inst); C.sel = inst.id;
+  C.placed.push(inst); C.sel = { t: 'part', id: inst.id };
   composeRefresh(); frameCompose();
 }
+
+function addBoxC() {
+  const b = composeBounds();
+  const cx = (b[0] + b[3]) / 2, cy = (b[1] + b[4]) / 2, cz = b[2];
+  const id = C.brushSeq++;
+  C.brushes.push({ id, aabb: [cx - 128, cy - 128, cz, cx + 128, cy + 128, cz + 64], role: 'structure' });
+  C.sel = { t: 'brush', id }; composeRefresh();
+}
+const selPart = () => C.sel && C.sel.t === 'part' ? C.placed.find(p => p.id === C.sel.id) : null;
+const selBrush = () => C.sel && C.sel.t === 'brush' ? C.brushes.find(b => b.id === C.sel.id) : null;
 
 function composeBounds() {
   let b = null;
@@ -762,6 +774,12 @@ function composeBounds() {
       }
     }
   }
+  for (const fb of C.brushes) {
+    const a = fb.aabb;
+    if (!b) b = [...a];
+    b = [Math.min(b[0], a[0]), Math.min(b[1], a[1]), Math.min(b[2], a[2]),
+         Math.max(b[3], a[3]), Math.max(b[4], a[4]), Math.max(b[5], a[5])];
+  }
   return b || [-512, -512, -256, 512, 512, 256];
 }
 
@@ -773,7 +791,7 @@ function renderCompose3d() {
     const grp = new THREE.Group();
     grp.position.set(inst.translate[0], inst.translate[1], inst.translate[2]);
     grp.rotation.z = inst.yaw * Math.PI / 180;
-    const sel = inst.id === C.sel;
+    const sel = C.sel && C.sel.t === 'part' && C.sel.id === inst.id;
     for (const br of part.brushes) {
       const geo = geomFromFaces(br.faces);
       const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
@@ -802,6 +820,15 @@ function renderCompose3d() {
       grp.add(dir);
     }
     worldGroup.add(grp);
+  }
+  // free-form box brushes (world space, no part transform)
+  for (const fb of C.brushes) {
+    const geo = geomFromFaces(boxFaces(fb.aabb, roleColor(fb.role)));
+    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+    mesh.userData = { brushId: fb.id }; worldGroup.add(mesh); composePickables.push(mesh);
+    const selB = C.sel && C.sel.t === 'brush' && C.sel.id === fb.id;
+    if (S.layers.edges) worldGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25),
+      new THREE.LineBasicMaterial({ color: selB ? 0xffb347 : 0x000000, transparent: true, opacity: selB ? 0.9 : 0.35 })));
   }
   // selection bbox
   if (_selBox) { worldGroup.remove(_selBox); _selBox = null; }
@@ -837,15 +864,30 @@ $('gl').addEventListener('pointerdown', e => {
   raycaster.setFromCamera(pointer, camera);
   const hit = raycaster.intersectObjects(composePickables, false)[0];
   if (!hit) return;
-  const inst = C.placed.find(p => p.id === hit.object.userData.instId);
-  C.sel = inst.id;
-  const gp = groundPoint(e, inst.translate[2]);
-  C.drag = { inst, start: gp ? [gp.x, gp.y] : null, t0: [...inst.translate] };
+  const ud = hit.object.userData;
+  if (ud.brushId != null) {                       // free box brush
+    const box = C.brushes.find(b => b.id === ud.brushId);
+    C.sel = { t: 'brush', id: box.id };
+    const gp = groundPoint(e, box.aabb[2]);
+    C.drag = { box, start: gp ? [gp.x, gp.y] : null, a0: [...box.aabb] };
+  } else {                                        // section/primitive part
+    const inst = C.placed.find(p => p.id === ud.instId);
+    C.sel = { t: 'part', id: inst.id };
+    const gp = groundPoint(e, inst.translate[2]);
+    C.drag = { inst, start: gp ? [gp.x, gp.y] : null, t0: [...inst.translate] };
+  }
   controls.enabled = false;
   composeRefresh();
 });
 $('gl').addEventListener('pointermove', e => {
   if (S.mode !== 'compose' || !C.drag || !C.drag.start) return;
+  if (C.drag.box) {
+    const gp = groundPoint(e, C.drag.a0[2]); if (!gp) return;
+    const dx = gp.x - C.drag.start[0], dy = gp.y - C.drag.start[1];
+    const a = C.drag.a0;
+    C.drag.box.aabb = [a[0] + dx, a[1] + dy, a[2], a[3] + dx, a[4] + dy, a[5]];
+    composeRefresh(); return;
+  }
   const gp = groundPoint(e, C.drag.t0[2]); if (!gp) return;
   const inst = C.drag.inst;
   inst.translate = [C.drag.t0[0] + (gp.x - C.drag.start[0]),
@@ -878,8 +920,24 @@ function composeRefresh() { renderCompose3d(); drawCompose2d(); renderComposeIns
 
 function renderComposeInspector() {
   const el = $('composeInspector');
-  const inst = C.placed.find(p => p.id === C.sel);
-  if (!inst) { el.innerHTML = '<div class="muted">Click a section to select; drag to move (snaps to dots).</div>'; updateConnStatus(); return; }
+  const box = selBrush();
+  if (box) {
+    const lbl = ['min X', 'min Y', 'min Z', 'max X', 'max Y', 'max Z'];
+    el.innerHTML = `<div class="kv"><span>box brush</span><b>${box.role}</b></div>`
+      + '<div class="grid3">' + box.aabb.map((v, i) =>
+        `<div><label>${lbl[i]}</label><input type="number" step="8" data-ba="${i}" value="${Math.round(v)}"></div>`).join('') + '</div>'
+      + '<label>role</label><select id="bRole">' + S.meta.addRoles.map(r =>
+        `<option ${r === box.role ? 'selected' : ''}>${r}</option>`).join('') + '</select>'
+      + '<button class="sm danger" id="delBox" style="width:100%;margin-top:8px">delete box</button>';
+    el.querySelectorAll('[data-ba]').forEach(inp => inp.onchange = () => {
+      box.aabb[+inp.dataset.ba] = parseFloat(inp.value); composeRefresh();
+    });
+    $('bRole').onchange = () => { box.role = $('bRole').value; composeRefresh(); };
+    $('delBox').onclick = () => { C.brushes = C.brushes.filter(b => b.id !== box.id); C.sel = null; composeRefresh(); };
+    updateConnStatus(); return;
+  }
+  const inst = selPart();
+  if (!inst) { el.innerHTML = '<div class="muted">Click a section or box to select; drag to move (sections snap to dots).</div>'; updateConnStatus(); return; }
   const part = C.byKey[inst.key];
   el.innerHTML =
     `<div class="kv"><span>section</span><b>${part.label}</b></div>`
@@ -901,10 +959,11 @@ function renderPlacedList() {
   if (!C.placed.length) { el.innerHTML = '<div class="muted">no sections placed yet</div>'; return; }
   el.innerHTML = C.placed.map(p => {
     const lab = C.byKey[p.key].label;
-    return `<div class="legend-row" style="${p.id === C.sel ? 'color:var(--amber)' : ''}" data-inst="${p.id}">`
+    const on = C.sel && C.sel.t === 'part' && C.sel.id === p.id;
+    return `<div class="legend-row" style="${on ? 'color:var(--amber)' : ''}" data-inst="${p.id}">`
       + `<span class="pill">${p.yaw}°</span>${lab}</div>`;
   }).join('');
-  el.querySelectorAll('[data-inst]').forEach(d => d.onclick = () => { C.sel = +d.dataset.inst; composeRefresh(); frameCompose(); });
+  el.querySelectorAll('[data-inst]').forEach(d => d.onclick = () => { C.sel = { t: 'part', id: +d.dataset.inst }; composeRefresh(); });
 }
 function updateConnStatus() {
   let total = 0, conn = 0;
@@ -922,7 +981,7 @@ function drawCompose2d() {
   cv.width = v.clientWidth; cv.height = v.clientHeight;
   const ctx = cv.getContext('2d');
   ctx.fillStyle = '#07070b'; ctx.fillRect(0, 0, cv.width, cv.height);
-  if (!C.placed.length) { ctx.fillStyle = '#8a8a99'; ctx.font = '12px monospace';
+  if (!C.placed.length && !C.brushes.length) { ctx.fillStyle = '#8a8a99'; ctx.font = '12px monospace';
     ctx.fillText('Compose: add sections from the library (top-down view).', 30, 30); return; }
   const b = composeBounds(); const pad = 40;
   const s = Math.min((cv.width - pad * 2) / (b[3] - b[0] || 1), (cv.height - pad * 2) / (b[4] - b[1] || 1));
@@ -945,10 +1004,20 @@ function drawCompose2d() {
       ctx.beginPath(); ctx.arc(px(wc.pos[0]), py(wc.pos[1]), isConnected(inst, wc) ? 3 : 6, 0, 7); ctx.fill();
     }
   }
+  for (const fb of C.brushes) {
+    const a = fb.aabb;
+    ctx.globalAlpha = 0.8; ctx.fillStyle = roleColor(fb.role);
+    ctx.fillRect(px(a[0]), py(a[4]), (a[3] - a[0]) * s, (a[4] - a[1]) * s);
+    if (C.sel && C.sel.t === 'brush' && C.sel.id === fb.id) {
+      ctx.globalAlpha = 1; ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(px(a[0]), py(a[4]), (a[3] - a[0]) * s, (a[4] - a[1]) * s);
+    }
+    ctx.globalAlpha = 1;
+  }
 }
 
 async function composeExport() {
-  if (!C.placed.length) { toast('add some sections first', true); return; }
+  if (!C.placed.length && !C.brushes.length) { toast('add a section or a box first', true); return; }
   const formats = [];
   if ($('cBsp').checked) formats.push('bsp');
   if ($('cMap').checked) formats.push('map');
@@ -957,7 +1026,8 @@ async function composeExport() {
   $('busy').style.display = 'block';
   try {
     const placed = C.placed.map(p => ({ key: p.key, yaw: p.yaw, translate: p.translate }));
-    const res = await api.composeExport({ placed, opts: { void: true }, formats, name: $('cName').value });
+    const brushes = C.brushes.map(b => ({ aabb: b.aabb, role: b.role }));
+    const res = await api.composeExport({ placed, brushes, opts: { void: true }, formats, name: $('cName').value });
     const st = res.stats;
     $('cResult').innerHTML = `<b style="color:var(--green)">✓ ${res.name}</b><br>`
       + res.outputs.map(o => `<span class="pill">${o}</span>`).join(' ')
