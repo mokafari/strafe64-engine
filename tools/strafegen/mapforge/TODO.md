@@ -1,0 +1,63 @@
+# MapForge — test run findings & what's missing
+
+Full end-to-end test (CLIs + headless browser across every feature). **24/24
+browser steps pass, no console errors.** Generate (all 18 kinds), edit, import/
+decompile, learn, calibrate, trace-to-compose, auto-layout, branching (split),
+freeform boxes, entity placement, save/load, and export (.bsp/.map/.pk3) all work.
+
+## Fixed during the test run
+- **pk3 export 500'd when `bspc` can't execute** (arm64 binary on x86) — the aas
+  step now degrades to "no bots" instead of failing the export.
+
+## Environment realities (not bugs)
+- Bundled `bspc` is arm64 → no bot `.aas` on x86 hosts (works on the user's Mac).
+- No `q3map2` here → `--bake` (real lightmaps) unavailable.
+- three.js is vendored → runs fully offline.
+
+## Missing — prioritised
+
+### P1 — highest value
+1. **Engine integration.** No "Play in engine" / "Bot playtest" button. The
+   `strafe64-engine` MCP already has `engine_generate_map` / `engine_open` /
+   `engine_playtest_report`; MapForge can't deploy an exported map into the live
+   game to actually test it. For a map tool this is the #1 gap.
+2. **Texture / material assignment.** Everything uses role palettes / dev
+   textures; no per-brush real texture picker.
+3. **Lighting authoring.** Maps are vertex-lit only — no light entities, no
+   sun/ambient control, no `--bake` hook from the UI.
+
+### P2 — editing depth
+4. **No undo/redo** (either mode).
+5. **Free boxes/entities**: axis-aligned only, XY drag (Z is numeric-only); no
+   rotation, grid snap, multi-select, duplicate, or keyboard nudge/delete.
+6. **Generate-mode geometry editing** is limited to axis boxes; ramps/prisms are
+   read-only and you can't add ramps/cylinders/arbitrary prisms.
+7. **Entity keys**: only `origin` is editable — no `angle`, `spawnflags`, item
+   respawn, weapon ammo, or `target`/`targetname` wiring, so jump pads and
+   teleporters can't be authored in the UI.
+8. **Worldspawn/void control** in compose is fixed (void rate + sky); no UI for
+   void rise/delay, gravity, fog, sky, music, or the map message.
+
+### P3 — decompile / learn depth
+9. **Patches** (curved surfaces) are approximated by their control grid
+   (faceted), not Bézier-tessellated; non-axis brushes over-approximate to an
+   AABB in the trace.
+10. **Trace caps at 1500 brushes** (large maps truncated); no greedy box-merge to
+    simplify the traced solids.
+11. **Learning feedback is shallow** — only platform/height feed `calibrate`.
+    Item mix, jump-pad arcs, room/section types, and texture vocabulary aren't
+    fed into generation or auto-layout.
+12. No quantitative **diff/compare** between a generated map and the learned
+    target.
+
+### P4 — workflow / UX
+13. Save/load is **local file only** — no server-side layout library or
+    shareable links.
+14. No **pre-export validation** (disconnected sections, overlaps, unreachable
+    gaps); only `validate_spawns` runs, at export time.
+15. No camera presets / frame-selection / measurement readout.
+16. No legend for **entity marker colours**; markers differ only by colour.
+17. Status label "N sections" is confusing when a layout is only freeform
+    boxes/entities.
+18. Fixed 3-column desktop layout; not responsive.
+19. No in-app help/tutorial.
