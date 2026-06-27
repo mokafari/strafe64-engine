@@ -165,11 +165,12 @@ typedef struct {
 	float			slide;
 	float			slideLean;
 
-	// STRAFE 64: procedural acrobatic flip / roll — a cosmetic full-body spin
-	// kicked off by air-jumps (somersault), wall-kicks (side flip) and dashes
-	// (barrel/dive roll), so the movement reads ninja-like. Purely visual: it
-	// spins the rendered body about one axis over flipDuration and never touches
-	// physics or the view. flipAxis: 0 = roll (about forward), 1 = pitch (about side).
+	// STRAFE 64: procedural acrobatic flip — a cosmetic full-body spin kicked off
+	// by a backward air-jump (backflip), so a retreating leap reads ninja-like.
+	// Purely visual: it spins the rendered body about one axis over flipDuration
+	// and never touches physics or the view. (The dash roll and forward somersault
+	// were removed — too disorienting in the forward run.)
+	// flipAxis: 0 = roll (about forward), 1 = pitch (about side).
 	int				flipStartTime;	// cg.time the flip began (0 = none)
 	int				flipDuration;	// ms the spin lasts
 	int				flipAxis;		// which body axis to spin about

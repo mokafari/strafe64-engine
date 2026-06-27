@@ -714,7 +714,6 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		// STRAFE 64: SHIFT revector dash — same chromatic-ghost strobe trail as the
 		// air-dash, no sound (the dash is its own silent lunge).
 		cent->dashGlitchTime = cg.time;
-		CG_TriggerAcrobatic( cent, 1 );		// barrel / dive roll into the dash
 		break;
 
 	case EV_TAUNT:

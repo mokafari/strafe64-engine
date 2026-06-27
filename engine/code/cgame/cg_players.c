@@ -2416,18 +2416,18 @@ static void CG_WallGripPose( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 ===============
 CG_TriggerAcrobatic
 
-STRAFE 64: kick off a cosmetic full-body flip / roll. Called from the movement
-events (air-jump, dash). Purely visual — it spins the rendered body, never the
-physics or the view. The spin axis + direction are read from how the player is
-moving at the moment of the move, so a forward air-jump somersaults forward, a
-side dash barrel-rolls into the dash, and a straight dash dive-rolls.
+STRAFE 64: kick off a cosmetic full-body flip. Purely visual — it spins the
+rendered body, never the physics or the view. Only a BACKWARD air-jump
+backflips: the dash no longer rolls and a forward/neutral air-jump stays flat
+(both read as disorienting in the forward run). Kept narrow on purpose, easy to
+re-broaden later.
 
-kind: 0 = air-jump (somersault), 1 = dash (roll)
+kind: 0 = air-jump
 ===============
 */
 void CG_TriggerAcrobatic( centity_t *cent, int kind ) {
-	vec3_t	fwd, right, vel, ang;
-	float	fdot, sdot, sp;
+	vec3_t	fwd, vel, ang;
+	float	fdot, sp;
 
 	if ( !cg_acrobatics.integer ) {
 		return;
@@ -2439,28 +2439,17 @@ void CG_TriggerAcrobatic( centity_t *cent, int kind ) {
 
 	VectorClear( ang );
 	ang[YAW] = cent->lerpAngles[YAW];
-	AngleVectors( ang, fwd, right, NULL );
+	AngleVectors( ang, fwd, NULL, NULL );
 	fdot = ( sp > 1.0f ) ? DotProduct( vel, fwd ) : 1.0f;
-	sdot = ( sp > 1.0f ) ? DotProduct( vel, right ) : 0.0f;
 
-	if ( kind == 1 ) {
-		// dash: a strong lateral component barrel-rolls into the dash; otherwise
-		// a forward dive-roll. Roll about the forward axis (barrel) or side (dive).
-		if ( fabs( sdot ) > 0.5f ) {
-			cent->pe.flipAxis = 0;					// barrel roll about forward
-			cent->pe.flipDir  = ( sdot > 0 ) ? 1.0f : -1.0f;
-		} else {
-			cent->pe.flipAxis = 1;					// forward dive-roll about the side
-			cent->pe.flipDir  = -1.0f;
-		}
-		cent->pe.flipDuration = 450;
-	} else {
-		// air-jump: head-over-heels somersault about the side axis. Forward motion
-		// flips forward; back-pedalling flips backward.
-		cent->pe.flipAxis = 1;
-		cent->pe.flipDir  = ( fdot < -0.2f ) ? 1.0f : -1.0f;
-		cent->pe.flipDuration = 600;
+	// only a clear back-pedalling air-jump backflips; forward / neutral jumps and
+	// the dash do nothing
+	if ( kind != 0 || fdot >= -0.2f ) {
+		return;
 	}
+	cent->pe.flipAxis = 1;			// somersault about the side axis
+	cent->pe.flipDir  = 1.0f;		// backflip
+	cent->pe.flipDuration = 600;
 	cent->pe.flipStartTime = cg.time;
 }
 
