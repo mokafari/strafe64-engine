@@ -40,6 +40,17 @@ _MAP_ROOTS = [GENERATED] + [p for p in os.environ.get("MAPFORGE_MAPS", "").split
 
 _BUILD_LOCK = threading.Lock()                # cfg.THEME is global; serialize builds
 
+
+def _safe_aas(bsp_path):
+    """compile_aas, but never let a broken/foreign bspc binary fail the export —
+    degrade to no-bots (compile_aas itself only guards a non-zero exit, not an
+    OSError from a binary that can't exec on this platform)."""
+    try:
+        return sg.compile_aas(bsp_path)
+    except Exception as e:                     # noqa: BLE001
+        sys.stderr.write(f"bspc unavailable ({e}); exporting without .aas\n")
+        return None
+
 _MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
          ".css": "text/css; charset=utf-8", ".json": "application/json",
          ".svg": "image/svg+xml", ".ico": "image/x-icon"}
@@ -128,7 +139,7 @@ def _compose_export(req):
            "outputs": [os.path.relpath(bsp_path, STRAFEGEN)]}
     aas_path = None
     if "pk3" in formats:
-        aas_path = sg.compile_aas(bsp_path)
+        aas_path = _safe_aas(bsp_path)
         if aas_path:
             out["outputs"].append(os.path.relpath(aas_path, STRAFEGEN))
     if "map" in formats:
@@ -166,7 +177,7 @@ def _export(req):
 
     aas_path = None
     if "pk3" in formats:
-        aas_path = sg.compile_aas(bsp_path)   # None if no bspc binary
+        aas_path = _safe_aas(bsp_path)   # None if no bspc binary
         if aas_path:
             out["aas"] = os.path.relpath(aas_path, STRAFEGEN)
             out["outputs"].append(out["aas"])
