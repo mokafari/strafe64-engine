@@ -20,7 +20,12 @@ uniform vec4 u_DepthOfField;   // focalDist(world), focalRange(world), maxBlur(p
 
 varying vec2 var_ScreenTex;
 
-#define DOF_TAPS 43
+// Tap count is the dominant cost of this pass: every out-of-focus pixel does
+// ~2 texture fetches per tap. 24 golden-angle samples keep the bokeh smooth
+// (the per-pixel spiral rotation below trades the lower density for fine noise
+// rather than visible banding) while roughly halving the gather versus 43 --
+// the difference that mattered most for macOS's slower GL driver.
+#define DOF_TAPS 24
 #define GOLDEN_ANGLE 2.39996323
 
 // world-space linear depth from the hardware depth sample

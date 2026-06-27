@@ -1267,7 +1267,14 @@ void R_Register( void )
 	r_colorbits = ri.Cvar_Get( "r_colorbits", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_stencilbits = ri.Cvar_Get( "r_stencilbits", "8", CVAR_ARCHIVE | CVAR_LATCH );
 	r_depthbits = ri.Cvar_Get( "r_depthbits", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	// macOS ships a deprecated, bandwidth-limited GL driver; a 4x multisample
+	// store + per-frame resolve blit is a measurable cost there, so default to 2x
+	// on Apple and keep 4x everywhere else. Users can still raise it explicitly.
+#if defined(__APPLE__)
+	r_ext_multisample = ri.Cvar_Get( "r_ext_multisample", "2", CVAR_ARCHIVE | CVAR_LATCH );
+#else
 	r_ext_multisample = ri.Cvar_Get( "r_ext_multisample", "4", CVAR_ARCHIVE | CVAR_LATCH );
+#endif
 	ri.Cvar_CheckRange( r_ext_multisample, 0, 4, qtrue );
 	r_overBrightBits = ri.Cvar_Get ("r_overBrightBits", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ignorehwgamma = ri.Cvar_Get( "r_ignorehwgamma", "0", CVAR_ARCHIVE | CVAR_LATCH);
