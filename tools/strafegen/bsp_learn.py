@@ -77,7 +77,8 @@ def analyze_scene(scene):
                 pads.append({"to": t["origin"]})
     return {
         "name": scene.get("name"), "bounds": [round(W), round(D), round(H)],
-        "surfaces": scene["counts"]["brushes"], "triangles": scene["counts"]["triangles"],
+        "surfaces": scene["counts"].get("brushes", len(scene["brushes"])),
+        "triangles": scene["counts"].get("triangles", 0),
         "decks": len(decks), "deck_heights": [int(z) for z in decks][:12],
         "floor_min_side": floor_w, "floor_max_side": floor_l, "wall_height": wall_h,
         "item_height": item_z,

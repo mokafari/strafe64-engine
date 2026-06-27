@@ -96,6 +96,17 @@ def _analyze(req):
     return bsp_learn.analyze_corpus(roots)
 
 
+def _calibrate(req):
+    """Suggest generator scale knobs to match a map / corpus's proportions."""
+    path = req.get("path")
+    if path:
+        path = os.path.realpath(path)
+        if not any(path.startswith(os.path.realpath(r) + os.sep) for r in _MAP_ROOTS):
+            raise ValueError("path is outside the allowed map directories")
+        return scene.calibrate([path])
+    return scene.calibrate([r for r in _MAP_ROOTS if os.path.isdir(r)])
+
+
 def _compose_export(req):
     """Bake placed section parts into a sealed map and write the formats."""
     placed = req.get("placed") or []
@@ -257,6 +268,10 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == "/api/analyze":
                 with _BUILD_LOCK:
                     res = _analyze(req)
+                self._json(res)
+            elif self.path == "/api/calibrate":
+                with _BUILD_LOCK:
+                    res = _calibrate(req)
                 self._json(res)
             else:
                 self._err("not found", 404)

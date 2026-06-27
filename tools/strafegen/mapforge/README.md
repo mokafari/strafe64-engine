@@ -75,6 +75,12 @@ volume, item/spawn mix, jump-pad arcs — into percentile distributions
 brushes in Compose, closing the loop: decompile shipped maps → learn their
 proportions → author with them.
 
+**🎯 calibrate generator to maps** goes further: it scales the *procedural*
+generator's `hscale`/`vscale` to match the corpus's learned platform/height
+medians (clamped to the safe 0.5–2.0 range) and regenerates — so the procedural
+output takes on the proportions of the maps you decompiled (`scene.calibrate`,
+measured against strafegen's own baseline).
+
 ```sh
 python3 bsp_import.py path/to/map.bsp            # geometry digest
 python3 bsp_import.py pack.pk3 --map q3dm6 --json scene.json

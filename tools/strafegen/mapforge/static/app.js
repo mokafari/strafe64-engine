@@ -40,6 +40,9 @@ const api = {
   analyze: (body) => fetch('/api/analyze', { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }),
+  calibrate: (body) => fetch('/api/calibrate', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }),
   importBsp: (body) => fetch('/api/import_bsp', { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }),
@@ -558,6 +561,19 @@ async function analyzeMaps() {
   finally { $('busy').style.display = 'none'; }
 }
 
+async function calibrateGen() {
+  const path = $('mapSel').value;
+  $('busy').style.display = 'block';
+  try {
+    const c = await api.calibrate(path ? { path } : {});
+    const setSlider = (id, v) => { $(id).value = v; $(id + 'V').textContent = v.toFixed(2); };
+    setSlider('hscale', c.hscale); setSlider('vscale', c.vscale);
+    toast(`calibrated to ${c.basis.maps} map(s): hscale ${c.hscale}, vscale ${c.vscale}`);
+    await generate();
+  } catch (e) { toast('calibrate failed: ' + e.message, true); }
+  finally { $('busy').style.display = 'none'; }
+}
+
 async function importMap() {
   const path = $('mapSel').value;
   if (!path) { toast('pick a map first', true); return; }
@@ -681,6 +697,7 @@ function wire() {
   $('cExport').onclick = composeExport;
   $('importBtn').onclick = importMap;
   $('analyzeBtn').onclick = analyzeMaps;
+  $('calibBtn').onclick = calibrateGen;
   $('mapRefresh').onclick = loadMapList;
   document.querySelectorAll('[data-layer]').forEach(btn => btn.onclick = () => {
     const l = btn.dataset.layer; S.layers[l] = !S.layers[l];

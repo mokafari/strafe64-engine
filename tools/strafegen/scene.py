@@ -401,6 +401,46 @@ def serialize(course):
             "seed": getattr(course, "seed", None)}
 
 
+_BASELINE = None
+
+
+def _baseline_medians():
+    """Median platform footprint + map height of strafegen's OWN default output,
+    measured the same way bsp_learn measures imported maps — the reference the
+    calibration scales away from. Cached."""
+    global _BASELINE
+    if _BASELINE is None:
+        import bsp_learn
+        import statistics
+        d = bsp_learn.analyze_scene(serialize(build_kind("course", {"seed": 1337})))
+        _BASELINE = {
+            "platform": statistics.median(d["floor_max_side"]) if d["floor_max_side"] else 256.0,
+            "height": d["bounds"][2] or 1024.0,
+        }
+    return _BASELINE
+
+
+def calibrate(paths):
+    """Decompile + learn from a corpus, then suggest generator scale knobs so a
+    procedurally-generated course takes on the corpus's proportions. Returns
+    {hscale, vscale, basis} — apply via the gen modifiers (clamped to the
+    generator's safe 0.5–2.0 range)."""
+    import bsp_learn
+    target = bsp_learn.analyze_corpus(paths)["corpus"]
+    base = _baseline_medians()
+    clamp = lambda v: max(0.5, min(2.0, v))
+    div = lambda a, b: (a / b) if (a and b) else 1.0
+    tw = (target.get("platform_max_side") or {}).get("median")
+    th = (target.get("map_height") or {}).get("median")
+    return {
+        "hscale": round(clamp(div(tw, base["platform"])), 2),
+        "vscale": round(clamp(div(th, base["height"])), 2),
+        "basis": {"maps": target["maps"], "target_platform": tw, "target_height": th,
+                  "baseline_platform": round(base["platform"]),
+                  "baseline_height": round(base["height"])},
+    }
+
+
 def role_legend():
     seen, out = set(), []
     for (label, fill, _zo) in ROLE.values():
