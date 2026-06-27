@@ -32,9 +32,11 @@ freeform boxes, entity placement, save/load, and export (.bsp/.map/.pk3) all wor
    rotation, grid snap, multi-select, duplicate, or keyboard nudge/delete.
 6. **Generate-mode geometry editing** is limited to axis boxes; ramps/prisms are
    read-only and you can't add ramps/cylinders/arbitrary prisms.
-7. **Entity keys**: only `origin` is editable — no `angle`, `spawnflags`, item
-   respawn, weapon ammo, or `target`/`targetname` wiring, so jump pads and
-   teleporters can't be authored in the UI.
+7. ~~**Entity keys**: only `origin` is editable.~~ **DONE** — placed entities now
+   have a free-form key editor (angle, spawnflags, target/targetname, wait, …),
+   keys export into the .bsp and are preserved when tracing a decompiled map.
+   *Still missing:* brush-based trigger entities (trigger_push/teleport volumes)
+   can't be authored in the UI — only point entities.
 8. **Worldspawn/void control** in compose is fixed (void rate + sky); no UI for
    void rise/delay, gravity, fog, sky, music, or the map message.
 

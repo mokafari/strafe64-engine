@@ -590,7 +590,7 @@ function importToCompose() {
   const placeable = /^(item_|weapon_|ammo_|holdable_|info_player_deathmatch)/;
   for (const e of (S.base.entities || [])) {
     if (e.origin && placeable.test(e.classname))
-      C.entities.push({ id: C.entSeq++, classname: e.classname, origin: [...e.origin] });
+      C.entities.push({ id: C.entSeq++, classname: e.classname, origin: [...e.origin], keys: { ...(e.keys || {}) } });
   }
   switchMode('compose');
   toast(`traced ${C.brushes.length} brushes + ${C.entities.length} entities from ${S.base.name}${note}`);
@@ -998,7 +998,7 @@ $('gl').addEventListener('pointerdown', e => {
     else { const pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -composeBounds()[2]); pt = new THREE.Vector3(); raycaster.ray.intersectPlane(pl, pt); }
     if (pt) {
       const id = C.entSeq++;
-      C.entities.push({ id, classname: C.placingEnt, origin: [Math.round(pt.x), Math.round(pt.y), Math.round(pt.z) + 24] });
+      C.entities.push({ id, classname: C.placingEnt, origin: [Math.round(pt.x), Math.round(pt.y), Math.round(pt.z) + 24], keys: {} });
       C.sel = { t: 'ent', id };
     }
     C.placingEnt = null; composeRefresh();
@@ -1102,14 +1102,29 @@ function renderComposeInspector() {
   const el = $('composeInspector');
   const ent = selEnt();
   if (ent) {
+    ent.keys = ent.keys || {};
     const lbl = ['X', 'Y', 'Z'];
+    const keyRows = Object.entries(ent.keys).map(([k, v]) =>
+      `<div class="row" style="margin:2px 0"><input type="text" value="${k}" data-kk="${k}" style="flex:1">`
+      + `<input type="text" value="${String(v).replace(/"/g, '&quot;')}" data-kv="${k}" style="flex:1">`
+      + `<button class="sm danger" data-krm="${k}" style="flex:none">×</button></div>`).join('');
     el.innerHTML = `<div class="kv"><span>entity</span><b>${ent.classname}</b></div>`
       + '<div class="grid3">' + ent.origin.map((v, i) =>
         `<div><label>${lbl[i]}</label><input type="number" step="8" data-eo="${i}" value="${Math.round(v)}"></div>`).join('') + '</div>'
+      + `<label>keys <span class="muted">(angle, spawnflags, target…)</span></label>${keyRows}`
+      + `<div class="row" style="margin-top:2px"><input type="text" id="newK" placeholder="key" style="flex:1">`
+      + `<input type="text" id="newV" placeholder="value" style="flex:1"><button class="sm" id="addK" style="flex:none">+</button></div>`
       + '<button class="sm danger" id="delEnt" style="width:100%;margin-top:8px">delete entity</button>';
     el.querySelectorAll('[data-eo]').forEach(inp => inp.onchange = () => {
       ent.origin[+inp.dataset.eo] = parseFloat(inp.value); composeRefresh();
     });
+    el.querySelectorAll('[data-kv]').forEach(inp => inp.onchange = () => { ent.keys[inp.dataset.kv] = inp.value; });
+    el.querySelectorAll('[data-kk]').forEach(inp => inp.onchange = () => {
+      const old = inp.dataset.kk, val = ent.keys[old]; delete ent.keys[old];
+      if (inp.value.trim()) ent.keys[inp.value.trim()] = val; renderComposeInspector();
+    });
+    el.querySelectorAll('[data-krm]').forEach(b => b.onclick = () => { delete ent.keys[b.dataset.krm]; renderComposeInspector(); });
+    $('addK').onclick = () => { const k = $('newK').value.trim(); if (k) { ent.keys[k] = $('newV').value; renderComposeInspector(); } };
     $('delEnt').onclick = () => { C.entities = C.entities.filter(x => x.id !== ent.id); C.sel = null; composeRefresh(); };
     updateConnStatus(); return;
   }
@@ -1218,7 +1233,7 @@ function drawCompose2d() {
 
 async function composeExport() {
   if (!C.placed.length && !C.brushes.length) { toast('add a section or a box first', true); return; }
-  const placedEnts = C.entities.map(e => ({ classname: e.classname, origin: e.origin }));
+  const placedEnts = C.entities.map(e => ({ classname: e.classname, origin: e.origin, keys: e.keys || {} }));
   const formats = [];
   if ($('cBsp').checked) formats.push('bsp');
   if ($('cMap').checked) formats.push('map');
