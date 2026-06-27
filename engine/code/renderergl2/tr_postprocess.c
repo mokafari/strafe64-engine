@@ -500,6 +500,10 @@ live-tunable (r_bloom intensity / r_bloomBlur spread, neither latched).
 */
 void RB_Bloom(FBO_t *srcFbo, ivec4_t srcBox)
 {
+	// CRITICAL: the whole chain below relies on an EVEN count of FBO_Blit
+	// (Y-flipping) blits so the glow composites right-side-up. Do not swap any
+	// FBO_Blit here for FBO_FastBlit (or vice versa) without re-counting the
+	// flips — see the parity note on the downsample step below.
 	vec4_t color;
 	float intensity = r_bloom->value;
 	float blur = r_bloomBlur->value;
@@ -548,4 +552,79 @@ void RB_Bloom(FBO_t *srcFbo, ivec4_t srcBox)
 	VectorSet4(color, intensity, intensity, intensity, 1.0f);
 	FBO_Blit(tr.quarterFbo[0], NULL, NULL, srcFbo, srcBox, NULL, color,
 	         GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE);
+}
+
+
+/*
+=============
+RB_DepthOfField
+
+STRAFE 64 cinematic depth of field. Reads the composited scene colour plus the
+linear depth texture (tr.hdrDepthImage, populated by the r_depthPrepass path),
+runs the gather-DoF shader into the scratch FBO, then copies the result back
+over the source so the rest of the post chain sees focused/defocused pixels.
+
+Assumes the single full-screen view STRAFE 64 renders (srcBox == whole FBO), so
+it draws a plain full-screen quad with [0,1] texcoords. No-ops cleanly when DoF
+is off, the blur amount is zero, or the depth texture isn't available.
+=============
+*/
+void RB_DepthOfField(FBO_t *srcFbo, ivec4_t srcBox)
+{
+	vec4_t viewInfo, dofInfo;
+	vec4_t quadVerts[4];
+	vec2_t texCoords[4];
+	mat4_t mvp;
+	float  zmax, zmin, width, height;
+
+	if (!r_dof->integer || r_dofAmount->value <= 0.0f)
+		return;
+
+	// the gather samples the linear depth texture (allocated when r_dof is set at
+	// init/vid_restart) and pings through the scratch FBO; bail if either is absent
+	if (!srcFbo || !tr.hdrDepthFbo || !tr.hdrDepthImage || !tr.screenScratchFbo)
+		return;
+
+	width  = (float)srcFbo->width;
+	height = (float)srcFbo->height;
+	zmax   = backEnd.viewParms.zFar;
+	zmin   = r_znear->value;
+
+	VectorSet4(viewInfo, zmax / zmin, zmax, 1.0f / width, 1.0f / height);
+	VectorSet4(dofInfo,
+	           r_dofFocalDist->value,
+	           r_dofFocalRange->value,
+	           r_dofAmount->value,
+	           r_dofAutoFocus->integer ? 1.0f : 0.0f);
+
+	VectorSet4(quadVerts[0], -1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[1],  1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[2],  1.0f, -1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[3], -1.0f, -1.0f, 0.0f, 1.0f);
+
+	texCoords[0][0] = 0.0f; texCoords[0][1] = 1.0f;
+	texCoords[1][0] = 1.0f; texCoords[1][1] = 1.0f;
+	texCoords[2][0] = 1.0f; texCoords[2][1] = 0.0f;
+	texCoords[3][0] = 0.0f; texCoords[3][1] = 0.0f;
+
+	// pass 1: DoF into the scratch FBO from (scene colour, scene depth)
+	FBO_Bind(tr.screenScratchFbo);
+	qglViewport(0, 0, tr.screenScratchFbo->width, tr.screenScratchFbo->height);
+	qglScissor (0, 0, tr.screenScratchFbo->width, tr.screenScratchFbo->height);
+
+	GL_State(GLS_DEPTHTEST_DISABLE);
+
+	// NDC fullscreen quad -> identity transform (don't inherit stale MVP state)
+	Mat4Identity(mvp);
+
+	GLSL_BindProgram(&tr.depthOfFieldShader);
+	GLSL_SetUniformMat4(&tr.depthOfFieldShader, UNIFORM_MODELVIEWPROJECTIONMATRIX, mvp);
+	GL_BindToTMU(srcFbo->colorImage[0], TB_COLORMAP);
+	GL_BindToTMU(tr.hdrDepthImage,      TB_LIGHTMAP);
+	GLSL_SetUniformVec4(&tr.depthOfFieldShader, UNIFORM_VIEWINFO,     viewInfo);
+	GLSL_SetUniformVec4(&tr.depthOfFieldShader, UNIFORM_DEPTHOFFIELD, dofInfo);
+	RB_InstantQuad2(quadVerts, texCoords);
+
+	// pass 2: copy the focused result back over the source for the rest of the chain
+	FBO_FastBlit(tr.screenScratchFbo, srcBox, srcFbo, srcBox, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 }

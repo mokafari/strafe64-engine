@@ -84,6 +84,9 @@ vmCvar_t bot_moveset;			// STRAFE 64: bots use the bhop/wall/double-jump kit
 vmCvar_t bot_combatBhop;		// STRAFE 64: bots fight on the move (bhop-rush + peel); arena/DM only — leaks onto movement courses, so off by default
 vmCvar_t bot_swordBlock;		// STRAFE 64: bots parry incoming katana swings (reactive, skill-gated)
 vmCvar_t bot_dash;				// STRAFE 64: bots tap the SHIFT dash (BUTTON_DASH) to close on enemies / extend gap-leaps
+vmCvar_t bot_slide;				// STRAFE 64: bots crouch-slide (slidehops on fast, straight sections)
+vmCvar_t bot_airStrafe;			// STRAFE 64: bots carve for speed in the air (pure A/D strafe at the optimal angle while turning toward the goal)
+vmCvar_t bot_unstick;			// STRAFE 64: bots break out of wall grinding/circling with a ninja wall-kick
 
 void ExitLevel( void );
 
@@ -945,6 +948,10 @@ and holding forward along a wall while airborne wall-runs.
 // is committed) and the move phase (BotApplyMoveset). 0 = not surfing, else the
 // strafe command (+/-127) to hold into the bank.
 static int g_botSurfStrafe[MAX_CLIENTS];
+// air-strafe carve decision, set in the view phase (BotAirStrafe, before the view
+// is committed) and consumed in BotApplyMoveset. 0 = not carving, else the strafe
+// command (+/-127) to hold while the view leads velocity by phi_opt.
+static int g_botAirStrafe[MAX_CLIENTS];
 // committed point-blank peel direction (-1/0/+1): held through a close pass so
 // the bot carries momentum PAST the enemy instead of flip-flopping in an orbit.
 static signed char g_botPass[MAX_CLIENTS];
@@ -1006,6 +1013,73 @@ static void BotSurfControl(bot_state_t *bs) {
 	// rather than slide down and off it
 	CrossProduct(travel, up, right);						// bot's right of travel
 	g_botSurfStrafe[bs->client] = (DotProduct(right, uphill) > 0.0f) ? 127 : -127;
+}
+
+/*
+==============
+BotAirStrafe
+
+STRAFE 64: bots carve for speed like a human air-strafer. Holding forward keys
+the bot through the gentle pm_airaccelerate regime; pure A/D strafe instead taps
+the high-accel pm_strafeAccelerate cap regime, gaining speed every tick the view
+sits past acos(clamp/|v|) of velocity — peaking at PM_OptimalStrafeAngle (the same
+phi_opt the HUD meter draws). Real strafe jumping does this WHILE turning: aim a
+hair off velocity toward where you want to go, hold strafe that way, and velocity
+both speeds up AND curves toward the goal. So this isn't a detour from the AAS
+nav — it bends momentum toward the goal heading faster than a forward-hold would.
+
+Runs in the view phase (before BotChangeViewAngles), mirroring BotSurfControl: it
+nudges only the yaw and stashes the strafe side for BotApplyMoveset. Heavily
+gated — airborne, carrying real speed, no enemy (combat footwork owns the view),
+and only when there's a meaningful-but-not-reversing turn to make, so it stays out
+of the way on straights and disengages the instant velocity lines up with the goal.
+==============
+*/
+static void BotAirStrafe(bot_state_t *bs) {
+	playerState_t	*ps = &bs->cur_ps;
+	float			speed, velYaw, goalYaw, delta, phiOpt;
+	float			wishYaw, candR, candL;
+	int				side;
+
+	g_botAirStrafe[bs->client] = 0;
+	if (!bot_moveset.integer || !bot_airStrafe.integer) return;
+	if (ps->pm_type != PM_NORMAL) return;
+	if (ps->groundEntityNum != ENTITYNUM_NONE) return;		// airborne only
+	if (g_botSurfStrafe[bs->client]) return;				// surf owns the view this frame
+	if (bs->enemy >= 0) return;								// let combat footwork drive
+
+	speed = sqrt(ps->velocity[0] * ps->velocity[0] + ps->velocity[1] * ps->velocity[1]);
+	if (speed < 320.0f) return;								// only worth it carrying real speed
+
+	velYaw  = AngleMod((float)(atan2(ps->velocity[1], ps->velocity[0]) * 180.0 / M_PI));
+	goalYaw = AngleMod(bs->ideal_viewangles[YAW]);			// the AAS nav heading (pre-commit)
+	delta   = AngleSubtract(goalYaw, velYaw);				// how far velocity must turn toward the goal
+	if (fabs(delta) < 8.0f) return;							// already on line — run straight, don't wobble
+	if (fabs(delta) > 110.0f) return;						// near a reversal — a carve can't make that; leave nav
+
+	phiOpt = PM_OptimalStrafeAngle(speed, pmove_msec.integer * 0.001f);
+	if (phiOpt < 1.0f) return;
+
+	// lead velocity by phi_opt toward the goal: that's the wishdir heading we want
+	side    = (delta > 0.0f) ? 1 : -1;						// +1 = goal is CCW of velocity
+	wishYaw = AngleMod(velYaw + side * phiOpt);
+
+	// wishdir = the strafe direction. Strafe-right (+127) gives wishdir = yaw-90,
+	// strafe-left (-127) gives wishdir = yaw+90 — and BOTH keys can produce the
+	// same wishdir via opposite view yaws, so the carve physics is identical either
+	// way. Pick the view that looks most along VELOCITY (natural strafe-jump head
+	// position): the bot faces where it's travelling while the strafe key turns it,
+	// instead of craning backward at wide turn angles.
+	candR = AngleMod(wishYaw + 90.0f);						// view yaw if strafing right
+	candL = AngleMod(wishYaw - 90.0f);						// view yaw if strafing left
+	if (fabs(AngleSubtract(velYaw, candR)) <= fabs(AngleSubtract(velYaw, candL))) {
+		bs->ideal_viewangles[YAW] = candR;
+		g_botAirStrafe[bs->client] = 127;
+	} else {
+		bs->ideal_viewangles[YAW] = candL;
+		g_botAirStrafe[bs->client] = -127;
+	}
+	// leave PITCH to the nav — only the flattened yaw drives the air-strafe wishdir
 }
 
 static void BotApplyMoveset(bot_state_t *bs) {
@@ -1100,6 +1174,21 @@ static void BotApplyMoveset(bot_state_t *bs) {
 		}
 	}
 
+	// AIR-STRAFE CARVE: BotAirStrafe (view phase) led the view phi_opt off velocity
+	// toward the goal — hold pure strafe, no forward, so the high-accel A/D cap
+	// regime builds speed while the carve curves velocity toward the goal. The air
+	// jump stays on the same apex-pulse schedule as the generic chain below.
+	if (g_botAirStrafe[bs->client] && ps->groundEntityNum == ENTITYNUM_NONE) {
+		cmd->forwardmove = 0;
+		cmd->rightmove = g_botAirStrafe[bs->client];
+		if (ps->velocity[2] < 40 && ps->stats[STAT_AIRJUMP_COUNT] < 1) {
+			cmd->upmove = (ps->pm_flags & PMF_JUMP_HELD) ? 0 : 127;	// pulse for a fresh wall/air jump
+		} else {
+			cmd->upmove = 127;
+		}
+		return;
+	}
+
 	// only while actually travelling, and never when the AI is deliberately
 	// walking carefully (near ledges) or already crouch-sliding
 	if (!cmd->forwardmove && !cmd->rightmove) return;
@@ -1186,6 +1275,164 @@ static void BotApplyDash(bot_state_t *bs) {
 
 	cmd->buttons |= BUTTON_DASH;
 	g_botDashTime[bs->client] = level.time + 800;	// just past DASH_COOLDOWN (650ms)
+}
+
+/*
+==============
+BotApplySlide
+
+STRAFE 64: bots crouch-slide. A slide is duck (upmove<0) held on the GROUND at speed
+(>pm_slideMinSpeed) — slick, low, momentum-locked. Weaving slidehops into the hop chain
+took two corrections the obvious version missed:
+
+  1. Bhopping bots are airborne ~90% of the time, so a fixed wall-clock "crouch window"
+     mostly landed the bot late and gave a single frame of slide — slide% measured 0.
+  2. So instead we COMMIT: the moment the bot catches a grounded, fast frame (off a hop
+     landing) we latch a real slide DURATION and hold crouch for all of it — the crouch
+     suppresses the moveset's rehop, so the bot genuinely rides the slide, then pops back
+     into the bhop chain. A per-bot cooldown spaces the slidehops out.
+
+Don't gate on forward/strafe axes: a bhop chain air-strafes constantly (forwardmove can
+be ~0, rightmove large), and the slide is momentum-locked anyway — it follows velocity,
+not the move keys — so those gates fired ~never. Runs after BotApplyMoveset and OVERRIDES
+its upmove.
+==============
+*/
+#define BOT_SLIDE_HOLD	380		// ms to RIDE a slide once it engages on the ground
+#define BOT_SLIDE_ARM	300		// ms to stay crouched (descending) waiting to land into one
+#define BOT_SLIDE_GAP	1500	// ms of bhop between slidehops
+
+static int g_botSlideUntil[MAX_CLIENTS];	// level.time we keep RIDING (grounded slide) until
+static int g_botSlideArm[MAX_CLIENTS];		// level.time we keep ARMING (crouch in air) until
+static int g_botSlideNext[MAX_CLIENTS];		// earliest level.time the next slidehop may start
+
+static void BotApplySlide(bot_state_t *bs) {
+	usercmd_t		*cmd = &bs->lastucmd;
+	playerState_t	*ps = &bs->cur_ps;
+	int				client = bs->client;
+	float			speed;
+
+	if (!bot_slide.integer || !bot_moveset.integer || ps->pm_type != PM_NORMAL
+			|| g_botSurfStrafe[client] || (cmd->buttons & BUTTON_WALKING)) {
+		g_botSlideUntil[client] = 0;
+		g_botSlideArm[client] = 0;
+		return;
+	}
+
+	// RIDING: a slide engaged on the ground — hold the crouch so it LASTS (the crouch
+	// also suppresses the moveset's rehop, so the bot stays down and rides it).
+	if (level.time < g_botSlideUntil[client]) {
+		cmd->upmove = -127;
+		return;
+	}
+
+	// ARMING: crouch THROUGH the air waiting to touch down — bhopping bots are airborne
+	// ~90% of the time, so requiring a grounded trigger frame caught almost nothing. The
+	// moment we land into an actual slide, latch the ride and start the cooldown.
+	if (level.time < g_botSlideArm[client]) {
+		cmd->upmove = -127;
+		if (ps->groundEntityNum != ENTITYNUM_NONE && (ps->pm_flags & PMF_SLIDING)) {
+			g_botSlideUntil[client] = level.time + BOT_SLIDE_HOLD;
+			g_botSlideArm[client]   = 0;
+			g_botSlideNext[client]  = g_botSlideUntil[client] + BOT_SLIDE_GAP;
+		}
+		return;
+	}
+
+	if (level.time < g_botSlideNext[client]) return;	// cooldown — bhop between slides
+
+	// not in a close duel — let the combat footwork (orbit / committed pass) run
+	if (bs->enemy >= 0) {
+		aas_entityinfo_t	enemyinfo;
+		vec3_t				d;
+		BotEntityInfo(bs->enemy, &enemyinfo);
+		VectorSubtract(enemyinfo.origin, ps->origin, d);
+		if (VectorLength(d) < 320.0f) return;
+	}
+
+	speed = sqrt(ps->velocity[0] * ps->velocity[0]
+		+ ps->velocity[1] * ps->velocity[1]);
+	if (speed < 340.0f) return;					// fast enough that a slide reads and out-glides a run
+
+	// only arm when GROUNDED (slide at once) or already DESCENDING — never crouch on the
+	// way UP, which would kill the bhop's rising air-strafe accel (that tanked speed-map flow)
+	if (ps->groundEntityNum == ENTITYNUM_NONE && ps->velocity[2] > -40.0f) return;
+
+	// arm it: start crouching now (slides at once if already grounded, else lands into one).
+	// Re-arm budget is short so a long airtime that never lands doesn't crouch-spam forever.
+	g_botSlideArm[client]  = level.time + BOT_SLIDE_ARM;
+	g_botSlideNext[client] = level.time + BOT_SLIDE_ARM + BOT_SLIDE_GAP;	// floor; tightened on a real ride
+	cmd->upmove = -127;
+}
+
+/*
+==============
+BotApplyUnstick
+
+STRAFE 64: bots sometimes grind or circle against a wall when the nav path hugs
+geometry. Detect it — commanding movement but barely moving for a sustained beat — and
+break out with a ninja wall-kick: pulse CLEAN jumps (fresh airborne presses) so
+PM_CheckWallJump, which probes every side for the wall itself, kicks us off it, plus a
+hard strafe (flipping sides on a slow timer) to break the circle and feed tangential
+speed. Hands straight back to the nav the instant real speed returns. Runs LAST so it
+has final say on a stuck bot's feet.
+==============
+*/
+static int g_botStuckSince[MAX_CLIENTS];
+
+static void BotApplyUnstick(bot_state_t *bs) {
+	usercmd_t		*cmd = &bs->lastucmd;
+	playerState_t	*ps = &bs->cur_ps;
+	float			speed;
+	int				client = bs->client;
+	int				jphase, side;
+
+	if (!bot_unstick.integer || !bot_moveset.integer
+			|| ps->pm_type != PM_NORMAL || g_botSurfStrafe[client]) {
+		g_botStuckSince[client] = 0;
+		return;
+	}
+	// only when the bot is actually trying to go somewhere
+	if (!cmd->forwardmove && !cmd->rightmove) {
+		g_botStuckSince[client] = 0;
+		return;
+	}
+	// a close enemy means low speed is DELIBERATE duel footwork (orbit / blade trade),
+	// not stuck — don't hijack the fight with an escape hop. Beyond melee range a real
+	// stall is still a stall, so only suppress when the enemy is genuinely close.
+	if (bs->enemy >= 0) {
+		aas_entityinfo_t	enemyinfo;
+		vec3_t				d;
+		BotEntityInfo(bs->enemy, &enemyinfo);
+		VectorSubtract(enemyinfo.origin, ps->origin, d);
+		if (VectorLength(d) < 600.0f) {
+			g_botStuckSince[client] = 0;
+			return;
+		}
+	}
+
+	speed = sqrt(ps->velocity[0] * ps->velocity[0]
+		+ ps->velocity[1] * ps->velocity[1]);
+	if (speed > 150.0f) {						// moving fine — not stuck
+		g_botStuckSince[client] = 0;
+		return;
+	}
+
+	if (!g_botStuckSince[client]) {
+		g_botStuckSince[client] = level.time;
+	}
+	if (level.time - g_botStuckSince[client] < 350) {
+		return;									// brief stalls (starts, tight corners) are normal
+	}
+
+	// grinding against geometry — ninja-kick out
+	jphase = (level.time / 120) & 1;
+	cmd->upmove = jphase ? 127 : 0;				// clean pulse so the airborne wall-jump can fire
+	side = ((level.time + client * 333) / 600) & 1;
+	cmd->rightmove = side ? 127 : -127;			// strafe out, flipping so a corner can't lock us in
+	if (cmd->forwardmove > 40) {
+		cmd->forwardmove = 40;					// stop ramming straight into the wall
+	}
 }
 
 /*
@@ -1288,6 +1535,9 @@ void BotUpdateInput(bot_state_t *bs, int time, int elapsed_time) {
 	}
 	//STRAFE 64: surf control steers the view along the ramp before it's committed
 	BotSurfControl(bs);
+	//STRAFE 64: air-strafe carve leads the view to gain speed toward the goal (after
+	//surf, which has first claim on the view; bails itself if surf took the wheel)
+	BotAirStrafe(bs);
 	//change the bot view angles
 	BotChangeViewAngles(bs, (float) elapsed_time / 1000);
 	//retrieve the bot input
@@ -1300,10 +1550,14 @@ void BotUpdateInput(bot_state_t *bs, int time, int elapsed_time) {
 	BotInputToUserCommand(&bi, &bs->lastucmd, bs->cur_ps.delta_angles, time);
 	//STRAFE 64: augment the command so bots use the new moveset
 	BotApplyMoveset(bs);
+	//STRAFE 64: weave crouch-slidehops into the hop chain on fast, straight runs
+	BotApplySlide(bs);
 	//STRAFE 64: tap the SHIFT dash to close on enemies / extend gap-leaps
 	BotApplyDash(bs);
 	//STRAFE 64: raise the katana guard to parry an incoming swing
 	BotApplyDefense(bs);
+	//STRAFE 64: break out of wall grinding/circling — runs last (final say on the feet)
+	BotApplyUnstick(bs);
 	//subtract the delta angles
 	for (j = 0; j < 3; j++) {
 		bs->viewangles[j] = AngleMod(bs->viewangles[j] - SHORT2ANGLE(bs->cur_ps.delta_angles[j]));
@@ -1799,6 +2053,9 @@ int BotAIStartFrame(int time) {
 	trap_Cvar_Update(&bot_combatBhop);
 	trap_Cvar_Update(&bot_swordBlock);
 	trap_Cvar_Update(&bot_dash);
+	trap_Cvar_Update(&bot_slide);
+	trap_Cvar_Update(&bot_unstick);
+	trap_Cvar_Update(&bot_airStrafe);
 
 	if (bot_report.integer) {
 //		BotTeamplayReport();
@@ -2059,6 +2316,9 @@ int BotAISetup( int restart ) {
 	trap_Cvar_Register(&bot_combatBhop, "bot_combatBhop", "1", 0);
 	trap_Cvar_Register(&bot_swordBlock, "bot_swordBlock", "1", 0);
 	trap_Cvar_Register(&bot_dash, "bot_dash", "1", 0);
+	trap_Cvar_Register(&bot_slide, "bot_slide", "1", 0);
+	trap_Cvar_Register(&bot_unstick, "bot_unstick", "1", 0);
+	trap_Cvar_Register(&bot_airStrafe, "bot_airStrafe", "0", 0);
 
 	//if the game is restarted for a tournament
 	if (restart) {

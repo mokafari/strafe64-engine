@@ -880,6 +880,11 @@ void CG_NewClientInfo( int clientNum ) {
 	const char	*v;
 	char		*slash;
 
+	if ( clientNum < 0 || clientNum >= MAX_CLIENTS ) {
+		CG_Error( "CG_NewClientInfo: bad clientNum %i", clientNum );
+		return;
+	}
+
 	ci = &cgs.clientinfo[clientNum];
 
 	configstring = CG_ConfigString( clientNum + CS_PLAYERS );
@@ -2403,6 +2408,124 @@ static void CG_WallGripPose( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 
 /*
 ===============
+CG_DashGlitchGhost
+
+STRAFE 64: a short, audio-reactive chromatic after-image left on an air-dash
+(EV_DOUBLE_JUMP). Re-renders the pilot's body a few steps back along the dash
+velocity, split into red / cyan copies on the additive ghost shader and fading
+over the dash window — a glitchy neon speed-trail flourish on the key movement.
+===============
+*/
+#define DASH_GLITCH_MS		300
+#define DASH_GHOST_STEPS	5
+
+static void CG_DashGlitchGhost( centity_t *cent, const refEntity_t *legs,
+		const refEntity_t *torso, const refEntity_t *head ) {
+	int					dt = cg.time - cent->dashGlitchTime;
+	float				life, audio, bright, speed, gap, fringe;
+	vec3_t				vel;
+	const refEntity_t	*parts[3];
+	int					step, p, c;
+
+	if ( cg_dashGlitch.value <= 0 || cent->dashGlitchTime <= 0
+			|| dt < 0 || dt > DASH_GLITCH_MS ) {
+		return;
+	}
+	// nothing to ghost on our own first-person body
+	if ( cent->currentState.number == cg.snap->ps.clientNum && !cg.renderingThirdPerson ) {
+		return;
+	}
+
+	life   = 1.0f - dt / (float)DASH_GLITCH_MS;					// 1 -> 0 over the window
+	audio  = 1.0f + 1.4f * au_level.value + 1.0f * au_bass.value;	// pump on the track
+	bright = life * cg_dashGlitch.value;
+
+	// trail axis: directly BEHIND the dash, along the full velocity (an air-dash
+	// can climb/dive, so keep z) — copies stack back down the motion line.
+	VectorCopy( cent->currentState.pos.trDelta, vel );
+	speed = VectorNormalize( vel );
+	if ( speed < 1.0f ) {
+		VectorSet( vel, 1, 0, 0 );			// degenerate: shove along x
+	}
+
+	gap    = ( 13.0f + 0.022f * speed ) * cg_dashGlitch.value;	// strobe spacing behind
+	fringe = 3.0f + 3.0f * audio;								// chromatic split ALONG the trail
+
+	parts[0] = legs; parts[1] = torso; parts[2] = head;
+
+	for ( step = 1 ; step <= DASH_GHOST_STEPS ; step++ ) {
+		// STROBE: discrete frozen frames trailing behind. Brightness fades down the
+		// trail AND every other frame punches dim, so the after-image flickers like
+		// a strobe instead of a smooth smear.
+		float	fade   = 1.0f - ( step - 1 ) / (float)DASH_GHOST_STEPS;
+		float	strobe = ( step & 1 ) ? 1.0f : 0.40f;	// alternate bright / dim
+		float	f       = bright * fade * strobe;
+		float	back    = gap * step;
+
+		if ( f <= 0.0f ) {
+			continue;
+		}
+		for ( p = 0 ; p < 3 ; p++ ) {
+			// chromatic aberration: red shoved a touch further back, cyan a touch
+			// nearer, so each strobed frame carries a red/cyan fringe down the trail.
+			for ( c = 0 ; c < 2 ; c++ ) {
+				refEntity_t	g = *parts[p];
+				float		off = back + ( ( c == 0 ) ? fringe : -fringe );
+
+				g.customShader = cgs.media.glitchGhostShader;
+				g.renderfx &= ~RF_SHADOW_PLANE;		// ghosts cast no blob shadow
+				if ( c == 0 ) {						// red, trailing edge
+					g.shaderRGBA[0] = (byte)( 255 * f );
+					g.shaderRGBA[1] = (byte)(  20 * f );
+					g.shaderRGBA[2] = (byte)(  50 * f );
+				} else {							// cyan, leading edge
+					g.shaderRGBA[0] = (byte)(  30 * f );
+					g.shaderRGBA[1] = (byte)( 200 * f );
+					g.shaderRGBA[2] = (byte)( 255 * f );
+				}
+				g.shaderRGBA[3] = 255;				// additive: fade lives in RGB
+				VectorMA( g.origin, -off, vel, g.origin );
+				VectorMA( g.lightingOrigin, -off, vel, g.lightingOrigin );
+				trap_R_AddRefEntityToScene( &g );
+			}
+		}
+	}
+}
+
+/*
+===============
+CG_GlowPilotCount
+
+How many ET_PLAYER entities are in the current snapshot — i.e. how many
+cg_playerGlow lights will be added this frame. Cached per cg.time so the O(N)
+scan runs once a frame, not once per player. Used to soft-clamp the combined
+glow so a crowd of pilots doesn't sum to white (see the glow block in CG_Player).
+===============
+*/
+int CG_GlowPilotCount( void ) {
+	static int	cachedTime = -1;
+	static int	cachedCount = 1;
+	int			i, n;
+
+	if ( cg.time == cachedTime ) {
+		return cachedCount;
+	}
+	cachedTime = cg.time;
+	n = 0;
+	for ( i = 0 ; i < cg.snap->numEntities ; i++ ) {
+		if ( cg.snap->entities[i].eType == ET_PLAYER ) {
+			n++;
+		}
+	}
+	if ( n < 1 ) {
+		n = 1;
+	}
+	cachedCount = n;
+	return n;
+}
+
+/*
+===============
 CG_Player
 ===============
 */
@@ -2773,12 +2896,91 @@ void CG_Player( centity_t *cent ) {
 			&& !( cent->currentState.number == cg.snap->ps.clientNum && !cg.renderingThirdPerson ) ) {
 		vec3_t	glowOrg;
 		float	r = ci->color1[0], g = ci->color1[1], b = ci->color1[2];
+		float	mn, mx, f;
 		// guarantee a visible neon even if the player picked a near-black colour
 		if ( r + g + b < 0.4f ) { r = 0.4f; g = 0.7f; b = 1.0f; }
+
+		// #0 DISTINCT HUE: bots nearly all share the same color1, so every glow
+		// comes out the same colour and there's nothing to mix. Give each pilot a
+		// hue from its clientNum, stepped around the wheel by the golden angle
+		// (0.618 turns) so neighbours land maximally far apart. Blend toward it by
+		// cg_playerGlowHue (0 = player's own colour, 1 = full rainbow spread).
+		if ( cg_playerGlowHue.value > 0 ) {
+			float	hgh = clientNum * 0.61803399f;
+			float	h6, ff, q, tt, hr, hgg, hbb, hb;
+			int		hi;
+			hgh -= floor( hgh );                 // hue 0..1
+			h6 = hgh * 6.0f; hi = (int)h6; ff = h6 - hi; q = 1.0f - ff; tt = ff;
+			switch ( hi % 6 ) {                  // HSV(h,1,1) -> rgb
+				case 0:  hr = 1;  hgg = tt; hbb = 0;  break;
+				case 1:  hr = q;  hgg = 1;  hbb = 0;  break;
+				case 2:  hr = 0;  hgg = 1;  hbb = tt; break;
+				case 3:  hr = 0;  hgg = q;  hbb = 1;  break;
+				case 4:  hr = tt; hgg = 0;  hbb = 1;  break;
+				default: hr = 1;  hgg = 0;  hbb = q;  break;
+			}
+			hb = cg_playerGlowHue.value; if ( hb > 1.0f ) hb = 1.0f;
+			r = r * ( 1.0f - hb ) + hr  * hb;
+			g = g * ( 1.0f - hb ) + hgg * hb;
+			b = b * ( 1.0f - hb ) + hbb * hb;
+		}
+
+		// #1 SATURATE the hue: pull out the white/grey component so OVERLAPPING
+		// pilot lights MIX as colour instead of summing to white. cg_playerGlowSat
+		// 0 = raw colour, 1 = pure hue. Renormalize so the brightest channel stays
+		// vivid (a saturated colour, not a dim one).
+		mn = r; if ( g < mn ) mn = g; if ( b < mn ) mn = b;
+		r -= mn * cg_playerGlowSat.value;
+		g -= mn * cg_playerGlowSat.value;
+		b -= mn * cg_playerGlowSat.value;
+		mx = r; if ( g > mx ) mx = g; if ( b > mx ) mx = b;
+		if ( mx > 0.001f ) { r /= mx; g /= mx; b /= mx; }
+
+		// #2 COUNT-AWARE soft clamp: with N glowing pilots, additive light piles
+		// toward white. Scale each light by lerp(1, 1/sqrt(N), clamp) so a crowd
+		// reads ~sqrt(N)x brighter, not Nx. clamp 0 = raw additive, 1 = full norm.
+		f = cg_playerGlow.value;
+		if ( cg_playerGlowClamp.value > 0 ) {
+			int n = CG_GlowPilotCount();
+			if ( n > 1 ) {
+				f *= 1.0f - cg_playerGlowClamp.value * ( 1.0f - 1.0f / sqrt( (float)n ) );
+			}
+		}
+		// #3 AUDIO INTERPLAY: each pilot reacts to a DIFFERENT slice of the
+		// music spectrum — a per-clientNum blend of bass/mid/high, spread around
+		// the circle by the golden angle so no two pilots favour the same band.
+		// They flare OUT OF PHASE (one on the kick, one on the hats, one on the
+		// swell), so a cluster's dominant colour shifts with the track and the
+		// colours mix over TIME, not just where they overlap.
+		// SILENT MODE: only modulate when music is actually playing — with no
+		// track the band envelopes are ~0 and the pulse would just rest the glow
+		// at a permanent dim. No music -> leave the glow at full base brightness.
+		if ( cg_playerGlowAudio.value > 0
+				&& ( au_bass.value + au_mid.value + au_high.value ) > 0.02f ) {
+			float	ph = clientNum * 2.39996323f;          // golden angle (rad)
+			float	wB = 0.5f + 0.5f * sin( ph );
+			float	wM = 0.5f + 0.5f * sin( ph + 2.09439510f );
+			float	wH = 0.5f + 0.5f * sin( ph + 4.18879020f );
+			float	s  = wB + wM + wH;
+			float	pulse, amt;
+			if ( s < 0.001f ) s = 1.0f;
+			pulse = ( wB * au_bass.value + wM * au_mid.value
+					+ wH * au_high.value ) / s;            // 0..1, this pilot's band
+			amt = cg_playerGlowAudio.value;
+			// dim when this pilot's band is quiet, flare when it hits
+			f *= 1.0f - 0.55f * amt + 1.55f * amt * pulse;
+			if ( f < 0.02f ) f = 0.02f;
+		}
+
+		r *= f; g *= f; b *= f;
+
 		VectorCopy( cent->lerpOrigin, glowOrg );
 		glowOrg[2] += 28;		// chest height
 		trap_R_AddLightToScene( glowOrg, 110.0f + 90.0f * cg_playerGlow.value, r, g, b );
 	}
+
+	// STRAFE 64: chromatic-ghost glitch trail on a fresh air-dash
+	CG_DashGlitchGhost( cent, &legs, &torso, &head );
 
 	//
 	// add the gun / barrel / flash

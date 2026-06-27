@@ -225,7 +225,7 @@ def deploy_dylibs(oa: str = DEFAULT_OA, cfgs: bool = True, force: bool = False) 
         dst = dest / f"{name}.dylib"
         shutil.copy2(src, dst)
         subprocess.run(["codesign", "-f", "-s", "-", str(dst)],
-                       capture_output=True)
+                       capture_output=True, timeout=60)
         done.append(name)
     if cfgs:
         for cfg in ("strafe64.cfg", "psx.cfg"):
@@ -1456,7 +1456,7 @@ class EngineSession:
         out = out or str(self._clips_dir() / "clip.mp4")
         subprocess.run([ff, "-y", "-f", "concat", "-safe", "0", "-i", str(listfile),
                         "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-pix_fmt", "yuv420p",
-                        str(out)], capture_output=True)
+                        str(out)], capture_output=True, timeout=600)
         return out if Path(out).exists() else None
 
     # -- demos: record / replay real gameplay --------------------------------
@@ -1534,7 +1534,7 @@ class EngineSession:
         if avi.exists() and ff:
             mp4 = videos / f"{name}.mp4"
             subprocess.run([ff, "-y", "-i", str(avi), "-pix_fmt", "yuv420p", str(mp4)],
-                           capture_output=True)
+                           capture_output=True, timeout=600)
             if mp4.exists():
                 out = mp4
         return {"video": str(out) if out.exists() else None, "fps": fps,
@@ -1907,6 +1907,13 @@ class EngineSession:
         if pk3.exists():
             shutil.copy2(pk3, self._gamedir / pk3.name)
             deployed_pk3 = str(self._gamedir / pk3.name)
+        # Map paks are now LEAN — the shader + procedural textures live once in
+        # the shared zzz_strafe64_shader.pk3. Deploy it alongside so the lean pk3
+        # (and the loose .bsp dropped in maps/) render with the real shaders
+        # instead of the default grey fallback.
+        shared = out_dir / "zzz_strafe64_shader.pk3"
+        if shared.exists():
+            shutil.copy2(shared, self._gamedir / shared.name)
         res = {"name": name, "kind": kind, "bsp": str(maps_dir / bsp.name),
                "pk3": deployed_pk3, "loaded": False}
         if load and self._pipe_fd is not None:
@@ -2152,8 +2159,8 @@ def list_processes() -> list[dict]:
     launcher exits), or 'other'. Foreign engines (different binary) are ignored."""
     try:
         out = subprocess.run(["ps", "-axwwo", "pid=,command="],
-                             capture_output=True, text=True).stdout
-    except Exception:
+                             capture_output=True, text=True, timeout=10).stdout
+    except (subprocess.SubprocessError, OSError):
         return []
     procs = []
     for line in out.splitlines():

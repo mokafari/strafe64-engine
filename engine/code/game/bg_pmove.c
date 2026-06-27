@@ -63,10 +63,20 @@ float	pm_bhopBoostMax = 1.10f;		// ...up to this cap
 // (not jumping) off a ledge, so running off an edge never eats the jump input
 int		pm_coyoteTimeMs = 300;			// 0 = off (vanilla: no late jump)  [TEST: widened from 80]
 
+// STAT_GROUND_MS sign-encodes the coyote window: >=0 is time spent on the
+// ground; <0 counts airborne time so a late jump can still fire. These named
+// sentinels keep the otherwise-cryptic magic values legible (their relative
+// ordering matters: PARKED < FLOOR, so a parked value never gets decremented):
+#define COYOTE_ARMED		(-1)	// just walked off a ledge: coyote available
+#define COYOTE_PARKED		(-9000)	// coyote spent, or jumped (not walked) off: no late jump
+#define COYOTE_FLOOR		(-8000)	// stop counting airborne time once below this
+#define GROUND_MS_MAX		(999)	// clamp on-ground time so STAT_GROUND_MS stays small
+
 // double jump / air dash (fresh jump press in mid-air)
 float	pm_airJumpVelocity = 300.0f;	// upward speed of the air jump (matches JUMP_VELOCITY)
 int		pm_airJumpMax = 1;				// air jumps allowed between groundings
 float	pm_airDashSpeed = 150.0f;		// horizontal burst added on the air jump -> a dash
+#define AIRDASH_MIN_MOMENTUM	(50.0f)	// below this h-speed the dash uses held/view dir, not momentum
 
 // stair jump (rejumping within the window after landing goes higher)
 int		pm_doubleJumpWindowMs = 400;
@@ -102,6 +112,7 @@ float	pm_grappleDamp = 6.0f;			// damps outward bounce so the spring settles ins
 // wall run (Titanfall-style: hold forward and ride a wall at speed with
 // greatly reduced gravity; jump to kick off, refunded each ride)
 int		pm_wallRunDurationMs = 1600;	// max ride time before the wall lets go
+#define WALLRUN_ATTACH_GRACE_MS	(150)	// early-ride window where a held jump can still attach
 float	pm_wallRunGravityScale = 0.22f;	// gravity multiplier while running
 float	pm_wallRunMinSpeed = 280.0f;	// horizontal speed needed to stick
 float	pm_wallRunSlideSpeed = 60.0f;	// max downward speed while running (gentle slide)
@@ -361,6 +372,37 @@ static void PM_Accelerate( vec3_t wishdir, float wishspeed, float accel ) {
 
 	VectorMA( pm->ps->velocity, canPush, pushDir, pm->ps->velocity );
 #endif
+}
+
+
+/*
+==============
+PM_StrafeTickAccel / PM_OptimalStrafeAngle
+
+The one source of truth for the pure-A/D air-strafe optimum, shared by the HUD
+strafe meter (cg_draw.c) and the bots (ai_main.c) so the two can never drift.
+
+PM_Accelerate adds at most A = pm_strafeAccelerate * frameSec * wishspeed along
+wishdir before the pm_wishSpeedClamp cap clips (v.wishdir). |v'| over the strafe
+angle peaks exactly at the tick boundary, where (v.wishdir) = clamp - A, i.e.
+cos(phi_opt) = (clamp - A) / |v|. A is TIMESCALE-INDEPENDENT: PM_AirMove feeds
+accel/timeScale but PM_Accelerate then scales by frameSec = scaled-clock msec,
+so timeScale cancels — do NOT reintroduce it here. frameSec is the pmove tick in
+seconds (pmove_msec/1000).
+==============
+*/
+float PM_StrafeTickAccel( float frameSec ) {
+	return pm_strafeAccelerate * frameSec * pm_wishSpeedClamp;
+}
+
+float PM_OptimalStrafeAngle( float speed, float frameSec ) {
+	float cosOpt;
+	if ( speed <= pm_wishSpeedClamp ) {
+		return 0.0f;	// below the cap every angle gains; no distinct optimum
+	}
+	cosOpt = ( pm_wishSpeedClamp - PM_StrafeTickAccel( frameSec ) ) / speed;
+	if ( cosOpt > 1.0f ) { cosOpt = 1.0f; } else if ( cosOpt < -1.0f ) { cosOpt = -1.0f; }
+	return (float)acos( cosOpt ) * 180.0f / (float)M_PI;
 }
 
 
@@ -742,7 +784,7 @@ static qboolean PM_CheckWallJump( void ) {
 	// pops you off; before that it doesn't, so jumping to reach the wall doesn't
 	// instantly bounce you straight back off.
 	if ( pm->ps->pm_flags & PMF_JUMP_HELD ) {
-		if ( abs( pm->ps->stats[STAT_WALLRUN] ) < 150 ) {
+		if ( abs( pm->ps->stats[STAT_WALLRUN] ) < WALLRUN_ATTACH_GRACE_MS ) {
 			return qfalse;
 		}
 	}
@@ -855,7 +897,7 @@ static qboolean PM_CheckAirJump( void ) {
 		dir[1] = pm->ps->velocity[1];
 		dir[2] = 0.0f;
 		hsp = VectorNormalize( dir );
-		if ( hsp < 50.0f ) {		// barely moving: use held dir, else view, softer
+		if ( hsp < AIRDASH_MIN_MOMENTUM ) {		// barely moving: use held dir, else view, softer
 			dir[0] = pml.forward[0] * pm->cmd.forwardmove + pml.right[0] * pm->cmd.rightmove;
 			dir[1] = pml.forward[1] * pm->cmd.forwardmove + pml.right[1] * pm->cmd.rightmove;
 			dir[2] = 0.0f;
@@ -1162,7 +1204,7 @@ static void PM_AirMove( void ) {
 		&& pm->ps->stats[STAT_GROUND_MS] > -pm_coyoteTimeMs
 		&& PM_CheckJump() ) {
 		// (debug print removed — was spamming the corner on every coyote jump)
-		pm->ps->stats[STAT_GROUND_MS] = -9000;	// coyote spent
+		pm->ps->stats[STAT_GROUND_MS] = COYOTE_PARKED;	// coyote spent
 	}
 
 	// walls take priority over the air jump on a fresh press
@@ -2640,8 +2682,8 @@ static void PM_UpdateMovementTimers( void ) {
 		}
 		// accumulate grounded time; too long on the ground breaks the chain
 		pm->ps->stats[STAT_GROUND_MS] += realMsec;
-		if ( pm->ps->stats[STAT_GROUND_MS] > 999 ) {
-			pm->ps->stats[STAT_GROUND_MS] = 999;
+		if ( pm->ps->stats[STAT_GROUND_MS] > GROUND_MS_MAX ) {
+			pm->ps->stats[STAT_GROUND_MS] = GROUND_MS_MAX;
 		}
 		if ( pm->ps->stats[STAT_GROUND_MS] > pm_bhopWindowMs ) {
 			pm->ps->stats[STAT_BHOP_STREAK] = 0;
@@ -2657,11 +2699,11 @@ static void PM_UpdateMovementTimers( void ) {
 		// of range so jumping off never grants a free coyote jump.
 		if ( pm->ps->stats[STAT_GROUND_MS] >= 0 ) {
 			if ( pm->ps->velocity[2] < 100 ) {
-				pm->ps->stats[STAT_GROUND_MS] = -1;		// walked off: coyote armed
+				pm->ps->stats[STAT_GROUND_MS] = COYOTE_ARMED;	// walked off: coyote armed
 			} else {
-				pm->ps->stats[STAT_GROUND_MS] = -9000;	// jumped off: no coyote
+				pm->ps->stats[STAT_GROUND_MS] = COYOTE_PARKED;	// jumped off: no coyote
 			}
-		} else if ( pm->ps->stats[STAT_GROUND_MS] > -8000 ) {
+		} else if ( pm->ps->stats[STAT_GROUND_MS] > COYOTE_FLOOR ) {
 			pm->ps->stats[STAT_GROUND_MS] -= realMsec;	// count airborne time
 		}
 		// SURF pop-off: a steep slope you're touching but can't stand on

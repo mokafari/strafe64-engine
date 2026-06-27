@@ -19,6 +19,13 @@
 #define LAT_PTS			288		// points retained per pilot (client-side render ring)
 #define LAT_SAMPLE_MS	16		// sample cadence (~60 Hz), independent of render rate
 #define LAT_STEP		8.0f	// min carve distance between stored points (u) -- finer = denser/smoother curve
+// Teleport/respawn discontinuity: any single-frame jump farther than this means
+// the pilot DIDN'T run here -- they died and respawned, hit a teleporter, or
+// re-entered the PVS far away. Bounded well above the fastest legit per-frame
+// travel (even a slow-fps hitch at top speed) so real running never trips it,
+// yet far below any cross-map spawn hop. Crossing it WIPES the pilot's ring so a
+// fresh wall starts at the new spot instead of a quad being dragged across the map.
+#define LAT_TELEPORT_DIST	400.0f
 #define LAT_TRAIL_SEGS	144		// how many tail segments to actually draw
 // The wall is a band CENTRED on the pilot that fattens symmetrically with the music --
 // it emanates from the player: a thin line at the centre when quiet, growing equally up
@@ -194,6 +201,20 @@ static void CG_LatticeTrack( int client, const vec3_t origin, qboolean commit ) 
 	if ( client < 0 || client >= MAX_CLIENTS ) {
 		return;
 	}
+	// Respawn / teleport / PVS-return guard: if the pilot jumped impossibly far
+	// from their last committed point, they didn't carve here — wipe the ring so
+	// the wall restarts at the new location instead of stitching a segment (and a
+	// dragged leading bar) across the map. Reset BEFORE setting the live head so
+	// even the in-progress leading quad can't span the gap for a frame.
+	if ( latCount[client] > 0 ) {
+		int		last = ( latHead[client] - 1 + LAT_PTS ) % LAT_PTS;
+		vec3_t	d;
+		VectorSubtract( origin, latPts[client][last], d );
+		if ( VectorLengthSquared( d ) > LAT_TELEPORT_DIST * LAT_TELEPORT_DIST ) {
+			latCount[client] = 0;
+			latHead[client] = 0;
+		}
+	}
 	VectorCopy( origin, latLive[client] );
 	latLiveAmp[client] = latWaveNow;
 	latLiveOn[client] = qtrue;
@@ -344,7 +365,7 @@ static void CG_LatticeBlocks( qhandle_t shader, const vec3_t a, const vec3_t b,
 			szw = 1.5f + ( h2 & 15 ) * 0.55f;			// ~1.5..9.8u wide
 			szh = 1.5f + ( ( h2 >> 4 ) & 15 ) * 0.40f;	// ~1.5..7.5u tall
 		} else {
-			szw = szh = 2.0f + ( ( h >> 20 ) & 7 );
+			szw = szh = 3.5f + ( ( h >> 20 ) & 7 ) * 1.6f;	// ~3.5..14.7u square (chunkier on the big wall)
 		}
 		tear = ( (int)( ( h >> 6 ) & 15 ) - 8 ) * 0.5f * glitch;	// sideways jitter
 
@@ -494,6 +515,29 @@ static void CG_LatticeEmbers( const vec3_t a, const vec3_t b, float topA, float 
 	}
 }
 
+// Near-eye fade for our OWN trail. Returns an alpha multiplier from the distance
+// of a segment's midpoint to the camera: 0 within 96u (hidden right at the eye so
+// the wall never smears across the first-person view), fading in to full by ~246u
+// so the extended trail still reads when you look back. In third-person / dead the
+// eye is far from the body, so the whole trail shows normally.
+// Distances (world units) for the first-person self-fade band: fully invisible
+// inside LATTICE_SELF_FADE_NEAR of the eye, ramping to full over the next
+// LATTICE_SELF_FADE_SPAN units so the trail reappears as you look back.
+#define LATTICE_SELF_FADE_NEAR	96.0f
+#define LATTICE_SELF_FADE_SPAN	150.0f
+
+static float CG_LatticeSelfFade( const vec3_t a, const vec3_t b ) {
+	vec3_t	mid;
+	float	d, nf;
+
+	VectorAdd( a, b, mid );
+	VectorScale( mid, 0.5f, mid );
+	d  = Distance( cg.refdef.vieworg, mid );
+	nf = ( d - LATTICE_SELF_FADE_NEAR ) / LATTICE_SELF_FADE_SPAN;
+	if ( nf < 0.0f ) nf = 0.0f; else if ( nf > 1.0f ) nf = 1.0f;
+	return nf;
+}
+
 static void CG_LatticeDraw( int client ) {
 	int			i, n, idx0, idx1, head, maxSegs;
 	const byte	*col;
@@ -521,7 +565,11 @@ static void CG_LatticeDraw( int client ) {
 		n = maxSegs + 1;
 	}
 	latArenaDraw = arena;	// tells CG_LatticeVert to use the saturated arena look
-	isSelf = ( cg.snap && client == cg.snap->ps.clientNum );	// our own trail -> fade near the eye
+	// Our OWN trail (arena ribbon OR the lattice wall) is drawn but FADED near the
+	// camera — see CG_LatticeSelfFade: invisible right at the eye so it doesn't
+	// smear across the first-person view, fading in with distance so the trail you
+	// laid still reads when you turn to look back. Rivals' trails always draw full.
+	isSelf = ( cg.snap && client == cg.snap->ps.clientNum );
 
 	// amplitude -> half-height gain (clamped to the player half-height per segment)
 	waveScale = cg_latticeWave.value * LAT_WAVE_HALF;
@@ -552,16 +600,9 @@ static void CG_LatticeDraw( int client ) {
 		VectorCopy( latLive[client], la );
 		VectorCopy( latPts[client][newest], lb );
 
-		// self arena trail: hide right at the eye, matching the loop's near-eye fade
-		if ( isSelf && arena ) {
-			vec3_t	mid;
-			float	d, nf;
-			VectorAdd( la, lb, mid );
-			VectorScale( mid, 0.5f, mid );
-			d  = Distance( cg.refdef.vieworg, mid );
-			nf = ( d - 96.0f ) / 150.0f;
-			if ( nf < 0.0f ) nf = 0.0f; else if ( nf > 1.0f ) nf = 1.0f;
-			aMul = nf;
+		// our own trail: hide right at the eye, matching the loop's near-eye fade
+		if ( isSelf ) {
+			aMul = CG_LatticeSelfFade( la, lb );
 			if ( aMul <= 0.0f ) draw = qfalse;
 		}
 
@@ -616,20 +657,12 @@ static void CG_LatticeDraw( int client ) {
 		}
 
 		// SELF: fade out our OWN trail near the camera so the head doesn't smear
-		// across the first-person view. Invisible up close, fading in with
-		// distance so the extended trail still reads when you look back. In
-		// third-person/dead the eye is far from the body, so it shows normally.
-		if ( isSelf && arena ) {
-			vec3_t	mid;
-			float	d, nf;
-			VectorAdd( a, b, mid );
-			VectorScale( mid, 0.5f, mid );
-			d  = Distance( cg.refdef.vieworg, mid );
-			nf = ( d - 96.0f ) / 150.0f;		// 0 within 96u, full by ~246u
-			if ( nf < 0.0f ) nf = 0.0f; else if ( nf > 1.0f ) nf = 1.0f;
-			selfFade  = nf;
-			arenaFade *= nf;
-			if ( arenaFade <= 0.0f ) {
+		// across the first-person view (applies to the arena ribbon AND the lattice
+		// wall). Invisible up close, fading in with distance so the extended trail
+		// still reads when you look back; shows normally in third-person / dead.
+		if ( isSelf ) {
+			selfFade = CG_LatticeSelfFade( a, b );
+			if ( selfFade <= 0.0f ) {
 				continue;	// fully hidden right around the eye
 			}
 		}
@@ -696,6 +729,7 @@ static void CG_LatticeDraw( int client ) {
 		}
 
 		aMul *= arenaFade;	// arena TTL dissolve (1.0 in full LATTICE mode)
+		aMul *= selfFade;	// near-eye fade on our own trail (1.0 for rivals)
 
 		// chromatic split: red/blue ghosts shoved opposite ways (drawn first, under
 		// the core) — the classic datamosh colour fringe. In ARENA they ride the
@@ -750,35 +784,30 @@ static void CG_LatticeDraw( int client ) {
 		}
 	}
 
-	// DYNAMIC NEON LIGHTS: the wall is a real light source, but kept as a subtle
-	// ACCENT (not a floodlight) so the arena still reads cleanly. A modest pulsing
-	// light at the head + a few faint, fading lights down the trail. The pulse
-	// runs on the real clock and swells in slow-mo so bullet-time glows warmer.
-	{
+	// DYNAMIC NEON LIGHT — ONE light per pilot, ON THE PERSON (the trail head), with
+	// nothing strung down the trail. The old per-segment trail lights meant eight
+	// pilots each spraying ~10 dynamic lights, which blew past the renderer's dlight
+	// budget and visibly lagged for the other seven; the walls already read via
+	// their additive geometry + GL2 bloom. Our OWN head light is skipped — at the
+	// eye it would only flood the first-person view. The pulse rides the real clock
+	// + bass and swells in slow-mo.
+	if ( !isSelf ) {
 		float	lr = col[0] / 255.0f, lg = col[1] / 255.0f, lb = col[2] / 255.0f;
-		float	hb = 150.0f + ( 35.0f + 60.0f * latSlow ) * sin( latRealMs * 0.012f ) + 140.0f * latBass;
-		int		lit, lidx;
+		// Tamed: this head light stacks with the player glow AND with every other
+		// pilot's. The old base (150) + a big GLOBAL-bass flare (+140*latBass) made
+		// the whole field blow to white on each kick (all pilots peak on the same
+		// beat). Lower the base + the bass term, and apply the same count-aware
+		// clamp as the glow so N pilots read ~sqrt(N)x brighter, not Nx.
+		float	hb = 100.0f + ( 22.0f + 45.0f * latSlow ) * sin( latRealMs * 0.012f ) + 45.0f * latBass;
+		int		np = CG_GlowPilotCount();
 		vec3_t	lp;
 
-		// our OWN head light would flood the first-person view — skip it, and
-		// start the trail lights further back so nothing glares right at the eye.
-		if ( !isSelf ) {
-			VectorCopy( latPts[client][head], lp );
-			lp[2] += 30.0f;
-			trap_R_AddLightToScene( lp, hb, lr, lg, lb );
+		if ( np > 1 ) {
+			hb *= 1.0f - 0.7f * ( 1.0f - 1.0f / sqrt( (float)np ) );
 		}
-
-		// stride/start-back are in POINTS; the ring is ~2.5x denser now, so the
-		// numbers grow to keep the same spacing in WORLD units. A couple more lights
-		// + a bass pulse make the trail glow richer on the beat (cheap on GL2).
-		lit = 0;
-		for ( i = ( isSelf ? 44 : 0 ) ; i < n && lit < 9 ; i += 22, lit++ ) {
-			float fade = 1.0f - ( i / (float)( n ) );
-			lidx = ( latHead[client] - 1 - i + LAT_PTS * 2 ) % LAT_PTS;
-			VectorCopy( latPts[client][lidx], lp );
-			lp[2] += 30.0f;
-			trap_R_AddLightToScene( lp, ( 45.0f + 55.0f * fade ) * ( 1.0f + 0.4f * latBass ), lr, lg, lb );
-		}
+		VectorCopy( latPts[client][head], lp );
+		lp[2] += 30.0f;
+		trap_R_AddLightToScene( lp, hb, lr, lg, lb );
 	}
 }
 

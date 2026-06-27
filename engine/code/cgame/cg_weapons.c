@@ -1311,7 +1311,14 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	if ( weaponNum == WP_SWORD && !( cent->currentState.eFlags & EF_BLOCKING ) ) {
 		if ( ps ) {
 			CG_SwordSlashTrail( &gun );
-		} else {
+		} else if ( !( cent->currentState.number == cg.snap->ps.clientNum
+				&& !cg.renderingThirdPerson ) ) {
+			// REGRESSION FIX: in first person CG_Player still assembles the local
+			// player's body weapon as RF_THIRD_PERSON (mirror-only). The trail is
+			// a trap_R_AddPolyToScene poly, which ignores RF_THIRD_PERSON — so the
+			// body's ribbon leaked into the main view as a second "stuck" streak
+			// beside the real view-weapon trail. Skip the body ribbon for the
+			// local pilot unless we're actually in third person.
 			CG_SwordSlashTrailEx( &gun, cent->swordSwingTime, &cent->swordTrailNum,
 					&cent->swordTrailLastTime, cent->swordTipPath, cent->swordBasePath );
 		}
