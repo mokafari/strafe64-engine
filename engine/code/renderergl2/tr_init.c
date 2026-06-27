@@ -163,8 +163,16 @@ cvar_t  *r_dofAmount;
 cvar_t  *r_dofFocalDist;
 cvar_t  *r_dofFocalRange;
 cvar_t  *r_dofAutoFocus;
+cvar_t  *r_grade;
+cvar_t  *r_fxaa;
+cvar_t  *r_gradeContrast;
+cvar_t  *r_gradeSaturation;
+cvar_t  *r_gradeTemp;
+cvar_t  *r_vignette;
+cvar_t  *r_filmGrain;
 cvar_t  *r_sunShadows;
 cvar_t  *r_shadowFilter;
+cvar_t  *r_shadowSoftness;
 cvar_t  *r_shadowBlur;
 cvar_t  *r_shadowMapSize;
 cvar_t  *r_shadowCascadeZNear;
@@ -1353,10 +1361,37 @@ void R_Register( void )
 	r_dofFocalDist = ri.Cvar_Get( "r_dofFocalDist", "512", CVAR_ARCHIVE );
 	r_dofFocalRange = ri.Cvar_Get( "r_dofFocalRange", "768", CVAR_ARCHIVE );
 	r_dofAutoFocus = ri.Cvar_Get( "r_dofAutoFocus", "1", CVAR_ARCHIVE );
+
+	// STRAFE 64 photoreal-finish pass: one full-screen shader at the end of the
+	// post chain doing FXAA + cinematic colour grade + vignette + film grain. The
+	// look we're after is "photoreal cinematic finish over a lofi base" -- clean
+	// the jaggies, warm/shape the colour like graded film, then a soft vignette +
+	// a whisper of animated grain for the nostalgic lofi tell. None are latched:
+	// the program is always compiled, so every knob tunes live (r_grade 0 skips the
+	// whole pass). Defaults are deliberately subtle; crank r_vignette/r_filmGrain
+	// for a heavier VHS read.
+	r_grade = ri.Cvar_Get( "r_grade", "1", CVAR_ARCHIVE );
+	r_fxaa = ri.Cvar_Get( "r_fxaa", "1", CVAR_ARCHIVE );
+	r_gradeContrast = ri.Cvar_Get( "r_gradeContrast", "1.06", CVAR_ARCHIVE );
+	r_gradeSaturation = ri.Cvar_Get( "r_gradeSaturation", "1.08", CVAR_ARCHIVE );
+	r_gradeTemp = ri.Cvar_Get( "r_gradeTemp", "0.04", CVAR_ARCHIVE );
+	r_vignette = ri.Cvar_Get( "r_vignette", "0.18", CVAR_ARCHIVE );
+	r_filmGrain = ri.Cvar_Get( "r_filmGrain", "0.03", CVAR_ARCHIVE );
+
 	r_sunlightMode = ri.Cvar_Get( "r_sunlightMode", "1", CVAR_ARCHIVE | CVAR_LATCH );
 
 	r_sunShadows = ri.Cvar_Get( "r_sunShadows", "1", CVAR_ARCHIVE | CVAR_LATCH );
+	// STRAFE 64 soft sun shadows. Two independent knobs, both latched (compile-time
+	// #defines, like r_shadowMapSize):
+	//   r_shadowSoftness scales the PCF kernel RADIUS — wider = softer/filmic edge.
+	//     This is FREE: it just spreads the same taps, no extra samples. The cheap win.
+	//   r_shadowFilter picks the TAP COUNT: 1 = 3-tap (default), 2 = 9-tap (smoother
+	//     penumbra but ~3x the shadow samples — a real cost on slow shadow-sampling
+	//     paths like macOS GL-over-Metal, so it stays OPT-IN, not the default).
+	// So by default we get a softer edge for ~nothing; bump r_shadowFilter to 2 for
+	// the high-quality smooth penumbra when the frame budget allows.
 	r_shadowFilter = ri.Cvar_Get( "r_shadowFilter", "1", CVAR_ARCHIVE | CVAR_LATCH );
+	r_shadowSoftness = ri.Cvar_Get( "r_shadowSoftness", "2.0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_shadowBlur = ri.Cvar_Get("r_shadowBlur", "0", CVAR_ARCHIVE | CVAR_LATCH);
 	r_shadowMapSize = ri.Cvar_Get("r_shadowMapSize", "1024", CVAR_ARCHIVE | CVAR_LATCH);
 	r_shadowCascadeZNear = ri.Cvar_Get( "r_shadowCascadeZNear", "8", CVAR_ARCHIVE | CVAR_LATCH );

@@ -1436,12 +1436,23 @@ Radix sort with 4 byte size buckets
 static void R_RadixSort( drawSurf_t *source, int size )
 {
   static drawSurf_t scratch[ MAX_DRAWSURFS ];
+  // STRAFE 64: secondary-sort by cubemapIndex (the int right after `sort` in
+  // drawSurf_t, struct bytes 4..7) BEFORE the shader sort, so same-(shader,probe)
+  // surfaces end up contiguous and the backend stops re-breaking the batch on
+  // every cubemapIndex change. On dense IBL maps (lun3dm5 uses every DM spawn as
+  // a probe) this collapsed ~4400 micro-batches to a few hundred. Stable LSD
+  // radix => earliest passes are the minor key; two cubemap passes keep the
+  // source<->scratch ping-pong parity even so the result lands back in `source`.
 #ifdef Q3_LITTLE_ENDIAN
+  R_Radix( 4, size, source, scratch );  // cubemapIndex byte 0 (minor key)
+  R_Radix( 5, size, scratch, source );  // cubemapIndex byte 1
   R_Radix( 0, size, source, scratch );
   R_Radix( 1, size, scratch, source );
   R_Radix( 2, size, source, scratch );
   R_Radix( 3, size, scratch, source );
 #else
+  R_Radix( 7, size, source, scratch );  // cubemapIndex byte 0 (minor key)
+  R_Radix( 6, size, scratch, source );  // cubemapIndex byte 1
   R_Radix( 3, size, source, scratch );
   R_Radix( 2, size, scratch, source );
   R_Radix( 1, size, source, scratch );

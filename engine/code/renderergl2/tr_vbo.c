@@ -682,7 +682,12 @@ static struct
 vcq;
 
 #define VAOCACHE_MAX_SURFACES (1 << 16)
-#define VAOCACHE_MAX_BATCHES (1 << 10)
+// STRAFE 64: dense real maps (lun3dm5 ~4000 world batches in view) blew past the
+// old 1024 cap, so the cache recycled ~4x/frame and re-uploaded all geometry every
+// frame instead of reusing it. Raised so a full dense view fits in one pass and the
+// cross-frame batch cache actually kicks in. (Watch the O(numBatches^2) match search
+// in VaoCache_Commit -- if it dominates, the real fix is a static merged world VBO.)
+#define VAOCACHE_MAX_BATCHES (1 << 13)
 
 // srfVert_t is 60 bytes
 // assuming each vert is referenced 4 times, need 16 bytes (4 glIndex_t) per vert
