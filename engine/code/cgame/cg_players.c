@@ -2448,7 +2448,7 @@ void CG_TriggerAcrobatic( centity_t *cent, int kind ) {
 		return;
 	}
 	cent->pe.flipAxis = 1;			// somersault about the side axis
-	cent->pe.flipDir  = 1.0f;		// backflip
+	cent->pe.flipDir  = -1.0f;		// backflip (rotate the body backward, heels over head)
 	cent->pe.flipDuration = 600;
 	cent->pe.flipStartTime = cg.time;
 }
