@@ -60,7 +60,7 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
              item_trail=False, standalone=False, backup=False,
              bake=False, bake_bounce=3,
              vscale=1.0, hscale=1.0, density=1.0, sections=None,
-             theme="default", greeble_density=1.0):
+             theme="default", greeble_density=1.0, godrays=True):
     os.makedirs(out_dir, exist_ok=True)
     cfg.THEME = theme           # read by BspWriter to remap bulk faces to concrete
     mods = cfg.GenMods(vscale=vscale, hscale=hscale, density=density,
@@ -108,6 +108,14 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
         n = greeble_course(course, seed=getattr(course, "seed", 0),
                            density=greeble_density)
         print(f"    concrete theme: +{n} greeble cubes (density {greeble_density:g})")
+    # VOLUMETRIC SUN-SHAFTS: the arena-class maps have a real sky-sun, so pour
+    # visible light into the air — leaning additive god-ray columns + a corona,
+    # aligned to the same bearing as the cast shadows. Non-colliding decor; rides
+    # the same vertex-lit BSP (no bake needed). --no-gfx / --no-godrays skip it.
+    if godrays and cfg.GFX and (arena or killbox or latticearena):
+        import strafegen_volumetric as vol
+        n = vol.add_godrays(course, seed=getattr(course, "seed", seed or 0))
+        print(f"    volumetric: +{n} sun-shaft brushes (god-rays + corona)")
     # universal post-build resize (identity at 1,1,1 -> byte-unchanged). Runs
     # before bake/write so both paths see the resized geometry.
     scale_course(course, mods.hscale, mods.hscale, mods.vscale)
@@ -215,6 +223,21 @@ def selftest():
             BspWriter(kb).write(p)
             check_bsp(p)
             ok += 1
+        # volumetric god-rays: non-colliding DECOR brushes that still DRAW. Place
+        # them on an arena and assert the writer keeps them translucent (so they
+        # never clip a player) yet emits drawn surfaces (so the beam is visible).
+        import strafegen_volumetric as vol
+        ar = Arena(1337, 1).build()
+        n = vol.add_godrays(ar, seed=1337, count=5)
+        assert n >= 5, "add_godrays placed nothing"
+        decor = [b for b in ar.solids if b.contents == CONTENTS_DECOR]
+        assert len(decor) == n, f"expected {n} decor brushes, got {len(decor)}"
+        assert all(b.contents != CONTENTS_SOLID for b in decor), \
+            "god-ray brushes must be non-solid (players pass through)"
+        p = os.path.join(td, "gr.bsp")
+        BspWriter(ar).write(p)
+        check_bsp(p)
+        ok += 1
     print(f"selftest: {ok} maps generated and validated, all invariants hold")
     print(f"physics: jump range @320 = {jump_range(320):.0f}u, "
           f"single-jump ledge <= {LEDGE_SJ:.0f}u, "
@@ -280,6 +303,9 @@ def main():
     ap.add_argument("--no-gfx", action="store_true",
                     help="omit the graphics-recipe shaders (sun/shadows, PBR "
                          "hull, chrome, plasma, beam) — vanilla identity look")
+    ap.add_argument("--no-godrays", action="store_true",
+                    help="skip the volumetric sun-shafts/corona on arena-class "
+                         "maps (they're on by default when gfx is on)")
     ap.add_argument("--standalone", action="store_true",
                     help="bundle the shader + textures INTO the map pk3 (portable "
                          "single file). Default is LEAN: shared assets ship once "
@@ -388,7 +414,7 @@ def main():
         seed = args.seed if args.seed is not None else 64
         generate(seed, args.difficulty, 1, args.out, args.map, args.pk3,
                  latticearena="lite" if args.noweapons else True,
-                 name=args.name,
+                 name=args.name, godrays=not args.no_godrays,
                  standalone=args.standalone, backup=args.backup, **_genmods)
         return
     name = None
@@ -409,7 +435,7 @@ def main():
              combat=args.combat, archetype=args.arch,
              name=args.name or name, void=not args.no_void,
              voidrise=args.voidrise, voiddelay=args.voiddelay,
-             item_trail=args.item_trail,
+             item_trail=args.item_trail, godrays=not args.no_godrays,
              standalone=args.standalone, backup=args.backup,
              bake=args.bake, bake_bounce=args.bake_bounce, **_genmods)
 

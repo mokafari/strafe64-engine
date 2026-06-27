@@ -365,8 +365,30 @@ The sun is active on every map. The materials are **routed into generators**:
 - **Killbox**: spire pyramid steps + wall-jump/cover column shafts → `hull`, keeping the neon rim caps as the wall-jump cue.
 
 Routing is a per-brush `tex=` swap (hull/chrome are opaque & solid → collision unchanged).
-`plasma`/`beam` are `nonsolid` additive decals and remain unplaced components (they need a
-non-solid decorative brush, which the direct-BSP writer doesn't emit yet).
+`plasma`/`beam` are `nonsolid` additive decals — these now have a home: the direct-BSP
+writer emits **nonsolid-but-drawn decorative surfaces** (`CONTENTS_DECOR`, see below).
+
+### Volumetric sun-shafts (god-rays) — `strafegen_volumetric.py`
+
+The runtime sun gives a direction + cast shadows, but the *air* between geometry was empty.
+[`strafegen_volumetric.py`](../tools/strafegen/strafegen_volumetric.py) fills it with the
+classic idTech3 cheap-volumetric: leaning **additive light-shaft cards** that rake down from
+the sky-sun bearing (`cull none`, `sort additive`, no depthwrite — stacked faces brighten the
+core to fake density), plus an `autosprite` **sun corona**. Textures are procedural
+(`godshaft.tga` soft-edged core + drifting motes, `suncorona.tga` radial flare). Shafts/corona
+are placed by `add_godrays(course)` — aligned to the same bearing as the shadows, scattered
+across the play volume and **clamped inside the world hull** so nothing pokes through a wall.
+
+On by default for the arena-class maps (`--arena` / `--killbox` / `--latticearena`) whenever
+gfx is on; `--no-godrays` opts out. Tuning knobs live at the top of the module
+(`SHAFT_LEAN_FRAC`, `SHAFT_TINT`) and in `add_godrays` (`count`, `width`, `inset`, `corona`).
+
+This rides on a foundational BSP-writer change: **`CONTENTS_DECOR`** (= Q3
+`CONTENTS_TRANSLUCENT`) is a brush that is **non-colliding yet drawn** — the writer now splits
+"non-solid for collision" from "nodraw for render" (previously conflated, so every nonsolid
+brush was invisible). Additive decals (god-rays, beam, plasma) are also left **unfogged**
+(`NOFOG_TEX`) so distance fog doesn't smear their glow. This same surface class is what
+finally lets `plasma`/`beam` be placed as real decorative geometry.
 
 > **nolightmap note:** on the vertex-lit world the hull's PBR relief reads subtly — faces
 > away from the low sun get only blue dusk ambient. Mitigated with a brighter steel albedo +

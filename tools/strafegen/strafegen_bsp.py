@@ -227,18 +227,23 @@ class BspWriter:
     def emit_brush(self, brush):
         first_side = len(self.brushsides)
         is_trigger = brush.contents == CONTENTS_TRIGGER
-        # triggers and fog volumes are non-solid + non-drawing; only their
-        # content flag and (for fog) their axial bounds matter to the engine
-        is_nonsolid = brush.contents in (CONTENTS_TRIGGER, CONTENTS_FOG)
+        # Two independent axes here, NOT one. COLLISION: triggers, fog and decor
+        # are all non-solid (their contents bit is in no movement/trace mask, so
+        # players pass through). RENDER: triggers and fog are also non-drawing
+        # (nodraw), but DECOR draws — an additive god-ray / plasma / beam decal is
+        # a non-colliding brush whose faces are meant to be seen.
+        is_nonsolid = brush.contents in (CONTENTS_TRIGGER, CONTENTS_FOG,
+                                         CONTENTS_DECOR)
+        is_nodraw = brush.contents in (CONTENTS_TRIGGER, CONTENTS_FOG)
         cflags = brush.contents if is_nonsolid else CONTENTS_SOLID
         m_tex, m_pal = theme_remap(brush.faces[0].tex, brush.faces[0].palette,
                                    self.theme)
         main_sid = self.shader_id(
             _glow_tex(m_tex, m_pal),
-            SURF_NODRAW if is_nonsolid else 0, cflags)
+            SURF_NODRAW if is_nodraw else 0, cflags)
         faces = []
         for f in brush.faces:
-            sflags = SURF_NODRAW if (not f.draw or is_nonsolid) else 0
+            sflags = SURF_NODRAW if (not f.draw or is_nodraw) else 0
             if f.tex == TEX_SKY:
                 sflags |= SURF_SKY | SURF_NOIMPACT
             f_tex, f_pal = theme_remap(f.tex, f.palette, self.theme)
@@ -265,7 +270,7 @@ class BspWriter:
             if pid not in bevel_pids:    # bevels already cover axial faces
                 self.brushsides.append(struct.pack("<2i", pid, sid))
                 num_sides += 1
-            if f.draw and not is_nonsolid:
+            if f.draw and not is_nodraw:
                 surf_ids.append(self.emit_face(f, sid))
         self.brushes.append(struct.pack(
             "<3i", first_side, num_sides, main_sid))
@@ -289,8 +294,11 @@ class BspWriter:
         center = tuple(sum(p[i] for p in poly) / len(poly) for i in range(3))
         sid = len(self.surfaces)
         # fogNum: tag every non-sky surface to global fog 0 (-> fogIndex 1) when
-        # the map carries a fog volume; sky stays unfogged (-1)
-        fog_num = 0 if (self.has_fog and f.tex != TEX_SKY) else -1
+        # the map carries a fog volume; sky AND additive decals (god-rays, beams,
+        # plasma — see NOFOG_TEX) stay unfogged (-1) so distance fog doesn't smear
+        # their self-illuminated glow into a grey haze.
+        fog_num = (0 if (self.has_fog and f.tex != TEX_SKY
+                         and f.tex not in NOFOG_TEX) else -1)
         self.surfaces.append(struct.pack(
             "<12i12f2i",
             shader_id, fog_num, MST_PLANAR,

@@ -38,6 +38,10 @@ import struct
 
 # Shared 32-bit TGA writer (was duplicated here; single home is strafegen_tga).
 from strafegen_tga import _tga32, _clamp8
+# Volumetric atmosphere (sun shafts / corona). It imports only leaf modules and
+# never imports gfx at load time (add_godrays lazy-imports us back), so folding
+# its shaders + textures in here keeps a single pk3 chokepoint with no cycle.
+import strafegen_volumetric as volumetric
 
 # Shader names for the component materials, so generators can route faces to
 # them by name (e.g. tex=gfx.TEX_HULL). HULL/CHROME are opaque and solid-safe;
@@ -214,8 +218,9 @@ def gfx_shaders():
 
 def augment(shader_script):
     """Full transform applied by strafegen at pk3-build time: arm the sun on the
-    sky shader and append the component materials."""
-    return inject_sun(shader_script) + "\n" + COMPONENT_SHADERS
+    sky shader and append the component + volumetric (sun-shaft/corona) materials."""
+    return (inject_sun(shader_script) + "\n" + COMPONENT_SHADERS
+            + "\n" + volumetric.godray_shaders())
 
 
 # ======================================================================
@@ -378,10 +383,11 @@ def _build_gfx_textures():
 
 
 def gfx_textures():
-    """{arcname: tga_bytes} for the component materials. Cached (deterministic)."""
+    """{arcname: tga_bytes} for the component + volumetric materials. Cached."""
     global _GFX_TEX_CACHE
     if _GFX_TEX_CACHE is None:
-        _GFX_TEX_CACHE = _build_gfx_textures()
+        _GFX_TEX_CACHE = dict(_build_gfx_textures())
+        _GFX_TEX_CACHE.update(volumetric.godray_textures())
     return _GFX_TEX_CACHE
 
 

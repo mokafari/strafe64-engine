@@ -118,10 +118,17 @@ def compile_aas(bsp_path):
     # bot as able to jump anywhere; combined with the enhanced moveset that
     # over-optimism navigates better than a realistic model. So: no -cfg.
     # (dojo_runs.jsonl iter2/iter3 — hypothesis rejected by no-regression.)
-    r = subprocess.run(
-        [bspc, "-forcesidesvisible", "-bsp2aas",
-         os.path.abspath(bsp_path), "-output", out_dir],
-        capture_output=True, text=True, cwd=out_dir)
+    try:
+        r = subprocess.run(
+            [bspc, "-forcesidesvisible", "-bsp2aas",
+             os.path.abspath(bsp_path), "-output", out_dir],
+            capture_output=True, text=True, cwd=out_dir)
+    except OSError as e:
+        # bspc present but not runnable (wrong arch / corrupt / not executable).
+        # Degrade to "no bots" exactly like a nonzero exit — a broken compiler
+        # must not abort the whole map build.
+        sys.stderr.write(f"warning: bspc not runnable ({e}), no bot support\n")
+        return None
     aas = os.path.splitext(bsp_path)[0] + ".aas"
     if r.returncode != 0 or not os.path.isfile(aas):
         sys.stderr.write(f"warning: bspc failed, no bot support\n"

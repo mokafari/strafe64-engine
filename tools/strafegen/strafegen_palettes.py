@@ -7,6 +7,12 @@ constants and one small router; a leaf module everything else imports.
 # ---- content / surface flags (game/surfaceflags.h) ----
 CONTENTS_SOLID   = 0x00000001
 CONTENTS_FOG     = 0x00000040   # volumetric fog (non-solid; renderer global fog)
+# DECOR = translucent, NON-colliding, but DRAWN. Q3's CONTENTS_TRANSLUCENT bit is
+# in no movement/trace mask (MASK_PLAYERSOLID = SOLID|PLAYERCLIP|BODY), so a brush
+# carrying it renders its faces yet players/traces pass straight through — exactly
+# what an additive god-ray shaft, plasma panel or beam decal wants. Unlike the
+# global fog brush (also non-solid but NODRAW), a decor brush's faces are emitted.
+CONTENTS_DECOR   = 0x20000000   # = CONTENTS_TRANSLUCENT
 CONTENTS_TRIGGER = 0x40000000
 SURF_SKY         = 0x00000004
 SURF_NOIMPACT    = 0x00000010
@@ -78,6 +84,18 @@ ACCENT_GLOW = frozenset((
 ))
 TEX_FLOOR_GLOW = "textures/strafe64/glow_floor"
 TEX_WALL_GLOW  = "textures/strafe64/glow_wall"
+
+# Additive / self-illuminated decal materials (god-ray shafts, plasma panels,
+# beams, sun corona). emit_face leaves these UNFOGGED (fogNum -1, like the sky):
+# the global distance-fog adds its colour to every tagged surface, which muddies
+# an additive shaft into a grey smear. These are atmosphere in their own right.
+NOFOG_TEX = frozenset((
+    "textures/strafe64/godshaft",
+    "textures/strafe64/suncorona",
+    "textures/strafe64/dustmote",
+    "textures/strafe64/plasma",
+    "strafe64/beam",
+))
 
 
 def _glow_tex(tex, palette):
