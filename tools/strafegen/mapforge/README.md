@@ -45,6 +45,23 @@ Realtime: the browser holds the only state and transforms/snaps parts locally
 (the parts catalog is fetched once); the server only re-composes authoritatively
 on export. Snapping/transform math is mirrored in `app.js` and `scene.py`.
 
+## Import / decompile any map
+
+In Generate mode, the **Import / decompile** picker lists every `.bsp` / `.pk3`
+under `generated/` (and any dirs in `$MAPFORGE_MAPS`). Load one and MapForge
+**decompiles its geometry** — `../bsp_import.py` reads the drawvert / drawindex /
+surface lumps of any IBSP v46 map (planar + triangle-soup surfaces, plus a
+control-grid approximation of patches) back into the scene model, preserving the
+baked vertex colours — and renders it in the 3D view. Works on stock Q3,
+OpenArena, or strafegen output: a way to study shipped level design in the same
+viewer. Imported maps are view-only (export is disabled).
+
+```sh
+python3 bsp_import.py path/to/map.bsp            # geometry digest
+python3 bsp_import.py pack.pk3 --map q3dm6 --json scene.json
+MAPFORGE_MAPS=/path/to/baseoa python3 mapforge/server.py   # expose a map dir
+```
+
 ## What you can do (Generate mode)
 
 - **Generate** any kind — course, combat course, velodrome arena, killbox,

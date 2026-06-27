@@ -36,6 +36,10 @@ const api = {
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }),
   parts: () => fetch('/api/parts').then(r => r.json()),
+  maps: () => fetch('/api/maps').then(r => r.json()),
+  importBsp: (body) => fetch('/api/import_bsp', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }),
   composeExport: (body) => fetch('/api/compose_export', { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }),
@@ -523,11 +527,39 @@ $('view2d').addEventListener('click', ev => {
 });
 
 // ----------------------------------------------------------------- generate / export
+async function loadMapList() {
+  try {
+    const r = await api.maps();
+    const sel = $('mapSel');
+    sel.innerHTML = '<option value="">— pick a .bsp / .pk3 —</option>'
+      + r.maps.map(m => `<option value="${m.path}">${m.label}</option>`).join('');
+    if (!r.maps.length) sel.innerHTML = '<option value="">(no maps found)</option>';
+  } catch (e) { /* server may lack the endpoint */ }
+}
+
+async function importMap() {
+  const path = $('mapSel').value;
+  if (!path) { toast('pick a map first', true); return; }
+  $('busy').style.display = 'block';
+  try {
+    S.base = await api.importBsp({ path });
+    S.imported = true;
+    S.entMods.clear(); S.brushMods.clear(); S.added = []; S.sel = null; S.placing = null;
+    $('export').disabled = true; $('export').title = 'imported maps are view-only';
+    frameCamera(); refresh(); status();
+    const c = S.base.counts;
+    toast(`decompiled ${S.base.name} · ${c.triangles} triangles`
+      + (c.truncated ? ' (truncated)' : ''));
+  } catch (e) { toast('import failed: ' + e.message, true); }
+  finally { $('busy').style.display = 'none'; }
+}
+
 async function generate() {
   const { kind, params } = gatherParams();
   $('busy').style.display = 'block';
   try {
     S.base = await api.generate({ kind, params, edits: [] });
+    S.imported = false; $('export').disabled = false; $('export').title = '';
     S.entMods.clear(); S.brushMods.clear(); S.added = []; S.sel = null; S.placing = null;
     frameCamera(); refresh(); status();
     toast(`built ${kind} · seed ${params.seed} · ${S.base.counts.brushes} brushes`);
@@ -544,8 +576,15 @@ function status() {
   }
   if (!S.base) return;
   const c = S.base.counts; const b = S.base.bounds.map(Math.round);
+  const dims = `${(b[3]-b[0])}×${(b[4]-b[1])}×${(b[5]-b[2])}u`;
+  if (S.imported) {
+    $('status').textContent = `imported ${S.base.name} · ${c.brushes} surfaces · `
+      + `${c.triangles} triangles · ${c.entities} entities · ${c.spawns} spawns · ${dims}`
+      + (c.truncated ? ' · TRUNCATED' : '');
+    return;
+  }
   $('status').textContent = `${c.brushes} brushes · ${c.entities} entities · ${c.spawns} spawns `
-    + `· ${c.triggers} triggers · ${(b[3]-b[0])}×${(b[4]-b[1])}×${(b[5]-b[2])}u · ${editCount()} edits`;
+    + `· ${c.triggers || 0} triggers · ${dims} · ${editCount()} edits`;
 }
 
 async function doExport() {
@@ -616,6 +655,8 @@ function wire() {
   $('modeCompose').onclick = () => switchMode('compose');
   $('clearCompose').onclick = () => { C.placed = []; C.sel = null; composeRefresh(); };
   $('cExport').onclick = composeExport;
+  $('importBtn').onclick = importMap;
+  $('mapRefresh').onclick = loadMapList;
   document.querySelectorAll('[data-layer]').forEach(btn => btn.onclick = () => {
     const l = btn.dataset.layer; S.layers[l] = !S.layers[l];
     btn.classList.toggle('on', S.layers[l]); refresh();
@@ -949,6 +990,7 @@ async function switchMode(m) {
   try {
     S.meta = await api.meta();
     buildUI(); wire(); initGL(); setView('3d');
+    loadMapList();
     await generate();
   } catch (e) { toast('init failed: ' + e.message, true); console.error(e); }
 })();

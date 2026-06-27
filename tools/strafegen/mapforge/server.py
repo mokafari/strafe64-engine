@@ -31,6 +31,11 @@ sys.path.insert(0, STRAFEGEN)                # so `import scene` / `import straf
 
 import scene                                  # noqa: E402
 import strafegen as sg                        # noqa: E402
+import bsp_import                             # noqa: E402
+
+# directories the importer is allowed to read maps from (local dev tool):
+# generated/ plus anything in $MAPFORGE_MAPS (colon-separated)
+_MAP_ROOTS = [GENERATED] + [p for p in os.environ.get("MAPFORGE_MAPS", "").split(":") if p]
 
 _BUILD_LOCK = threading.Lock()                # cfg.THEME is global; serialize builds
 
@@ -46,6 +51,36 @@ def _course_from(req):
     edits = req.get("edits", []) or []
     course = scene.build_kind(kind, params)
     return scene.apply_edits(course, edits)
+
+
+def _list_maps():
+    """Every .bsp / .pk3 found under the allowed map roots."""
+    out = []
+    for root in _MAP_ROOTS:
+        if not os.path.isdir(root):
+            continue
+        for dirpath, _dirs, files in os.walk(root):
+            for fn in sorted(files):
+                if fn.lower().endswith((".bsp", ".pk3")):
+                    full = os.path.join(dirpath, fn)
+                    out.append({"path": full, "label": os.path.relpath(full, root),
+                                "root": root})
+    return {"maps": out, "roots": _MAP_ROOTS}
+
+
+def _import_map(req):
+    """Decompile a .bsp (or a map inside a .pk3) into a renderable scene. The
+    path must resolve under an allowed root."""
+    path = os.path.realpath(req.get("path", ""))
+    if not any(path.startswith(os.path.realpath(r) + os.sep) or path == os.path.realpath(r)
+               for r in _MAP_ROOTS):
+        raise ValueError("path is outside the allowed map directories")
+    if not os.path.isfile(path):
+        raise ValueError(f"no such file: {path}")
+    if path.lower().endswith((".pk3", ".zip")):
+        data, name = bsp_import._load_pk3(path, req.get("map"))
+        return bsp_import.import_bsp(data, os.path.splitext(name)[0])
+    return bsp_import.import_bsp(path, os.path.splitext(os.path.basename(path))[0])
 
 
 def _compose_export(req):
@@ -175,6 +210,9 @@ class Handler(BaseHTTPRequestHandler):
             with _BUILD_LOCK:
                 self._json(scene.parts_catalog())
             return
+        if self.path == "/api/maps":
+            self._json(_list_maps())
+            return
         self._serve_static(self.path)
 
     def do_POST(self):
@@ -195,6 +233,10 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == "/api/compose_export":
                 with _BUILD_LOCK:
                     res = _compose_export(req)
+                self._json(res)
+            elif self.path == "/api/import_bsp":
+                with _BUILD_LOCK:
+                    res = _import_map(req)
                 self._json(res)
             else:
                 self._err("not found", 404)

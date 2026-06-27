@@ -69,6 +69,15 @@
     <hr>
     <button class="primary" id="generate" style="width:100%">⚙ GENERATE</button>
     <div class="hint" id="genHint">builds in-memory · no engine needed</div>
+
+    <h2>Import / decompile</h2>
+    <div class="row">
+      <select id="mapSel"><option value="">— pick a .bsp / .pk3 —</option></select>
+      <button class="sm" id="mapRefresh" title="rescan">⟳</button>
+    </div>
+    <button class="sm" id="importBtn" style="width:100%;margin-top:6px">⬆ load &amp; decompile</button>
+    <div class="hint">reads any IBSP v46 map (from generated/, or $MAPFORGE_MAPS)
+      back into the 3D view — learn from shipped level design</div>
     </div><!-- /genControls -->
 
     <div id="composeControls" style="display:none">
