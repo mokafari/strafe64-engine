@@ -1,9 +1,15 @@
 # STRAFE 64 — Visual & Audio Identity
 
-A NERV/MAGI-flavoured terminal HUD, a PlayStation-era low-fi render path,
-and a native tracker-module music player. Reference mood: *Evangelion*
-MAGI defense screens (amber-on-black, alert-red under pressure) with PSX
-3D crunch.
+A NERV/MAGI-flavoured terminal HUD, a **brutalist / Bryce-3D realism** render
+path (GL2 sun + shadows + tonemap + PBR — see [`realism.cfg`](../tools/strafegen/realism.cfg)),
+and a native tracker-module music player. Reference mood: *Evangelion* MAGI
+defense screens (amber-on-black, alert-red under pressure) over an ultra-real
+brutalist concrete world.
+
+> **2026 pivot:** the house render path is now realism (default via
+> `run.sh`), not the PSX/N64 low-fi crunch. The PSX path below is retired to a
+> selectable preset — `run.sh -p` / `psx.cfg`. See
+> [ART_DIRECTION.md](ART_DIRECTION.md) for the full rationale.
 
 ## NERV/MAGI HUD
 

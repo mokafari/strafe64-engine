@@ -10,11 +10,12 @@ mutates. Reference as ``cfg.GFX`` (not ``from strafegen_config import GFX``) so 
 GFX = True
 
 # Active art theme, read at BSP-emit time (strafegen_bsp) to remap the bulk
-# dev-texture surfaces to an alternate material. "default" = the Source dev look
-# (orange floors / grey walls); "concrete" = the lun3dm5 brutalist pale-concrete
-# look (see strafegen_palettes.theme_remap + the greeble pass in strafegen_geom).
-# Set by --theme; "default" leaves every map byte-identical.
-THEME = "default"
+# dev-texture surfaces to an alternate material. "concrete" = the HOUSE STYLE
+# since the realism pivot: surrealist brutalist pale-concrete + Bryce sun/sky
+# (see ART_DIRECTION.md, strafegen_palettes.theme_remap + the greeble pass in
+# strafegen_geom). "default" = the legacy Source dev look (orange floors / grey
+# walls), kept for diffing / nostalgia. Set by --theme.
+THEME = "concrete"
 
 
 class GenMods:

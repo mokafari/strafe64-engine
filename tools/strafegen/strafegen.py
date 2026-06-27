@@ -60,7 +60,7 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
              item_trail=False, standalone=False, backup=False,
              bake=False, bake_bounce=3,
              vscale=1.0, hscale=1.0, density=1.0, sections=None,
-             theme="default", greeble_density=1.0):
+             theme="concrete", greeble_density=1.0):
     os.makedirs(out_dir, exist_ok=True)
     cfg.THEME = theme           # read by BspWriter to remap bulk faces to concrete
     mods = cfg.GenMods(vscale=vscale, hscale=hscale, density=density,
@@ -308,11 +308,13 @@ def main():
                          "guarantee the identity shader pak is present so its "
                          "loose .bsp maps render with real shaders, not grey")
     # ---- art theme ----
-    ap.add_argument("--theme", default="default", choices=("default", "concrete"),
-                    help="art theme. 'default' = Source dev look (orange floors/grey "
-                         "walls); 'concrete' = lun3dm5 brutalist pale concrete — one "
-                         "material + a cube-greeble pass that erodes masses into the "
-                         "stacked-cube silhouette. Accents stay vivid in both")
+    ap.add_argument("--theme", default="concrete", choices=("default", "concrete"),
+                    help="art theme. 'concrete' (DEFAULT, the house style) = "
+                         "surrealist brutalist pale concrete — one material + a "
+                         "cube-greeble pass that erodes masses into the stacked-cube "
+                         "silhouette, under the Bryce sun/sky. 'default' = the legacy "
+                         "Source dev look (orange floors/grey walls). Accents stay "
+                         "vivid in both")
     ap.add_argument("--greeble-density", type=float, default=1.0,
                     help="with --theme concrete: cube-erosion density (1.0 default, "
                          "0 = concrete material only / no added cubes, 1.8 = heavier)")

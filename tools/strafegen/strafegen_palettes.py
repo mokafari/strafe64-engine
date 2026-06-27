@@ -4,6 +4,8 @@ The Source dev-texture colour scheme + the accent-glow routing (_glow_tex). Pure
 constants and one small router; a leaf module everything else imports.
 """
 
+import os
+
 # ---- content / surface flags (game/surfaceflags.h) ----
 CONTENTS_SOLID   = 0x00000001
 CONTENTS_FOG     = 0x00000040   # volumetric fog (non-solid; renderer global fog)
@@ -112,10 +114,20 @@ _CONCRETE_PAL = {
     SRC_BLUE:   PAL_CRETE,
 }
 # Bulk dev shaders the concrete theme reroutes: floors/walls -> one crete
-# material, and the sky -> the photoreal box. (The fog volume is swapped
-# separately in the BSP writer, which builds it directly.)
-_CONCRETE_TEX = {TEX_FLOOR: TEX_CONCRETE, TEX_WALL: TEX_CONCRETE,
-                 TEX_SKY: TEX_SKY_REAL}
+# material. The sky -> photoreal box swap is handled separately in theme_remap,
+# gated on the baked cube actually being present (see _have_baked_sky). (The fog
+# volume is swapped separately in the BSP writer, which builds it directly.)
+_CONCRETE_TEX = {TEX_FLOOR: TEX_CONCRETE, TEX_WALL: TEX_CONCRETE}
+
+
+def _have_baked_sky():
+    """True once the photoreal sky cube has been baked into ``skytex/`` by
+    skybox_from_photo.py (realsky_<side>.tga). Until those photos exist the
+    concrete theme keeps the procedural 'Bryce' synthsky (textures/strafe64/sky)
+    so a map NEVER references a missing skybox — the photoreal sky is a drop-in
+    OVERRIDE, not a hard dependency. Cheap stat; the bake is a one-time step."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.exists(os.path.join(here, "skytex", "realsky_ft.tga"))
 
 
 def theme_fog(theme="default"):
@@ -134,4 +146,8 @@ def theme_remap(tex, palette, theme="default"):
     if theme == "concrete":
         palette = _CONCRETE_PAL.get(palette, palette)
         tex = _CONCRETE_TEX.get(tex, tex)
+        # Photoreal sky is an override: swap only when the baked cube is present,
+        # else leave the procedural Bryce synthsky in place (no broken skybox).
+        if tex == TEX_SKY and _have_baked_sky():
+            tex = TEX_SKY_REAL
     return tex, palette

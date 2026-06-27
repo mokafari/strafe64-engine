@@ -8,8 +8,10 @@
 #   ./scripts/run.sh -d <map>         dedicated server
 #   ./scripts/run.sh -daily           today's ★ surf circuit + daily mutator
 #
-# Prefix any client mode with -p for the STRAFE 64 PSX low-fi preset:
-#   ./scripts/run.sh -p               PSX look, main menu
+# The REALISM render preset (brutalist / Bryce GL2 — sun shadows, tonemap,
+# PBR, HDR) is applied by DEFAULT. Prefix any client mode with -p for the
+# legacy PSX low-fi preset instead:
+#   ./scripts/run.sh -p               legacy PSX look, main menu
 #   ./scripts/run.sh -p -b 4 surf_daily_20260615
 #
 # vm_game/vm_cgame/vm_ui 0 load the modded native dylibs from baseoa/
@@ -58,13 +60,15 @@ cp "$STRAFEGEN/arena.cfg"       "$OA/baseoa/arena.cfg"       2>/dev/null
 cp "$STRAFEGEN/sword_arena.cfg" "$OA/baseoa/sword_arena.cfg" 2>/dev/null
 cp "$STRAFEGEN/arena_vg.cfg"    "$OA/baseoa/arena_vg.cfg"    2>/dev/null
 
-# optional leading -p: stage and exec the PSX cvar preset on the client
-PSX=""
+# render preset: REALISM (default house GL2 look) unless a leading -p selects
+# the legacy PSX low-fi preset. Stage the chosen cfg and exec it on the client.
+PRESET="realism.cfg"
 if [ "$1" = "-p" ]; then
-	cp "$STRAFEGEN/psx.cfg" "$OA/baseoa/psx.cfg"
-	PSX="+exec psx.cfg"
+	PRESET="psx.cfg"
 	shift
 fi
+cp "$STRAFEGEN/$PRESET" "$OA/baseoa/$PRESET"
+RENDER="+exec $PRESET"
 
 COMMON="+set com_basegame baseoa +set fs_basepath $OA +set sv_pure 0 +set vm_game 0"
 FULLSCREEN=0
@@ -100,4 +104,4 @@ case "$1" in
 esac
 
 exec "$ENGINE/ioquake3.app/Contents/MacOS/ioquake3" $COMMON \
-	+set vm_cgame 0 +set vm_ui 0 +set r_fullscreen "$FULLSCREEN" $PSX $EXTRA
+	+set vm_cgame 0 +set vm_ui 0 +set r_fullscreen "$FULLSCREEN" $RENDER $EXTRA

@@ -12,9 +12,11 @@ tools/strafegen/shaderlib/__pycache__/
 tools/strafegen/sweep_results.jsonl
 # downloaded third-party study maps (~166 MB, not ours to version)
 tools/strafegen/maps_study/
-# built q3map2 binary + generated/asset textures (regenerable)
+# built q3map2 binary (regenerable)
 tools/strafegen/q3map2
-tools/strafegen/skytex/
+# skytex/ holds the BAKED photoreal house-style assets (realsky_*.tga, crete.tga
+# from bake_assets.sh). These are committed to ship the photoreal look, so the
+# dir is NOT ignored. The procedural fallback renders whole when it's empty.
 # compiled WASM demo build + bundled assets (rebuildable)
 web-demo/
 # local Claude Code session config (machine-specific)
