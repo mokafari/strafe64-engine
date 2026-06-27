@@ -314,6 +314,7 @@ struct gclient_s {
 
 	int			swordComboStep;		// sword melee combo counter; advances while swings chain within the window
 	int			swordComboTime;		// level.time of the last sword swing (combo window timer)
+	int			swordSwingParm;		// packed start|end quadrant of the current swing (from the fire event)
 	int			dashTime;			// level.time the dash is off cooldown (BUTTON_DASH)
 	int			dashSurge;			// level.time until which a dash wakes the clock (snappy real-time lunge)
 

@@ -692,6 +692,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		// Also stamp the dash time so CG_Player smears a chromatic-ghost glitch
 		// trail off the kick (digital eye-candy on the key movement).
 		cent->dashGlitchTime = cg.time;
+		CG_TriggerAcrobatic( cent, 0 );		// somersault off the air-jump
 		trap_S_StartSound (NULL, es->number, CHAN_VOICE, CG_CustomSound( es->number, "*jump1.wav" ) );
 		{
 			vec3_t	feet, down = {0, 0, -1};
@@ -713,6 +714,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		// STRAFE 64: SHIFT revector dash — same chromatic-ghost strobe trail as the
 		// air-dash, no sound (the dash is its own silent lunge).
 		cent->dashGlitchTime = cg.time;
+		CG_TriggerAcrobatic( cent, 1 );		// barrel / dive roll into the dash
 		break;
 
 	case EV_TAUNT:

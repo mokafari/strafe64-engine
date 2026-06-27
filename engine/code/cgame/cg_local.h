@@ -164,6 +164,16 @@ typedef struct {
 	// signed bank from lateral velocity (+ leaning right / - leaning left).
 	float			slide;
 	float			slideLean;
+
+	// STRAFE 64: procedural acrobatic flip / roll — a cosmetic full-body spin
+	// kicked off by air-jumps (somersault), wall-kicks (side flip) and dashes
+	// (barrel/dive roll), so the movement reads ninja-like. Purely visual: it
+	// spins the rendered body about one axis over flipDuration and never touches
+	// physics or the view. flipAxis: 0 = roll (about forward), 1 = pitch (about side).
+	int				flipStartTime;	// cg.time the flip began (0 = none)
+	int				flipDuration;	// ms the spin lasts
+	int				flipAxis;		// which body axis to spin about
+	float			flipDir;		// signed spin direction / turns (e.g. +1, -1)
 } playerEntity_t;
 
 //=================================================
@@ -215,6 +225,8 @@ typedef struct centity_s {
 	// copy in cg_t). Driven from this entity's own EV_FIRE_WEAPON events.
 	int			swordSwingTime;		// cg.time this entity's current swing started
 	int			swordSwingStep;		// combo index (finisher on every 3rd)
+	int			swordStartQuad;		// directional swing: start quadrant (from the fire event parm)
+	int			swordEndQuad;		// directional swing: end quadrant — the blade sweeps start->end
 	vec3_t		swordTipPath[12];	// world-space blade tip history (newest at 0)
 	vec3_t		swordBasePath[12];	// world-space blade guard history
 	int			swordTrailLastTime;	// cg.time of the last sample (one per frame)
@@ -710,6 +722,8 @@ typedef struct {
 	// STRAFE 64: first-person sword swing animation state (local player only)
 	int			swordSwingTime;		// cg.time the current swing started
 	int			swordSwingStep;		// combo index, drives swing direction / finisher
+	int			swordStartQuad;		// directional swing: start quadrant (from the fire event parm)
+	int			swordEndQuad;		// directional swing: end quadrant — the blade sweeps start->end
 
 	// STRAFE 64: blade-edge motion trail — world-space history of the blade's
 	// guard and tip, sampled from the actual view-weapon transform each frame
@@ -1313,6 +1327,7 @@ extern	vmCvar_t		cg_ragdollIterations;
 extern	vmCvar_t		cg_wallGrip;		// STRAFE 64: procedural wall-grip body lean (0 off)
 extern	vmCvar_t		cg_wallGripScale;	// overall strength multiplier on the grip pose
 extern	vmCvar_t		cg_slidePose;		// STRAFE 64: procedural crouch-slide body recline (0 off)
+extern	vmCvar_t		cg_acrobatics;		// STRAFE 64: cosmetic air-jump/dash flip & roll spins (0 off)
 extern	vmCvar_t		cg_slidePoseScale;	// overall strength multiplier on the slide pose
 extern	vmCvar_t		cg_zoomFov;
 extern	vmCvar_t		cg_thirdPersonRange;
@@ -1506,6 +1521,7 @@ qhandle_t CG_StatusHandle(int task);
 // cg_player.c
 //
 void CG_Player( centity_t *cent );
+void CG_TriggerAcrobatic( centity_t *cent, int kind );
 int  CG_GlowPilotCount( void );		// # of ET_PLAYER glow lights this frame (count-clamp)
 void CG_ResetPlayerEntity( centity_t *cent );
 void CG_AddRefEntityWithPowerups( refEntity_t *ent, entityState_t *state, int team );

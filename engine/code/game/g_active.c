@@ -648,6 +648,9 @@ void ClientEvents( gentity_t *ent, int oldEventSequence ) {
 			break;
 
 		case EV_FIRE_WEAPON:
+			// STRAFE 64: the sword carries its directional swing (packed start|end
+			// quadrant) on the event parm — hand it to Weapon_Sword for the cut.
+			ent->client->swordSwingParm = client->ps.eventParms[ i & (MAX_PS_EVENTS-1) ];
 			FireWeapon( ent );
 			break;
 

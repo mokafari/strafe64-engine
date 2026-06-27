@@ -1401,6 +1401,82 @@ char *eventnames[] = {
 
 /*
 ===============
+STRAFE 64 — directional sword combat helpers (shared client/server)
+
+See bg_public.h for the design note. The quadrants are an 8-way screen-space
+compass; a swing sweeps the blade from a start quad to an end quad.
+===============
+*/
+
+// screen-space unit vectors per quadrant (x = view-right, y = view-up)
+static const float bg_swordQuadDir[SQ_NUM_QUADS][2] = {
+	{  0.0000f,  1.0000f },	// SQ_T
+	{  0.7071f,  0.7071f },	// SQ_TR
+	{  1.0000f,  0.0000f },	// SQ_R
+	{  0.7071f, -0.7071f },	// SQ_BR
+	{  0.0000f, -1.0000f },	// SQ_B
+	{ -0.7071f, -0.7071f },	// SQ_BL
+	{ -1.0000f,  0.0000f },	// SQ_L
+	{ -0.7071f,  0.7071f }	// SQ_TL
+};
+
+void BG_SwordQuadDir( int quad, float *outRight, float *outUp ) {
+	if ( quad < 0 || quad >= SQ_NUM_QUADS ) {
+		quad = SQ_T;
+	}
+	*outRight = bg_swordQuadDir[quad][0];
+	*outUp    = bg_swordQuadDir[quad][1];
+}
+
+int BG_SwordQuadDiff( int a, int b ) {
+	int d = abs( a - b );
+	if ( d > SQ_NUM_QUADS / 2 ) {
+		d = SQ_NUM_QUADS - d;	// wrap around the compass
+	}
+	return d;
+}
+
+// map a screen-space direction to the nearest of the 8 quadrants
+static int BG_SwordNearestQuad( float right, float up ) {
+	int		i, best;
+	float	bestDot;
+
+	best = SQ_T;
+	bestDot = -2.0f;
+	for ( i = 0 ; i < SQ_NUM_QUADS ; i++ ) {
+		float dot = right * bg_swordQuadDir[i][0] + up * bg_swordQuadDir[i][1];
+		if ( dot > bestDot ) {
+			bestDot = dot;
+			best = i;
+		}
+	}
+	return best;
+}
+
+void BG_SwordPickQuads( int forwardmove, int rightmove, int parity, int *startQuad, int *endQuad ) {
+	float	r, u, mag;
+
+	// movement input chooses where the cut SWEEPS TO on screen:
+	//   forward (W) -> sweep downward (overhead chop),  back (S) -> sweep up (uppercut)
+	//   right (D)   -> sweep right,                     left (A) -> sweep left
+	// diagonals give the kesa-giri cross-cuts. forward maps to -up so pressing
+	// toward the target drives the blade down through them.
+	r = (float)rightmove;
+	u = -(float)forwardmove;
+	mag = r * r + u * u;
+
+	if ( mag > 4.0f ) {
+		*endQuad = BG_SwordNearestQuad( r, u );
+	} else {
+		// neutral: alternate diagonal cross-cuts so a held swing flows like a combo
+		*endQuad = parity ? SQ_BR : SQ_BL;
+	}
+	// the blade winds up on the opposite side and sweeps across the body
+	*startQuad = ( *endQuad + SQ_NUM_QUADS / 2 ) % SQ_NUM_QUADS;
+}
+
+/*
+===============
 BG_AddPredictableEventToPlayerstate
 
 Handles the sequence numbers

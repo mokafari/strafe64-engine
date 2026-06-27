@@ -2414,6 +2414,88 @@ static void CG_WallGripPose( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 
 /*
 ===============
+CG_TriggerAcrobatic
+
+STRAFE 64: kick off a cosmetic full-body flip / roll. Called from the movement
+events (air-jump, dash). Purely visual — it spins the rendered body, never the
+physics or the view. The spin axis + direction are read from how the player is
+moving at the moment of the move, so a forward air-jump somersaults forward, a
+side dash barrel-rolls into the dash, and a straight dash dive-rolls.
+
+kind: 0 = air-jump (somersault), 1 = dash (roll)
+===============
+*/
+void CG_TriggerAcrobatic( centity_t *cent, int kind ) {
+	vec3_t	fwd, right, vel, ang;
+	float	fdot, sdot, sp;
+
+	if ( !cg_acrobatics.integer ) {
+		return;
+	}
+
+	VectorCopy( cent->currentState.pos.trDelta, vel );
+	vel[2] = 0;
+	sp = VectorNormalize( vel );
+
+	VectorClear( ang );
+	ang[YAW] = cent->lerpAngles[YAW];
+	AngleVectors( ang, fwd, right, NULL );
+	fdot = ( sp > 1.0f ) ? DotProduct( vel, fwd ) : 1.0f;
+	sdot = ( sp > 1.0f ) ? DotProduct( vel, right ) : 0.0f;
+
+	if ( kind == 1 ) {
+		// dash: a strong lateral component barrel-rolls into the dash; otherwise
+		// a forward dive-roll. Roll about the forward axis (barrel) or side (dive).
+		if ( fabs( sdot ) > 0.5f ) {
+			cent->pe.flipAxis = 0;					// barrel roll about forward
+			cent->pe.flipDir  = ( sdot > 0 ) ? 1.0f : -1.0f;
+		} else {
+			cent->pe.flipAxis = 1;					// forward dive-roll about the side
+			cent->pe.flipDir  = -1.0f;
+		}
+		cent->pe.flipDuration = 450;
+	} else {
+		// air-jump: head-over-heels somersault about the side axis. Forward motion
+		// flips forward; back-pedalling flips backward.
+		cent->pe.flipAxis = 1;
+		cent->pe.flipDir  = ( fdot < -0.2f ) ? 1.0f : -1.0f;
+		cent->pe.flipDuration = 600;
+	}
+	cent->pe.flipStartTime = cg.time;
+}
+
+/*
+===============
+CG_AcrobaticPose
+
+Apply the active flip / roll: a full 360 spin of the whole body about one axis
+over flipDuration, eased so it accelerates off the move and lands cleanly back
+at neutral. Rolling the LEGS axis spins everything — torso and head hang off the
+legs tag and inherit the rotation. Layered on the MD3 axes exactly like the
+wall-grip and slide poses.
+===============
+*/
+static void CG_AcrobaticPose( centity_t *cent, vec3_t legs[3] ) {
+	int		dt;
+	float	p, e, deg;
+
+	if ( !cent->pe.flipStartTime ) {
+		return;
+	}
+	dt = cg.time - cent->pe.flipStartTime;
+	if ( dt < 0 || dt >= cent->pe.flipDuration ) {
+		cent->pe.flipStartTime = 0;				// done — back to neutral
+		return;
+	}
+
+	p = (float)dt / (float)cent->pe.flipDuration;	// 0..1
+	e = p * p * ( 3.0f - 2.0f * p );				// smoothstep: at p=1, e=1 -> full 360 = neutral
+	deg = 360.0f * cent->pe.flipDir * e;
+	CG_AxisRoll( legs, cent->pe.flipAxis, deg );
+}
+
+/*
+===============
 CG_SlidePose
 
 STRAFE 64: throw the whole body into a ground slide, the slide counterpart of
@@ -2676,6 +2758,10 @@ void CG_Player( centity_t *cent ) {
 
 	// STRAFE 64: procedural crouch-slide recline, same axis-overlay approach.
 	CG_SlidePose( cent, legs.axis, torso.axis, head.axis );
+
+	// STRAFE 64: cosmetic acrobatic flip / roll spin (air-jump somersault, dash
+	// roll). Rolls the legs axis so the whole body spins through the tag chain.
+	CG_AcrobaticPose( cent, legs.axis );
 
 	// get the animation state (after rotation, to allow feet shuffle)
 	CG_PlayerAnimation( cent, &legs.oldframe, &legs.frame, &legs.backlerp,

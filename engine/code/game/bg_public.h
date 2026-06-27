@@ -770,6 +770,44 @@ void	BG_PlayerStateToEntityStateExtraPolate( playerState_t *ps, entityState_t *s
 
 qboolean	BG_PlayerTouchesItem( playerState_t *ps, entityState_t *item, int atTime );
 
+// ==========================================================================
+// STRAFE 64 — directional sword combat (OpenJK-inspired quadrant system).
+//
+// Every katana swing is a discrete MOVE that travels the blade from a start
+// "quadrant" to an end "quadrant" across an 8-direction screen-space compass.
+// The same two quadrants drive: the procedural swing arc (client), the swept
+// trace volume + cut direction (server), and directional blocking (parry).
+// The chosen move is computed in pmove from the player's movement input, packed
+// into the EV_FIRE_WEAPON event parm, and so is predicted locally + networked to
+// every other client and read back authoritatively by the server.
+// ==========================================================================
+typedef enum {
+	SQ_T,			// top      (overhead)
+	SQ_TR,			// top-right
+	SQ_R,			// right    (horizontal)
+	SQ_BR,			// bottom-right
+	SQ_B,			// bottom   (uppercut)
+	SQ_BL,			// bottom-left
+	SQ_L,			// left     (horizontal)
+	SQ_TL,			// top-left
+	SQ_NUM_QUADS
+} swordQuad_t;
+
+// pack a (start,end) move into a single byte for the fire event parm
+#define SWORD_PACK_QUADS(s,e)	( ( (s) & 7 ) | ( ( (e) & 7 ) << 3 ) )
+#define SWORD_START_QUAD(p)		( (p) & 7 )
+#define SWORD_END_QUAD(p)		( ( (p) >> 3 ) & 7 )
+
+// pick the swing's start/end quadrants from movement input. parity (0/1) only
+// matters when the input is neutral — it alternates the default cross-cut so a
+// held attack reads as a flowing combo. Shared by pmove and (for guard dir) the
+// combat code so client and server always agree.
+void	BG_SwordPickQuads( int forwardmove, int rightmove, int parity, int *startQuad, int *endQuad );
+// screen-space unit direction (right axis -> x, up axis -> y) of a quadrant
+void	BG_SwordQuadDir( int quad, float *outRight, float *outUp );
+// circular distance between two quadrants, 0 (same) .. 4 (opposite)
+int		BG_SwordQuadDiff( int a, int b );
+
 
 #define ARENAS_PER_TIER		4
 #define MAX_ARENAS			1024

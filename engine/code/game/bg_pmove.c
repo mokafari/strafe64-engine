@@ -142,6 +142,10 @@ void PM_AddEvent( int newEvent ) {
 	BG_AddPredictableEventToPlayerstate( newEvent, 0, pm->ps );
 }
 
+void PM_AddEventWithParm( int newEvent, int eventParm ) {
+	BG_AddPredictableEventToPlayerstate( newEvent, eventParm, pm->ps );
+}
+
 /*
 ===============
 PM_AddTouchEnt
@@ -2471,7 +2475,19 @@ static void PM_Weapon( void ) {
 	}
 
 	// fire weapon
-	PM_AddEvent( EV_FIRE_WEAPON );
+	if ( pm->ps->weapon == WP_SWORD ) {
+		// STRAFE 64: pick the directional swing (start/end quadrant) from the
+		// movement input and carry it on the fire event so the client renders the
+		// matching arc and the server cuts along the same sweep. parity comes from
+		// the just-set torso anim so neutral swings alternate into a flowing combo.
+		int		startQuad, endQuad, parity;
+
+		parity = ( ( pm->ps->torsoAnim & ~ANIM_TOGGLEBIT ) == TORSO_ATTACK2 ) ? 1 : 0;
+		BG_SwordPickQuads( pm->cmd.forwardmove, pm->cmd.rightmove, parity, &startQuad, &endQuad );
+		PM_AddEventWithParm( EV_FIRE_WEAPON, SWORD_PACK_QUADS( startQuad, endQuad ) );
+	} else {
+		PM_AddEvent( EV_FIRE_WEAPON );
+	}
 
 	// STRAFE 64: the sword lunges forward on each swing so melee feeds the
 	// movement chain instead of stalling it. Capped so it engages but can't

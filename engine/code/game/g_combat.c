@@ -1010,12 +1010,43 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			vec3_t		clashAt;
 
 			if ( mod == MOD_SWORD || mod == MOD_GAUNTLET ) {
-				// CLEAN PARRY: a guarded blade vs blade fully stops the cut and
-				// CLASHES — the attacker is shoved back off the guard, staggered
-				// and open for the riposte. This is what makes the duel read.
-				damage = 0;
+				// DIRECTIONAL PARRY (OpenJK-style): a sword cut is only fully
+				// stopped if the defender is guarding the LINE it comes in on.
+				// We compare the attacker's swing end-quadrant (mirrored into the
+				// defender's view) against the quadrant the defender is guarding
+				// (from their movement input). On-line = clean parry; a quadrant
+				// off = a glancing block; wrong side = most of the cut lands.
+				// The gauntlet has no blade quadrant, so it stays a full parry.
+				float	blockFrac = 0.0f;	// fraction of the cut that gets through
+
+				if ( mod == MOD_SWORD && attacker->client ) {
+					// mirror map: the attacker's screen-right is the defender's left
+					static const int mirrorQuad[SQ_NUM_QUADS] =
+						{ SQ_T, SQ_TL, SQ_L, SQ_BL, SQ_B, SQ_BR, SQ_R, SQ_TR };
+					int	aQuad, gs, ge, gQuad, qd;
+
+					aQuad = mirrorQuad[ SWORD_END_QUAD( attacker->client->swordSwingParm ) ];
+					BG_SwordPickQuads( client->pers.cmd.forwardmove,
+						client->pers.cmd.rightmove, 0, &gs, &ge );
+					// a neutral guard is a high centre cover; otherwise guard toward input
+					gQuad = ( client->pers.cmd.forwardmove == 0
+						&& client->pers.cmd.rightmove == 0 ) ? SQ_T : ge;
+					qd = BG_SwordQuadDiff( gQuad, aQuad );
+					if ( qd >= 3 ) {
+						blockFrac = 0.85f;	// guarding the wrong line — the cut bites
+					} else if ( qd == 2 ) {
+						blockFrac = 0.40f;	// glancing block — half-soaked
+					} else {
+						blockFrac = 0.0f;	// on the line — clean parry
+					}
+				}
+
+				damage = (int)( damage * blockFrac );
 				G_AddEvent( targ, EV_SWORD_HIT, 0 );		// clang on the defender
-				if ( attacker->client ) {
+
+				// a CLEAN parry (full stop) clashes and shoves the attacker back,
+				// staggered and open for the riposte — this is what makes the duel read
+				if ( blockFrac <= 0.0f && attacker->client ) {
 					vec3_t	push;
 
 					VectorCopy( dir, push );				// blow travel: attacker -> targ

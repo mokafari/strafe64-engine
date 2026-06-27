@@ -160,10 +160,13 @@ rewards staying in the movement chain. A lethal blow triggers dismemberment.
 void Weapon_Sword( gentity_t *ent ) {
 	int			i, t;
 	int			damage;
-	float		speed, frac, arc, combomul, range, blend;
+	float		speed, frac, arc, combomul, range, blend, spread;
 	int			ntraces, step;
+	int			startQuad, endQuad;
+	float		sr, su, er, eu;
 	qboolean	finisher;
-	vec3_t		angles, dir, end, sliceAngles, velDir, viewDir, axis;
+	vec3_t		dir, end, sliceAngles, velDir, viewDir, axis;
+	vec3_t		swFwd, swRight, swUp;
 	trace_t		tr;
 	gentity_t	*traceEnt, *tent;
 	int			hit[ SWORD_NUM_TRACES * 2 ];	// entities already damaged this swing
@@ -224,14 +227,31 @@ void Weapon_Sword( gentity_t *ent ) {
 	// reach grows with speed so a fast fly-by still connects the cut
 	range = SWORD_RANGE + frac * SWORD_RANGE_BONUS;
 
-	// sweep the arc, one trace per step, sharing the same muzzle origin
+	// --- DIRECTIONAL SWEEP (OpenJK-style): the swing is a discrete move that
+	// travels the blade from a start quadrant to an end quadrant. We sample the
+	// blade along that screen-space arc, so a diagonal kesa-giri cuts on the
+	// diagonal and an overhead cuts top-to-bottom — not just a flat yaw fan. The
+	// samples cover the swept volume, so a fast swing can't slip between traces. ---
+	startQuad = SWORD_START_QUAD( ent->client->swordSwingParm );
+	endQuad   = SWORD_END_QUAD( ent->client->swordSwingParm );
+	BG_SwordQuadDir( startQuad, &sr, &su );
+	BG_SwordQuadDir( endQuad,   &er, &eu );
+
+	// basis: forward = the slice/flight axis, right/up span the swing plane
+	AngleVectors( sliceAngles, swFwd, swRight, swUp );
+	// how far off the forward axis the blade tip swings (tangent of the arc half-angle)
+	spread = tan( DEG2RAD( arc ) );
+
+	// sweep the blade across the start->end screen line, one trace per step
 	for ( t = 0 ; t < ntraces ; t++ ) {
-		VectorCopy( sliceAngles, angles );
-		// fan yaw from -arc to +arc around the flight line
-		if ( ntraces > 1 ) {
-			angles[YAW] += -arc + ( 2.0f * arc * t ) / ( ntraces - 1 );
+		float	a = ( ntraces > 1 ) ? (float)t / ( ntraces - 1 ) : 0.5f;
+		float	dx = sr + ( er - sr ) * a;		// screen-space pos along the arc
+		float	dy = su + ( eu - su ) * a;
+
+		for ( i = 0 ; i < 3 ; i++ ) {
+			dir[i] = swFwd[i] + spread * ( swRight[i] * dx + swUp[i] * dy );
 		}
-		AngleVectors( angles, dir, NULL, NULL );
+		VectorNormalize( dir );
 		VectorMA( muzzle, range, dir, end );
 
 		trap_Trace( &tr, muzzle, NULL, NULL, end, ent->s.number, MASK_SHOT );

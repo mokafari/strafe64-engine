@@ -179,6 +179,7 @@ vmCvar_t	cg_ragdollIterations;	// constraint relaxation passes per frame
 vmCvar_t	cg_wallGrip;			// 1: procedural wall-grip body lean; 0: stock pose
 vmCvar_t	cg_wallGripScale;		// overall strength multiplier on the grip pose
 vmCvar_t	cg_slidePose;			// 1: procedural crouch-slide body recline; 0: stock pose
+vmCvar_t	cg_acrobatics;			// 1: cosmetic air-jump/dash flip & roll spins; 0: off
 vmCvar_t	cg_slidePoseScale;		// overall strength multiplier on the slide pose
 vmCvar_t	au_bass;			// music band envelopes (set by snd_codec_mod), read for reactivity
 vmCvar_t	au_mid;
@@ -297,6 +298,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_wallGrip, "cg_wallGrip", "1", CVAR_ARCHIVE },
 	{ &cg_wallGripScale, "cg_wallGripScale", "1", CVAR_ARCHIVE },
 	{ &cg_slidePose, "cg_slidePose", "1", CVAR_ARCHIVE },
+	{ &cg_acrobatics, "cg_acrobatics", "1", CVAR_ARCHIVE },
 	{ &cg_slidePoseScale, "cg_slidePoseScale", "1", CVAR_ARCHIVE },
 	{ &au_bass, "au_bass", "0", 0 },
 	{ &au_mid, "au_mid", "0", 0 },
