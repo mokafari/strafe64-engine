@@ -813,12 +813,29 @@ class EngineSession:
         raise EngineError("no apistate reply (needs the rebuilt qagame + client mode)")
 
     def measure(self, subject="self", seconds: float = 4.0, hz: int = 10,
-                field: str = "speed") -> dict:
+                field: str = "speed", keepalive: bool = True) -> dict:
         """Sample a subject's `field` (speed, health, air, wj, dj) over `seconds`
         → metrics. Quantifies a run (bhop chain, slide-jump, surf line) or moveset
         usage so movement can be judged by the numbers, not by eye. subject:
         'self' (the player you're driving), 'follow' (the bot you're spectating),
-        or a client name/number."""
+        or a client name/number.
+
+        keepalive (default True): hold the bullet-time clock off for the window so
+        the world runs at real speed while sampling — otherwise g_timeBindMin
+        near-freezes time whenever the player is still, which reads as a frozen
+        body and yields garbage samples. Restored afterwards. No-op if an outer
+        scope (e.g. play_mode) already disabled it."""
+        # only manage time-bind if nobody outer already has (avoid clobbering it)
+        managed = keepalive and self._saved_timebind is None
+        if managed:
+            self._disable_time_bind()
+        try:
+            return self._measure_loop(subject, seconds, hz, field)
+        finally:
+            if managed:
+                self.restore_time_bind()
+
+    def _measure_loop(self, subject, seconds, hz, field) -> dict:
         interval = 1.0 / max(1, hz)
         samples, t0 = [], time.time()
         while time.time() - t0 < seconds:
