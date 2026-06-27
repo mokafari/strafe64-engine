@@ -1,5 +1,9 @@
 # engine_api.py / engine_mcp.py — fix list
 
+> **STATUS (2026-06-27): all 26 items resolved.** Code in `engine_api.py` /
+> `engine_mcp.py`; `test_engine_api.py` 41/41 passing. Summary at the bottom.
+
+
 Compiled 2026-06-27 from (a) all 67 Claude session transcripts in
 `~/.claude/projects/-Users-gustav-strafe64-engine/*.jsonl` and (b) a code read of
 `tools/strafegen/engine_api.py` (2362 lines) + `engine_mcp.py` (1490 lines).
@@ -129,3 +133,19 @@ Fixed sleeps in startup/spawn/play_mode/capture make the harness timing-fragile 
 ### 26. Recurring stale-binary / wrong-asset-path confusion is under-guarded
 "silently tested stale binary", "OLD OA path", leftover `~/ioquake3` / `~/openarena-0.8.8` mounts undermine trust in results. `engine_doctor` exists but isn't run automatically.
 - **Fix:** run a lightweight `engine_doctor`-style asset/dylib freshness assertion at `engine_open`/`rebuild` and warn loudly on mismatch.
+
+---
+
+## Resolution summary (2026-06-27)
+
+**P0** — 1: `deploy_dylibs` now returns a structured dict (`deployed/skipped/blockers/reason`); `rebuild()` surfaces a loud `warning` on skip, never a silent `[]`. 2: `command()` translates BrokenPipe/short-writes into a clean `EngineError`. 3: `measure(keepalive=True)` holds the bullet-time clock off during sampling (only if no outer scope owns it) so the body doesn't near-freeze. 4: `_disable_time_bind()`/`restore_time_bind()` save & restore `g_timeBind`; `play_mode(time_bind=…)`, `audition_model`, `capture_death` use them.
+
+**P1** — 5/6: `_require()` auto-reopens a dead persistent engine from its state file (`EngineSession.reopen`); pids reconciled via `_pid_alive`. 7: 0-sample `measure` note points to `engine_kill_orphans`/`engine_list`. 8: `state()` detects the unregistered-`apistate` case → "rebuild+deploy qagame". 9: startup errors fold in `_tail_log()`; boot timeout scales with bot count. 10: `spectate()` warns when the gametype can round-end.
+
+**P2** — 11: `_resolve_target` parses string-form `"[x,y,z]"`/`"x,y,z"` subjects. 12: MCP dispatcher validates args against handler signatures (`_filter_kwargs`) → clean "unknown argument" message instead of a raw `TypeError`. 13: `weapon_index()` accepts names/aliases ("rocket","sword","rl"); wired into input/audition. 14: `get_cvar(retries=1)` retries the readback once.
+
+**P3** — 15: `crouch`/`block`/`dash` inputs added (move gains `crouch=`; run_actions gains crouch/block/dash steps). 16: `drive_and_measure()` runs actions + samples concurrently (read velocity mid-motion); exposed via `engine_input measure=`. 17/18/19/22: documented in `KNOWN_LIMITATIONS` (surfaced by `doctor()`). 20: already fixed (trailing-zero preservation). 21: mitigated by keepalive (gravity settles the body during the existing settle window).
+
+**P4** — 23: narrowed cleanup excepts to `(EngineError, OSError)` (the 3 remaining broad catches — selftest harness, atexit, server loop — are correct by design). 24: the load-bearing startup race already polls (`wait_for`); the remaining sleeps are visual-settle delays that can't be polled — left as-is (churn > reward). 25: `test_engine_api.py` expanded (+13 checks: weapon_index, string-coord resolve, actions-duration, timebind save/restore, deploy guard-trip, mcp arg-filter). 26: `engine_open`/`engine_launch` run `doctor()` and return `health_warnings` loudly.
+
+**Bug sweep (independent review)** — fixed: empty-course `establishing_shot` raised before using `radius` (now falls back to BSP/world centre); fd leak in `_image_content` (now `with open`); even-count "median" bias in `compare` movement mode (now `statistics.median`); `StopIteration`→`RuntimeError` in `set_source_constant`'s file lookup (now guarded). Reviewed-and-kept: `audition_model`/`angles_collage` intentionally leave model/third-person state set (that's the audition behavior).
