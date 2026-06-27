@@ -27,6 +27,10 @@ import argparse
 from bsp_study import read_lumps, parse_entities, parse_shaders, \
     LUMP_ENTITIES, LUMP_SHADERS
 
+LUMP_PLANES = 2
+LUMP_MODELS = 7
+LUMP_BRUSHES = 8
+LUMP_BRUSHSIDES = 9
 LUMP_DRAWVERTS = 10
 LUMP_DRAWINDEXES = 11
 LUMP_SURFACES = 13
@@ -92,6 +96,53 @@ def _tris_for_surface(s, verts, indexes):
     # MST_FLARE and degenerate patches: nothing renderable
 
 
+def _records(blob, size, fmt):
+    return [struct.unpack_from(fmt, blob, i) for i in range(0, len(blob) - size + 1, size)]
+
+
+def _solid_boxes(data, lumps, surfaces, bounds, cap=1500):
+    """Decompile the world model's collision BRUSHES into solid box AABBs — clean
+    exact solids (one per brush) rather than one box per drawn surface. Every
+    brush's first 6 sides are axial bevels (-x +x -y +y -z +z), so the AABB is
+    exact. Colour is sampled from the nearest drawn surface. Enclosure shell /
+    fog brushes are skipped."""
+    L = lambda i: data[lumps[i][0]:lumps[i][0] + lumps[i][1]]
+    planes = _records(L(LUMP_PLANES), 16, "<4f")
+    sides = _records(L(LUMP_BRUSHSIDES), 8, "<2i")
+    brushes = _records(L(LUMP_BRUSHES), 12, "<3i")
+    models = _records(L(LUMP_MODELS), 40, "<6f4i")
+    if not models or not brushes or not planes:
+        return []
+    first_brush, num_brush = models[0][8], models[0][9]   # world model
+    centers = [((s["aabb"][0] + s["aabb"][3]) / 2, (s["aabb"][1] + s["aabb"][4]) / 2,
+                (s["aabb"][2] + s["aabb"][5]) / 2, s["color"]) for s in surfaces]
+    W = (bounds[3] - bounds[0]) or 1; D = (bounds[4] - bounds[1]) or 1; H = (bounds[5] - bounds[2]) or 1
+    out = []
+    for bi in range(first_brush, min(first_brush + num_brush, len(brushes))):
+        first, num, _sh = brushes[bi]
+        if num < 6 or first + 6 > len(sides):
+            continue
+        pd = lambda k: planes[sides[first + k][0]][3]
+        minx, maxx = -pd(0), pd(1)
+        miny, maxy = -pd(2), pd(3)
+        minz, maxz = -pd(4), pd(5)
+        dx, dy, dz = maxx - minx, maxy - miny, maxz - minz
+        if dx < 1 or dy < 1 or dz < 1:
+            continue
+        if (dx >= 0.9 * W and dy >= 0.9 * D) or (dz >= 0.9 * H and (dx >= 0.9 * W or dy >= 0.9 * D)):
+            continue                                       # enclosure shell / fog
+        cx, cy, cz = (minx + maxx) / 2, (miny + maxy) / 2, (minz + maxz) / 2
+        col, best = "#9a9aa0", 1e30
+        for (sx, sy, sz, c) in centers:
+            d = (sx - cx) ** 2 + (sy - cy) ** 2 + (sz - cz) ** 2
+            if d < best:
+                best, col = d, c
+        out.append({"aabb": [minx, miny, minz, maxx, maxy, maxz], "color": col, "role": "structure"})
+        if len(out) >= cap:
+            break
+    return out
+
+
 def import_bsp(src, name="imported"):
     data = src if isinstance(src, (bytes, bytearray)) else open(src, "rb").read()
     version, lumps = read_lumps(data)
@@ -153,9 +204,10 @@ def import_bsp(src, name="imported"):
                          "origin": origin,
                          "keys": {k: v for k, v in e.items()
                                   if k not in ("classname", "origin")}})
+    edit_boxes = _solid_boxes(data, lumps, brushes, bb)
     return {
         "imported": True, "name": name, "version": version,
-        "bounds": bb, "brushes": brushes, "entities": ents_out,
+        "bounds": bb, "brushes": brushes, "edit_boxes": edit_boxes, "entities": ents_out,
         "triggers": [], "movers": [], "flows": [], "sections": [],
         "counts": {"brushes": len(brushes), "surfaces": len(surfaces),
                    "triangles": ntri, "entities": len(ents_out),

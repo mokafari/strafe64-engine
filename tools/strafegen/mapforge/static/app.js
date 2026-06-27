@@ -566,20 +566,27 @@ const rgbHex = c => `#${c.map(v => Math.max(0, Math.min(255, v | 0)).toString(16
 
 function importToCompose() {
   if (!S.base || !S.imported) { toast('decompile a map first (Import), then edit it here', true); return; }
-  const T = 16, CAP = 800;
-  const src = S.base.brushes.filter(b => b.role !== 'sky/enclosure');
   C.placed = []; C.brushes = []; C.brushSeq = 0; C.sel = null;
-  for (const b of src.slice(0, CAP)) {
-    let [x0, y0, z0, x1, y1, z1] = b.aabb;           // surface -> solid: thicken the flat axis
-    if (z1 - z0 < T) z0 = z1 - T;
-    if (x1 - x0 < T) { x0 -= T / 2; x1 += T / 2; }
-    if (y1 - y0 < T) { y0 -= T / 2; y1 += T / 2; }
-    C.brushes.push({ id: C.brushSeq++, aabb: [x0, y0, z0, x1, y1, z1],
-                     role: 'structure', color: hexToRgb(b.color) });
+  let note = '';
+  if (S.base.edit_boxes && S.base.edit_boxes.length) {
+    // clean exact solids decompiled from the collision brush lump
+    for (const b of S.base.edit_boxes)
+      C.brushes.push({ id: C.brushSeq++, aabb: [...b.aabb], role: 'structure', color: hexToRgb(b.color) });
+  } else {
+    // fallback: thicken drawn surfaces into solids
+    const T = 16, CAP = 800;
+    const src = S.base.brushes.filter(b => b.role !== 'sky/enclosure').slice(0, CAP);
+    for (const b of src) {
+      let [x0, y0, z0, x1, y1, z1] = b.aabb;
+      if (z1 - z0 < T) z0 = z1 - T;
+      if (x1 - x0 < T) { x0 -= T / 2; x1 += T / 2; }
+      if (y1 - y0 < T) { y0 -= T / 2; y1 += T / 2; }
+      C.brushes.push({ id: C.brushSeq++, aabb: [x0, y0, z0, x1, y1, z1], role: 'structure', color: hexToRgb(b.color) });
+    }
+    note = ' (surface trace)';
   }
   switchMode('compose');
-  toast(`traced ${C.brushes.length} brushes from ${S.base.name}`
-    + (src.length > CAP ? ` (capped from ${src.length})` : ''));
+  toast(`traced ${C.brushes.length} solid brushes from ${S.base.name}${note}`);
 }
 
 async function calibrateGen() {

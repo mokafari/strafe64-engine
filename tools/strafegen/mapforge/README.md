@@ -67,9 +67,11 @@ control-grid approximation of patches) back into the scene model, preserving the
 baked vertex colours — and renders it in the 3D view. Works on stock Q3,
 OpenArena, or strafegen output: a way to study shipped level design in the same
 viewer. Imported maps are view-only — but **✎ edit imported map in Compose**
-traces the decompiled geometry into editable freeform boxes (surfaces thickened
-to solids, original colours preserved), so you can remix *any* map — move/add/
-delete brushes and re-export it.
+decompiles the map's collision **brush lump** into clean, exact solid boxes
+(one per brush, not per surface — every brush's axial bevel planes give its AABB
+directly), colours sampled from the nearby drawn surfaces, so you can remix *any*
+map — move/add/delete brushes and re-export. (Falls back to thickening drawn
+surfaces if a map has no usable brush lump.)
 
 The **📊 learn** button decompiles every available map and aggregates a design
 digest — platform footprints, wall heights, vertical layering (decks), map
