@@ -37,6 +37,7 @@ uniform vec3  u_PrimaryLightAmbient;
 #if defined(USE_LIGHT) && !defined(USE_FAST_LIGHT)
 uniform vec4      u_NormalScale;
 uniform vec4      u_SpecularScale;
+uniform vec4      u_RimLight;       // STRAFE 64: rgb = rim color * scale, a = exponent (0 = off)
 #endif
 
 #if defined(USE_LIGHT) && !defined(USE_FAST_LIGHT)
@@ -510,6 +511,16 @@ void main()
   #if defined(USE_PBR)
 	gl_FragColor.rgb = sqrt(gl_FragColor.rgb);
   #endif
+
+	// STRAFE 64: cool fresnel rim on characters (set per-entity from the CPU;
+	// zero for world/2D). Added in display space, after PBR gamma, modulated by
+	// scene light so the rim doesn't glow in pitch black.
+	if (u_RimLight.a > 0.0)
+	{
+		float rim = pow(1.0 - NE, u_RimLight.a);
+		float lit = clamp(dot(lightColor + ambientColor, vec3(0.333)), 0.15, 1.0);
+		gl_FragColor.rgb += u_RimLight.rgb * (rim * lit);
+	}
 
 #else
 

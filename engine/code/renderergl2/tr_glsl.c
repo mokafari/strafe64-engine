@@ -167,7 +167,8 @@ static uniformInfo_t uniformsInfo[] =
 	{ "u_Greyscale", GLSL_FLOAT },
 	{ "u_DepthOfField", GLSL_VEC4 },
 	{ "u_ColorGrade", GLSL_VEC4 },
-	{ "u_ColorGradeFx", GLSL_VEC4 }
+	{ "u_ColorGradeFx", GLSL_VEC4 },
+	{ "u_RimLight", GLSL_VEC4 }
 };
 
 typedef enum
