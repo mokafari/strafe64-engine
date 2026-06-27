@@ -257,11 +257,13 @@ def _rebuild_box(b, mins, maxs):
                        contents=contents, draw=draw, face_tex=face_tex or None)
 
 
-def _new_box(mins, maxs, role):
+def _new_box(mins, maxs, role, color=None):
     for i in range(3):
         if maxs[i] - mins[i] < 1.0:
             raise ValueError(f"new brush extent < 1u on axis {i}")
     pal, tex = ROLE_BUILD.get(role, (sg.SRC_GREY, sg.TEX_WALL))
+    if color:                       # explicit RGB (e.g. preserved from a decompiled map)
+        pal = tuple(int(c) for c in color)
     return sg.make_box(tuple(mins), tuple(maxs), tex=tex, palette=pal,
                        contents=sg.CONTENTS_SOLID)
 
@@ -658,7 +660,7 @@ def compose(placed, opts=None, brushes=None):
         movers += [(_xform_brush(b, yaw, tx), dict(info)) for b, info in P["movers"]]
     for fb in (brushes or []):
         a = fb["aabb"]
-        solids.append(_new_box(a[:3], a[3:], fb.get("role", "structure")))
+        solids.append(_new_box(a[:3], a[3:], fb.get("role", "structure"), fb.get("color")))
     if not solids:
         raise ValueError("nothing placed — add a section or a brush")
     # guarantee a spawn (+ rescue dest) so the map loads even without a start part

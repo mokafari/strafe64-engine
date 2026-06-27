@@ -66,7 +66,10 @@ surface lumps of any IBSP v46 map (planar + triangle-soup surfaces, plus a
 control-grid approximation of patches) back into the scene model, preserving the
 baked vertex colours — and renders it in the 3D view. Works on stock Q3,
 OpenArena, or strafegen output: a way to study shipped level design in the same
-viewer. Imported maps are view-only (export is disabled).
+viewer. Imported maps are view-only — but **✎ edit imported map in Compose**
+traces the decompiled geometry into editable freeform boxes (surfaces thickened
+to solids, original colours preserved), so you can remix *any* map — move/add/
+delete brushes and re-export it.
 
 The **📊 learn** button decompiles every available map and aggregates a design
 digest — platform footprints, wall heights, vertical layering (decks), map

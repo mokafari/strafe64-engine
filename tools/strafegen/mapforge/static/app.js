@@ -561,6 +561,27 @@ async function analyzeMaps() {
   finally { $('busy').style.display = 'none'; }
 }
 
+const hexToRgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const rgbHex = c => `#${c.map(v => Math.max(0, Math.min(255, v | 0)).toString(16).padStart(2, '0')).join('')}`;
+
+function importToCompose() {
+  if (!S.base || !S.imported) { toast('decompile a map first (Import), then edit it here', true); return; }
+  const T = 16, CAP = 800;
+  const src = S.base.brushes.filter(b => b.role !== 'sky/enclosure');
+  C.placed = []; C.brushes = []; C.brushSeq = 0; C.sel = null;
+  for (const b of src.slice(0, CAP)) {
+    let [x0, y0, z0, x1, y1, z1] = b.aabb;           // surface -> solid: thicken the flat axis
+    if (z1 - z0 < T) z0 = z1 - T;
+    if (x1 - x0 < T) { x0 -= T / 2; x1 += T / 2; }
+    if (y1 - y0 < T) { y0 -= T / 2; y1 += T / 2; }
+    C.brushes.push({ id: C.brushSeq++, aabb: [x0, y0, z0, x1, y1, z1],
+                     role: 'structure', color: hexToRgb(b.color) });
+  }
+  switchMode('compose');
+  toast(`traced ${C.brushes.length} brushes from ${S.base.name}`
+    + (src.length > CAP ? ` (capped from ${src.length})` : ''));
+}
+
 async function calibrateGen() {
   const path = $('mapSel').value;
   $('busy').style.display = 'block';
@@ -698,6 +719,7 @@ function wire() {
   $('importBtn').onclick = importMap;
   $('analyzeBtn').onclick = analyzeMaps;
   $('calibBtn').onclick = calibrateGen;
+  $('editImportBtn').onclick = importToCompose;
   $('mapRefresh').onclick = loadMapList;
   document.querySelectorAll('[data-layer]').forEach(btn => btn.onclick = () => {
     const l = btn.dataset.layer; S.layers[l] = !S.layers[l];
@@ -897,7 +919,7 @@ function renderCompose3d() {
   }
   // free-form box brushes (world space, no part transform)
   for (const fb of C.brushes) {
-    const geo = geomFromFaces(boxFaces(fb.aabb, roleColor(fb.role)));
+    const geo = geomFromFaces(boxFaces(fb.aabb, fb.color ? rgbHex(fb.color) : roleColor(fb.role)));
     const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
     mesh.userData = { brushId: fb.id }; worldGroup.add(mesh); composePickables.push(mesh);
     const selB = C.sel && C.sel.t === 'brush' && C.sel.id === fb.id;
@@ -1080,7 +1102,7 @@ function drawCompose2d() {
   }
   for (const fb of C.brushes) {
     const a = fb.aabb;
-    ctx.globalAlpha = 0.8; ctx.fillStyle = roleColor(fb.role);
+    ctx.globalAlpha = 0.8; ctx.fillStyle = fb.color ? rgbHex(fb.color) : roleColor(fb.role);
     ctx.fillRect(px(a[0]), py(a[4]), (a[3] - a[0]) * s, (a[4] - a[1]) * s);
     if (C.sel && C.sel.t === 'brush' && C.sel.id === fb.id) {
       ctx.globalAlpha = 1; ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 1.5;
@@ -1100,7 +1122,7 @@ async function composeExport() {
   $('busy').style.display = 'block';
   try {
     const placed = C.placed.map(p => ({ key: p.key, yaw: p.yaw, translate: p.translate }));
-    const brushes = C.brushes.map(b => ({ aabb: b.aabb, role: b.role }));
+    const brushes = C.brushes.map(b => ({ aabb: b.aabb, role: b.role, color: b.color }));
     const res = await api.composeExport({ placed, brushes, opts: { void: true }, formats, name: $('cName').value });
     const st = res.stats;
     $('cResult').innerHTML = `<b style="color:var(--green)">✓ ${res.name}</b><br>`
