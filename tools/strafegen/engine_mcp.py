@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import atexit
 import base64
+import inspect
 import json
 import sys
 import traceback
@@ -90,9 +91,13 @@ _current_name: str = "default"   # which persistent instance this process target
 
 # --- tool handlers ----------------------------------------------------------
 
-def _require():
+def _require(auto_reopen: bool = True):
     """Return the active session, transparently reattaching to the current
-    persistent engine (opened in a prior MCP process) if we have no session."""
+    persistent engine (opened in a prior MCP process) if we have no session.
+
+    If the named persistent engine died between turns, auto_reopen relaunches it
+    from its state file (same map/mode) — the #1 lifecycle churn was tools failing
+    with 'no engine running' because a persistent engine quietly died."""
     global _session
     if _session is not None and _session.alive:
         return _session
@@ -101,6 +106,14 @@ def _require():
         return _session
     except EngineError:
         pass
+    if auto_reopen:
+        try:
+            _session = EngineSession.reopen(live_home(_current_name))
+            sys.stderr.write(f"engine_api: persistent engine '{_current_name}' had died — "
+                             f"auto-reopened (pid {_session._pid}).\n")
+            return _session
+        except EngineError:
+            pass
     raise EngineError(f"no engine running for '{_current_name}' — call engine_launch "
                       "(session) or engine_open (persistent)")
 
@@ -130,6 +143,20 @@ def t_list(**_):
             "engines": EngineSession.list_live()}
 
 
+def _status_with_health():
+    """t_status plus a freshness check, so a stale-binary / undeployed-build /
+    mismatched-dylib-trio condition is surfaced LOUDLY at open/launch instead of
+    silently testing the wrong thing later."""
+    out = t_status()
+    try:
+        rep = engine_api.doctor()
+        if rep.get("warnings"):
+            out["health_warnings"] = rep["warnings"]
+    except Exception:   # health check must never block a successful launch
+        pass
+    return out
+
+
 def t_launch(mode="dedicated", map=None, fullscreen=False, bots=0, extra=None,
              width=None, height=None, hot_floor=False):
     global _session
@@ -139,7 +166,7 @@ def t_launch(mode="dedicated", map=None, fullscreen=False, bots=0, extra=None,
                              width=width, height=height, bots=int(bots or 0),
                              hot_floor=bool(hot_floor), extra=list(extra or []))
     _session.start()
-    return t_status()
+    return _status_with_health()
 
 
 def t_open(mode="dedicated", map=None, fullscreen=False, bots=0, extra=None,
@@ -160,7 +187,7 @@ def t_open(mode="dedicated", map=None, fullscreen=False, bots=0, extra=None,
                              hot_floor=bool(hot_floor), extra=list(extra or []),
                              home=live_home(name), detached=True, name=name)
     _session.start()
-    return t_status()
+    return _status_with_health()
 
 
 def t_attach(name="default"):
@@ -270,13 +297,20 @@ def t_dolly(path, frames=None, interval=0.25, look=True, fps=None, title=None):
     return {"_mcp_content": _image_content(res["collage"], note)}
 
 
-def t_input(actions, play=False, weapon=None, shoot=False):
+def t_input(actions, play=False, weapon=None, shoot=False, measure=None):
     """Drive the live player. `actions` is a list of steps, each one of:
-    {"move":[fwd,side], "secs":s} | {"turn":[yaw,pitch]} | {"attack":secs} |
-    {"jump":n} | {"use":item} | {"wait":secs}."""
+    {"move":[fwd,side],"secs":s,"jump":bool,"crouch":bool} | {"turn":[yaw,pitch]} |
+    {"attack":secs} | {"jump":n} | {"strafe":secs,"side":±1} | {"crouch":secs} |
+    {"block":secs} (katana guard/parry) | {"dash":n} | {"use":item} | {"wait":secs}.
+    `weapon` accepts a number or a name ("rocket","railgun","sword"). Set
+    `measure` to a field name ("speed","air",...) to sample it CONCURRENTLY while
+    the actions run (reads velocity mid-motion, which a serial measure misses)."""
     eng = _require()
     if play:
-        eng.play_mode(weapon=int(weapon) if weapon is not None else None)
+        eng.play_mode(weapon=weapon)   # accepts a number or a name (engine_api.weapon_index)
+    if measure:
+        m = eng.drive_and_measure(actions, field=str(measure))
+        return {"did": "concurrent drive+measure", "metrics": m}
     done = eng.run_actions(actions)
     if shoot:
         return _shot_content("after: " + ", ".join(done))
@@ -316,8 +350,7 @@ def t_capture_event(pattern, frames=9, interval=0.3, timeout=30, mode="after",
 
 
 def t_audition_model(model, headmodel=None, weapon=None, shoot=True):
-    info = _require().audition_model(model, headmodel=headmodel,
-                                     weapon=int(weapon) if weapon is not None else None)
+    info = _require().audition_model(model, headmodel=headmodel, weapon=weapon)
     if shoot:
         return _shot_content(f"auditioning model {model}")
     return info
@@ -344,7 +377,8 @@ def t_clear(classname=None):
 def _image_content(path, note=""):
     items = [{"type": "text", "text": (note + " " if note else "") + f"({path})"}]
     if path and __import__("os").path.exists(path):
-        data = open(path, "rb").read()
+        with open(path, "rb") as f:
+            data = f.read()
         items.append({"type": "image",
                       "data": base64.b64encode(data).decode("ascii"),
                       "mimeType": "image/jpeg"})
@@ -404,8 +438,9 @@ def t_capture_state(subject="any", field="speed", op=">", value=0, frames=6,
     return {"_mcp_content": _image_content(res["collage"], note)}
 
 
-def t_measure(subject="self", seconds=4.0, hz=10, field="speed"):
-    return _require().measure(subject=subject, seconds=float(seconds), hz=int(hz), field=field)
+def t_measure(subject="self", seconds=4.0, hz=10, field="speed", keepalive=True):
+    return _require().measure(subject=subject, seconds=float(seconds), hz=int(hz),
+                              field=field, keepalive=bool(keepalive))
 
 
 def t_frame(subject=None, dist=240, height=110, yaw=35, mode="subject",
@@ -870,6 +905,9 @@ TOOLS = [
                           "default": "speed", "description": "wj/dj = walljump/airjump count, air = airborne"},
                 "seconds": {"type": "number", "default": 4.0},
                 "hz": {"type": "integer", "default": 10, "description": "samples per second"},
+                "keepalive": {"type": "boolean", "default": True,
+                              "description": "hold the bullet-time clock off during the window so the "
+                                             "world doesn't near-freeze while still (restored after)"},
             },
         },
         "handler": t_measure,
@@ -960,16 +998,21 @@ TOOLS = [
     {
         "name": "engine_input",
         "description": ("Drive the live player to interact with the world. `actions` is a sequence of "
-                        "steps: {\"move\":[fwd,side],\"secs\":s} (fwd/side are ±1), {\"turn\":[yaw,pitch]} "
-                        "(degrees; +yaw left, +pitch up), {\"attack\":secs} (fire/sword swing), "
-                        "{\"jump\":n}, {\"use\":item}, {\"wait\":secs}. Set play=true to leave spectator "
-                        "and spawn as a controllable player first. shoot=true returns a screenshot."),
+                        "steps: {\"move\":[fwd,side],\"secs\":s,\"jump\":bool,\"crouch\":bool} (fwd/side "
+                        "are ±1; move+crouch = slide), {\"turn\":[yaw,pitch]} (degrees; +yaw left, +pitch "
+                        "up), {\"attack\":secs} (fire/sword swing), {\"jump\":n}, {\"strafe\":secs,"
+                        "\"side\":±1} (air-strafe speed-build), {\"crouch\":secs}, {\"block\":secs} "
+                        "(katana guard/parry), {\"dash\":n}, {\"use\":item}, {\"wait\":secs}. Set "
+                        "play=true to spawn as a controllable player first. weapon accepts a number or "
+                        "name ('rocket','sword'). measure='speed' samples a field CONCURRENTLY while the "
+                        "actions run (reads velocity mid-motion). shoot=true returns a screenshot."),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "actions": {"type": "array", "items": {"type": "object"}},
                 "play": {"type": "boolean", "default": False, "description": "spawn as a live player first"},
-                "weapon": {"type": "integer"},
+                "weapon": {"description": "weapon number or name ('rocket','railgun','sword')"},
+                "measure": {"type": "string", "description": "field to sample concurrently (speed/air/...)"},
                 "shoot": {"type": "boolean", "default": False},
             },
             "required": ["actions"],
@@ -1411,6 +1454,25 @@ def _error(id_, code, message):
     _send({"jsonrpc": "2.0", "id": id_, "error": {"code": code, "message": message}})
 
 
+def _accepted_kwargs(handler) -> list[str]:
+    sig = inspect.signature(handler)
+    return [n for n, p in sig.parameters.items()
+            if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)]
+
+
+def _filter_kwargs(handler, args: dict):
+    """Split caller args into (accepted, unknown) against the handler signature so
+    a JSON-schema/handler drift surfaces as a clean message rather than a raw
+    'unexpected keyword argument' TypeError. Handlers taking **kwargs accept all."""
+    sig = inspect.signature(handler)
+    if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
+        return args, []
+    accepted = set(_accepted_kwargs(handler))
+    known = {k: v for k, v in args.items() if k in accepted}
+    unknown = [k for k in args if k not in accepted]
+    return known, unknown
+
+
 def _handle(req):
     method = req.get("method")
     id_ = req.get("id")
@@ -1441,6 +1503,13 @@ def _handle(req):
             _error(id_, -32602, f"unknown tool: {name}")
             return
         try:
+            args, _unknown = _filter_kwargs(tool["handler"], args)
+            if _unknown:
+                accepted = _accepted_kwargs(tool["handler"])
+                _result(id_, {"content": [{"type": "text", "text":
+                    f"ignored unknown argument(s) {_unknown} for {name} — accepted: "
+                    f"{accepted}"}], "isError": True})
+                return
             out = tool["handler"](**args)
             if isinstance(out, dict) and "_mcp_content" in out:
                 _result(id_, {"content": out["_mcp_content"]})

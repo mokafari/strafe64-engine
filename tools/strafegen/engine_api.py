@@ -42,6 +42,7 @@ import os
 import re
 import shutil
 import socket
+import statistics
 import subprocess
 import tempfile
 import time
@@ -59,6 +60,53 @@ BUILD_SH = ROOT / "scripts" / "build.sh"
 
 GAME = "baseoa"
 DYLIBS = ("qagame", "cgame", "ui")
+
+# weapon name → index (baseq3 build, no MISSIONPACK — see bg_public.h weapon_t).
+# Lets tools accept "rocket"/"railgun"/"sword" as well as the raw number so a name
+# no longer blows up as `invalid literal for int()`.
+WEAPON_INDEX = {
+    "none": 0, "gauntlet": 1, "melee": 1,
+    "machinegun": 2, "mg": 2,
+    "shotgun": 3, "sg": 3,
+    "grenade": 4, "grenadelauncher": 4, "gl": 4,
+    "rocket": 5, "rocketlauncher": 5, "rl": 5,
+    "lightning": 6, "lg": 6, "shaft": 6,
+    "rail": 7, "railgun": 7, "rg": 7,
+    "plasma": 8, "plasmagun": 8, "pg": 8,
+    "bfg": 9,
+    "grapple": 10, "grapplinghook": 10, "hook": 10,
+    "sword": 11, "katana": 11, "blade": 11,
+}
+
+
+# Known limitations that recur in sessions — surfaced via doctor() so they aren't
+# re-investigated each time. These need engine-side (C) work or a different
+# pipeline, not a Python fix.
+KNOWN_LIMITATIONS = [
+    "demo→MP4: demos recorded on a listen server are frame-sparse, so render_demo "
+    "yields very short clips. Use clip_video (fast screenshots) for footage; dense "
+    "demos would need dedicated-server recording (not built).",
+    "map_bounds reports a player-spread radius heuristic, not true BSP geometry "
+    "bounds — true bounds need a qagame/C change. Use it as a hint, not a clamp.",
+    "bspc (AAS navmesh) generation is flaky and per-seed non-deterministic; a "
+    "standalone, deterministic bspc path is not yet available.",
+    "spawn('misc_model') renders nothing at runtime — misc_model is compile-time/"
+    "q3map-only. There is no runtime custom-mesh audition; bake props into the map.",
+]
+
+
+def weapon_index(weapon) -> int:
+    """Coerce a weapon name or number to its index. Accepts 5, "5", "rocket",
+    "rocketlauncher", "rl", "sword", etc. Raises EngineError on an unknown name."""
+    if isinstance(weapon, (int, float)):
+        return int(weapon)
+    key = re.sub(r"[\s_]", "", str(weapon)).lower()
+    if key.isdigit():
+        return int(key)
+    if key in WEAPON_INDEX:
+        return WEAPON_INDEX[key]
+    raise EngineError(f"unknown weapon {weapon!r} — use a number or one of "
+                      f"{sorted(set(WEAPON_INDEX))}")
 DEFAULT_OA = os.environ.get("OA", str(ROOT / "assets" / "openarena"))
 
 # Where the LLM boots when no map is given: a known-good playtest sandbox.
@@ -377,7 +425,10 @@ class EngineSession:
                                      start_new_session=self.detached)
         self._pid = self.proc.pid
         self._log_fp = open(self.log_path, "rb")
-        self._await_ready(timeout)
+        # heavy maps with many bots load slower and AAS-init is per-bot — give the
+        # boot wait more headroom so a slow-but-fine startup isn't killed as a race.
+        nbots = self.bots if isinstance(self.bots, int) else len(self.bots or [])
+        self._await_ready(timeout + 2.0 * max(0, nbots))
         # disable the stand-still idle-burn unless explicitly wanted — set live
         # (post-config) so autoexec.cfg / strafe64.cfg can't re-enable it.
         if not self.hot_floor:
@@ -454,19 +505,49 @@ class EngineSession:
         self._log_fp.seek(0, os.SEEK_END)
         return self
 
+    @classmethod
+    def reopen(cls, home: str = LIVE_HOME) -> "EngineSession":
+        """Relaunch a persistent engine from its (possibly dead) state file —
+        same mode/map/oa/name — so a tool can transparently recover an engine
+        that died between turns. Reallocates the port (a zombie may hold the old
+        one). Raises if there's no prior state to reopen from, or it's still
+        alive (use attach instead)."""
+        sp = Path(home) / GAME / STATE_FILE
+        if not sp.exists():
+            raise EngineError(f"no engine state to reopen at {sp}")
+        st = json.loads(sp.read_text())
+        if _pid_alive(st.get("pid")):
+            raise EngineError(f"engine (pid {st.get('pid')}) is still alive — attach, don't reopen")
+        self = cls(mode=st.get("mode", "dedicated"), map=st.get("map"),
+                   oa=st.get("oa", DEFAULT_OA), home=st["home"], port=None,
+                   name=st.get("name"), deploy=False,
+                   detached=st.get("detached", True))
+        return self.start()
+
+    def _tail_log(self, n: int = 25) -> str:
+        """Last `n` lines of the engine console log — folded into startup errors so
+        the failure cause (Hunk_Alloc OOM, missing pk3, bad cvar) is visible
+        without the caller having to go open the file."""
+        try:
+            lines = self.log_path.read_text("latin-1", "replace").splitlines()
+        except OSError:
+            return ""
+        tail = "\n".join(strip_colors(l) for l in lines[-n:])
+        return f"\n--- last {min(n, len(lines))} console lines ---\n{tail}" if tail else ""
+
     def _await_ready(self, timeout: float):
         """Wait for the FIFO to appear (engine reached Com_Init), then settle."""
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self.proc.poll() is not None:
                 raise EngineError(f"engine exited during startup (code {self.proc.returncode}) "
-                                  f"— see {self.log_path}")
+                                  f"— see {self.log_path}{self._tail_log()}")
             if self.pipe_path.exists():
                 break
             time.sleep(0.1)
         else:
             raise EngineError(f"engine did not create com_pipefile within {timeout}s "
-                              f"— see {self.log_path}")
+                              f"— see {self.log_path}{self._tail_log()}")
         # open the FIFO for writing (engine holds the read end open since startup)
         self._pipe_fd = os.open(str(self.pipe_path), os.O_WRONLY)
         # let the first map load settle so commands aren't dropped pre-spawn
@@ -502,8 +583,8 @@ class EngineSession:
             return
         try:
             self.command("quit")
-        except Exception:
-            pass
+        except (EngineError, OSError):
+            pass   # engine already gone / pipe closed — terminate below
         try:
             self.proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -520,8 +601,8 @@ class EngineSession:
         remove its state file."""
         try:
             self.command("quit")
-        except Exception:
-            pass
+        except (EngineError, OSError):
+            pass   # engine already gone / pipe closed — signal-kill below
         deadline = time.time() + timeout
         while time.time() < deadline and _pid_alive(self._pid):
             time.sleep(0.2)
@@ -543,7 +624,7 @@ class EngineSession:
                     os.close(closer)
                 elif closer:
                     closer.close()
-            except Exception:
+            except OSError:
                 pass
         self._pipe_fd = self._log_fp = self._cap = None
         if rm_home is None:
@@ -636,10 +717,21 @@ class EngineSession:
 
     # -- cvars ---------------------------------------------------------------
 
-    def get_cvar(self, name: str, timeout: float = 6.0) -> str | None:
-        out = self.console(f"print {name}", timeout=timeout)
-        m = _CVAR_PRINT.search(out)
-        return m.group(1) if m else None
+    def get_cvar(self, name: str, timeout: float = 6.0, retries: int = 1) -> str | None:
+        """Read a cvar via the echo-sentinel log scrape. The readback occasionally
+        races the console flush (esp. in free-cam) and returns nothing — retry once
+        by default before giving up."""
+        for attempt in range(max(1, retries + 1)):
+            try:
+                out = self.console(f"print {name}", timeout=timeout)
+            except EngineError:
+                if attempt >= retries:
+                    raise
+                continue
+            m = _CVAR_PRINT.search(out)
+            if m:
+                return m.group(1)
+        return None
 
     def set_cvar(self, name: str, value, confirm: bool = True):
         self.command(f'set {name} "{value}"')
@@ -791,6 +883,12 @@ class EngineSession:
         while time.time() < deadline:
             buf += self._read_new()
             clean = strip_colors(buf)
+            # the qagame must register `apistate` — if it's an old/un-redeployed
+            # build the engine prints "Unknown command". Say so plainly instead of
+            # timing out with a vague message.
+            if re.search(r'[Uu]nknown command.*apistate|apistate.*not.*found', clean):
+                raise EngineError("engine doesn't know the 'apistate' command — the deployed "
+                                  "qagame is stale; engine_rebuild (+ deploy) and reopen")
             if "@@APISTATE_END@@" in clean:
                 body = clean.split("@@APISTATE_BEGIN@@", 1)[-1].split("@@APISTATE_END@@", 1)[0]
                 clients, me = [], None
@@ -856,7 +954,9 @@ class EngineSession:
         vals = [v for _, v in samples]
         if not vals:
             return {"subject": subject, "field": field, "samples": 0,
-                    "note": "no data — drive the player (play_mode) or follow a bot first"}
+                    "note": "no data — drive the player (play_mode) or follow a bot first; "
+                            "if a stale/leftover engine is intercepting, run engine_kill_orphans "
+                            "and confirm exactly one engine is live (engine_list)"}
         mx = max(vals)
         peak_at = next(t for t, v in samples if v == mx)
         return {"subject": subject, "field": field, "samples": len(vals),
@@ -924,7 +1024,9 @@ class EngineSession:
                     if m.get("max_speed"):
                         peaks.append(m["max_speed"])
                 peaks.sort()
-                med = peaks[len(peaks) // 2] if peaks else 0
+                # true median (averages the two middle values on an even count) —
+                # peaks[len//2] biased the reported speed upward for even trials.
+                med = round(statistics.median(peaks)) if peaks else 0
                 rows.append({"value": v, "max_speed": med, "trials": peaks,
                              "spread": [min(peaks), max(peaks)] if peaks else None})
             chart = self._barchart(title or f"{cvar} → median peak speed ({trials} trials)",
@@ -1010,6 +1112,14 @@ class EngineSession:
         live = [c for c in st["clients"] if not c.get("spectator")]
         if isinstance(subject, (list, tuple)) and len(subject) == 3:
             return [float(v) for v in subject], None
+        # MCP args arrive as JSON, so a coordinate subject often comes through as
+        # the *string* "[x,y,z]" or "x,y,z" rather than a real list — parse it so
+        # framing an explicit point (e.g. an empty course) works as documented.
+        if isinstance(subject, str):
+            m = re.fullmatch(r"\s*\[?\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]?\s*",
+                             subject)
+            if m:
+                return [float(m.group(i)) for i in (1, 2, 3)], None
         if subject in (None, "action", "auto", "all"):
             pts = [c["origin"] for c in live] or [c["origin"] for c in st["clients"]]
             if not pts:
@@ -1094,8 +1204,16 @@ class EngineSession:
         pts = [c["origin"] for c in st["clients"] if not c.get("spectator")] or \
               [c["origin"] for c in st["clients"]]
         if not pts:
-            raise EngineError("no players to establish on")
-        cx = [sum(p[i] for p in pts) / len(pts) for i in range(3)]
+            # empty course: there are no players to size/centre the shot from.
+            # As the docstring promises, `radius` enables this path — centre on the
+            # map's real geometry (bsp bounds) if available, else the world origin.
+            if radius is None:
+                raise EngineError("no players to establish on — pass radius to frame "
+                                  "an empty course")
+            mb = self.map_bounds()
+            cx = [float(v) for v in mb["center"]] if mb else [0.0, 0.0, 0.0]
+        else:
+            cx = [sum(p[i] for p in pts) / len(pts) for i in range(3)]
         # NOTE: bsp model-0 bounds (map_bounds()) include the sky/void dome and
         # are far larger than the playable area, so framing them puts the camera
         # uselessly far away. We frame from the players' spread, or an explicit
@@ -1186,7 +1304,7 @@ class EngineSession:
         self.command("-attack")
         self.give("all")
         if weapon is not None:
-            self.command(f"weapon {int(weapon)}")
+            self.command(f"weapon {weapon_index(weapon)}")
         time.sleep(max(0.0, settle - 2.6))
         return {"model": self.get_cvar("model"), "headmodel": self.get_cvar("headmodel")}
 
@@ -1277,7 +1395,18 @@ class EngineSession:
         time.sleep(settle)
         if third_person:
             self.third_person(True, range=range, angle=angle)
-        return {"following": target if target is not None else "next"}
+        out = {"following": target if target is not None else "next"}
+        # dropping to spectator registers as the player leaving the round — in
+        # last-pilot/race/lattice gametypes that can END the round mid-capture.
+        # Surface it so a vanished subject isn't mistaken for a tooling bug.
+        try:
+            gt = self.get_cvar("g_gametype")
+            if gt not in (None, "0", "3"):   # FFA/team don't round-end on a leave
+                out["warning"] = ("spectating drops the local player out of the round "
+                                  f"(g_gametype {gt}) — may end a last-pilot/race round")
+        except EngineError:
+            pass
+        return out
 
     def follow_next(self):
         self.command("follownext")
@@ -1319,7 +1448,7 @@ class EngineSession:
         time.sleep(0.6)
         self.give("all")
         if weapon is not None:
-            self.command(f"weapon {int(weapon)}")
+            self.command(f"weapon {weapon_index(weapon)}")
         if first_person:
             self.third_person(False)
         self.cinematic(False)   # restore the HUD for interactive play
@@ -1339,25 +1468,25 @@ class EngineSession:
         for b in self.INPUT_BUTTONS:
             self.release(b)
 
-    def move(self, forward: int = 0, side: int = 0, secs: float = 0.6, jump: bool = False):
+    def move(self, forward: int = 0, side: int = 0, secs: float = 0.6,
+             jump: bool = False, crouch: bool = False):
         """Walk/run the player: forward/back (±1), strafe right/left (±1), for
-        `secs` seconds; optionally jump during the move."""
+        `secs` seconds; optionally jump and/or crouch (hold +movedown — moving +
+        crouch = a slide) during the move."""
         held = []
         if forward > 0: held.append("forward")
         elif forward < 0: held.append("back")
         if side > 0: held.append("moveright")
         elif side < 0: held.append("moveleft")
+        if jump: held.append("moveup")
+        if crouch: held.append("movedown")
         for b in held:
             self.hold(b)
-        if jump:
-            self.hold("moveup")
         try:
             time.sleep(max(0.0, secs))
         finally:
             for b in held:
                 self.release(b)
-            if jump:
-                self.release("moveup")
 
     def jump(self, times: int = 1):
         for _ in range(max(1, times)):
@@ -1399,6 +1528,27 @@ class EngineSession:
         if not item:
             time.sleep(0.1); self.release("button2")
 
+    # STRAFE 64 special inputs (see autoexec.cfg / strafe64.cfg binds):
+    #   crouch / slide = +movedown (upmove<0); block/parry = BUTTON_BLOCK (+button12);
+    #   dash = BUTTON_DASH (+button13). Exposed here so scripted tests can drive the
+    #   slide, the katana guard, and the dash without console-bind workarounds.
+    def crouch(self, secs: float = 0.5):
+        """Hold crouch (+movedown) for `secs` — slide when moving, duck when still."""
+        self.tap("movedown", secs)
+
+    def block(self, secs: float = 0.6):
+        """Raise the katana guard (BUTTON_BLOCK / +button12) for `secs` — parries
+        and deflects frontal projectiles back at the shooter."""
+        self.command("+button12")
+        time.sleep(max(0.0, secs))
+        self.command("-button12")
+
+    def dash(self, times: int = 1):
+        """Tap the dash (BUTTON_DASH / +button13) — a revectoring lunge."""
+        for _ in range(max(1, times)):
+            self.command("+button13"); time.sleep(0.06)
+            self.command("-button13"); time.sleep(0.2)
+
     def spawn(self, classname: str, **keys):
         """Spawn any entity into the live world (cheat) — ~96u in front of the
         view unless an `origin="x y z"` key is given. Dress/edit a running map:
@@ -1430,14 +1580,16 @@ class EngineSession:
 
     def run_actions(self, actions) -> list:
         """Execute a sequence of interaction steps (the engine_input format):
-        {"move":[fwd,side],"secs":s,"jump":bool} | {"turn":[yaw,pitch]} |
-        {"attack":secs} | {"jump":n} | {"use":item} | {"wait":secs}."""
+        {"move":[fwd,side],"secs":s,"jump":bool,"crouch":bool} | {"turn":[yaw,pitch]} |
+        {"attack":secs} | {"jump":n} | {"strafe":secs,"side":±1} | {"crouch":secs} |
+        {"block":secs} | {"dash":n} | {"use":item} | {"wait":secs}."""
         done = []
         for a in (actions or []):
             if "move" in a:
                 mv = a["move"]
                 self.move(forward=mv[0], side=(mv[1] if len(mv) > 1 else 0),
-                          secs=float(a.get("secs", 0.6)), jump=bool(a.get("jump")))
+                          secs=float(a.get("secs", 0.6)), jump=bool(a.get("jump")),
+                          crouch=bool(a.get("crouch")))
                 done.append(f"move{mv}")
             elif "turn" in a:
                 tn = a["turn"]
@@ -1450,11 +1602,57 @@ class EngineSession:
             elif "strafe" in a:
                 self.strafe_jump(secs=float(a["strafe"]), side=int(a.get("side", 1)))
                 done.append("strafe")
+            elif "crouch" in a:
+                self.crouch(float(a["crouch"])); done.append("crouch")
+            elif "block" in a:
+                self.block(float(a["block"])); done.append("block")
+            elif "dash" in a:
+                self.dash(int(a["dash"])); done.append("dash")
             elif "use" in a:
                 self.use_item(a["use"]); done.append(f"use {a['use']}")
             elif "wait" in a:
                 time.sleep(float(a["wait"])); done.append(f"wait {a['wait']}")
         return done
+
+    @staticmethod
+    def _actions_duration(actions) -> float:
+        """Rough wall-clock estimate of a run_actions sequence (for sizing a
+        concurrent measure window)."""
+        t = 0.0
+        for a in (actions or []):
+            for k in ("secs", "strafe", "crouch", "block", "wait", "attack"):
+                if k in a:
+                    t += float(a[k]); break
+            else:
+                if "move" in a: t += 0.6
+                elif "jump" in a: t += 0.25 * int(a["jump"])
+                elif "dash" in a: t += 0.26 * int(a["dash"])
+                else: t += 0.2
+        return t
+
+    def drive_and_measure(self, actions, subject="self", seconds: float | None = None,
+                          hz: int = 10, field: str = "speed") -> dict:
+        """Run `actions` while sampling `subject` CONCURRENTLY, so you can read
+        speed/height mid-motion. run_actions alone is blocking and friction zeroes
+        velocity the instant keys release, so a serial measure misses the peak —
+        this overlaps the two on a background thread. Returns measure()'s metrics."""
+        import threading
+        if seconds is None:
+            seconds = max(1.0, self._actions_duration(actions) + 0.3)
+        # one scope owns time-bind for the whole driven window (measure won't also
+        # touch it because _saved_timebind is already set).
+        managed = self._saved_timebind is None
+        if managed:
+            self._disable_time_bind()
+        try:
+            th = threading.Thread(target=self.run_actions, args=(actions,), daemon=True)
+            th.start()
+            m = self.measure(subject=subject, seconds=seconds, hz=hz, field=field)
+            th.join(timeout=2.0)
+        finally:
+            if managed:
+                self.restore_time_bind()
+        return m
 
     def cinematic(self, on: bool = True):
         """Hide the 2D HUD / spectator text AND the console notify lines (the
@@ -2133,7 +2331,9 @@ def set_source_constant(name: str, value, rebuild: bool = False) -> dict:
     if c["live"]:
         raise EngineError(f"{name} is a live cvar — editing source has no runtime effect "
                           f"(the cvar overrides it); use set_movement/set_cvar instead")
-    f = next(p for p in _SRC_FILES if p.name == c["file"])
+    f = next((p for p in _SRC_FILES if p.name == c["file"]), None)
+    if f is None:
+        raise EngineError(f"source file {c['file']} not in {[p.name for p in _SRC_FILES]}")
     lines = f.read_text().splitlines(keepends=True)
     idx = c["line"] - 1
     old = lines[idx]
@@ -2228,6 +2428,7 @@ def doctor(oa: str = DEFAULT_OA) -> dict:
            and not p["home"].startswith(str(Path(LIVE_BASE))):
             pass  # home is just the writable dir; not a path-trap signal by itself
     rep["warnings"] = warn
+    rep["known_limitations"] = KNOWN_LIMITATIONS
     rep["ok"] = not warn
     return rep
 
