@@ -32,6 +32,10 @@ open arena pad. The sections all run +Y; the turn primitives let a layout route
 in any direction and the ramps/stairs change elevation, so you can shape an
 arbitrary map, not just a straight chain.
 
+- **🎲 auto-layout** — one seeded click procedurally assembles a full connected
+  course from the kit (start → openers → turns → flow → spice → climb → finish),
+  winding through space via turn primitives. Deterministic per seed; edit it
+  afterward like any composed layout.
 - **Add** a section from the library — it auto-chains onto the last open exit.
 - **Drag** a section in the 3D view to move it; as a connection dot nears a
   compatible free dot on another section (red **entry** ↔ green **exit**), it

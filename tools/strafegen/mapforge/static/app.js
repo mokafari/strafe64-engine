@@ -676,6 +676,8 @@ function wire() {
   $('modeCompose').onclick = () => switchMode('compose');
   $('clearCompose').onclick = () => { C.placed = []; C.brushes = []; C.sel = null; composeRefresh(); };
   $('addBoxC').onclick = addBoxC;
+  $('autoBtn').onclick = () => autoLayout(parseInt($('autoSeed').value) || 0);
+  $('autoRand').onclick = () => { $('autoSeed').value = Math.floor(Math.random() * 1e6); autoLayout(parseInt($('autoSeed').value)); };
   $('cExport').onclick = composeExport;
   $('importBtn').onclick = importMap;
   $('analyzeBtn').onclick = analyzeMaps;
@@ -756,19 +758,49 @@ function buildPartLib() {
   $('partLib').querySelectorAll('[data-part]').forEach(b => b.onclick = () => addPart(b.dataset.part));
 }
 
-function addPart(key) {
-  const inst = { id: C.seq++, key, yaw: 0, translate: [0, 0, 0] };
+function _placePart(key) {
   // auto-chain: mate this part's 'in' to the most recent free 'out'
+  const inst = { id: C.seq++, key, yaw: 0, translate: [0, 0, 0] };
   const slots = freeOutSlots(inst.id);
   if (slots.length) {
     const target = slots[slots.length - 1];
     const localIn = C.byKey[key].connectors.find(c => c.id === 'in');
     const mt = mate(localIn, target); inst.yaw = mt.yaw; inst.translate = mt.translate;
-  } else if (C.placed.length) {
-    inst.translate = [0, 0, 0];   // first/extra free piece at origin
   }
-  C.placed.push(inst); C.sel = { t: 'part', id: inst.id };
+  C.placed.push(inst);
+  return inst;
+}
+function addPart(key) {
+  const inst = _placePart(key);
+  C.sel = { t: 'part', id: inst.id };
   composeRefresh(); frameCompose();
+}
+
+// seeded procedural assembly over the part kit (deterministic per seed)
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function autoLayout(seed) {
+  const rng = mulberry32(seed | 0);
+  const pick = arr => arr[Math.floor(rng() * arr.length)];
+  const ri = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
+  C.placed = []; C.brushes = []; C.sel = null; C.seq = 0;
+  const seq = ['start'];
+  for (let i = 0; i < ri(1, 2); i++) seq.push(pick(['gaps', 'bhop']));
+  if (rng() < 0.6) seq.push(pick(['turn_left', 'turn_right']));
+  for (let i = 0; i < 2; i++) seq.push(pick(['slalom', 'slide', 'walls', 'floor', 'fork']));
+  if (rng() < 0.6) seq.push(pick(['turn_left', 'turn_right']));
+  for (let i = 0; i < ri(1, 2); i++) seq.push(pick(['hurdles', 'hazard', 'movers']));
+  seq.push(pick(['ramp_up', 'stairs', 'tower']));
+  seq.push('finish');
+  for (const k of seq) _placePart(k);
+  composeRefresh(); frameCompose();
+  toast(`auto-laid ${seq.length} sections (seed ${seed})`);
 }
 
 function addBoxC() {
