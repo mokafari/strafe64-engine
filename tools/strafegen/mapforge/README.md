@@ -79,7 +79,8 @@ decompiles the map's collision **brush lump** into clean, exact solid boxes
 (one per brush, not per surface — every brush's axial bevel planes give its AABB
 directly), colours sampled from the nearby drawn surfaces, so you can remix *any*
 map — move/add/delete brushes and re-export. (Falls back to thickening drawn
-surfaces if a map has no usable brush lump.)
+surfaces if a map has no usable brush lump.) The map's placeable entities
+(spawns, items, weapons) come across too, so a remix keeps the item/spawn layout.
 
 The **📊 learn** button decompiles every available map and aggregates a design
 digest — platform footprints, wall heights, vertical layering (decks), map

@@ -585,8 +585,15 @@ function importToCompose() {
     }
     note = ' (surface trace)';
   }
+  // bring the map's placeable entities (spawns / items / weapons) along too
+  C.entities = []; C.entSeq = 0;
+  const placeable = /^(item_|weapon_|ammo_|holdable_|info_player_deathmatch)/;
+  for (const e of (S.base.entities || [])) {
+    if (e.origin && placeable.test(e.classname))
+      C.entities.push({ id: C.entSeq++, classname: e.classname, origin: [...e.origin] });
+  }
   switchMode('compose');
-  toast(`traced ${C.brushes.length} solid brushes from ${S.base.name}${note}`);
+  toast(`traced ${C.brushes.length} brushes + ${C.entities.length} entities from ${S.base.name}${note}`);
 }
 
 async function calibrateGen() {
@@ -1243,7 +1250,7 @@ async function switchMode(m) {
   $('composeRight').style.display = m === 'compose' ? '' : 'none';
   if (m === 'compose') {
     await loadCatalog();
-    if (!C.placed.length) { addPart('start'); }   // seed with a start pad
+    if (!C.placed.length && !C.brushes.length && !C.entities.length) { addPart('start'); }   // seed empty layout with a start pad
     composeRefresh(); frameCompose();
   } else { if (S.base) { render3d(); draw2d(); } else generate(); }
   status();
