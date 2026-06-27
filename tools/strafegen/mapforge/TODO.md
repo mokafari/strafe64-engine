@@ -30,8 +30,9 @@ freeform boxes, entity placement, save/load, and export (.bsp/.map/.pk3) all wor
 4. ~~**No undo/redo.**~~ **DONE (compose)** — auto-capture history, ↶/↷ buttons,
    Ctrl+Z / Ctrl+Shift+Z, and Delete-key removes the selection. (Generate-mode
    edits still have no undo.)
-5. **Free boxes/entities**: axis-aligned only, XY drag (Z is numeric-only); no
-   rotation, grid snap, multi-select, or duplicate.
+5. **Free boxes/entities**: now have **grid snap** (64u toggle) and **duplicate**
+   (Ctrl+D). *Still:* axis-aligned only, XY drag (Z numeric-only), no rotation
+   (would need non-axis brushes) or multi-select.
 6. **Generate-mode geometry editing** is limited to axis boxes; ramps/prisms are
    read-only and you can't add ramps/cylinders/arbitrary prisms.
 7. ~~**Entity keys**: only `origin` is editable.~~ **DONE** — placed entities now

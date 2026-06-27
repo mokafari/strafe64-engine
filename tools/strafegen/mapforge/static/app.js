@@ -738,8 +738,10 @@ function wire() {
     const z = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z';
     if (z && e.shiftKey) { e.preventDefault(); redo(); }
     else if (z) { e.preventDefault(); undo(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateComposeSel(); }
     else if ((e.key === 'Delete' || e.key === 'Backspace') && C.sel) { e.preventDefault(); deleteComposeSel(); }
   });
+  $('gridSnap').onchange = () => { C.snap = $('gridSnap').checked ? 64 : 0; };
   $('loadLayout').onclick = () => $('layoutFile').click();
   $('layoutFile').onchange = e => { if (e.target.files[0]) loadLayoutFile(e.target.files[0]); e.target.value = ''; };
   $('autoBtn').onclick = () => autoLayout(parseInt($('autoSeed').value) || 0);
@@ -767,7 +769,8 @@ function setView(v) {
 // ================================================================= COMPOSE
 // Kit-bash mode: place section "parts" and snap their entry/exit connectors.
 const C = { catalog: null, byKey: {}, placed: [], seq: 0, sel: null, drag: null,
-            brushes: [], brushSeq: 0, entities: [], entSeq: 0, placingEnt: null };
+            brushes: [], brushSeq: 0, entities: [], entSeq: 0, placingEnt: null, snap: 0 };
+const snap1 = v => C.snap ? Math.round(v / C.snap) * C.snap : Math.round(v);
 const SNAP = 160;   // world-unit snap radius for connectors
 
 const yawOf = d => d[0] === 1 ? 0 : d[1] === 1 ? 90 : d[0] === -1 ? 180 : 270;
@@ -890,6 +893,22 @@ function deleteComposeSel() {
   else if (C.sel.t === 'brush') C.brushes = C.brushes.filter(b => b.id !== C.sel.id);
   else if (C.sel.t === 'ent') C.entities = C.entities.filter(e => e.id !== C.sel.id);
   C.sel = null; composeRefresh();
+}
+function duplicateComposeSel() {
+  const O = 128;
+  if (C.sel && C.sel.t === 'part') {
+    const p = selPart(); const n = { ...p, id: C.seq++, translate: [p.translate[0] + O, p.translate[1] + O, p.translate[2]] };
+    C.placed.push(n); C.sel = { t: 'part', id: n.id };
+  } else if (C.sel && C.sel.t === 'brush') {
+    const b = selBrush(); const a = b.aabb;
+    const n = { ...b, id: C.brushSeq++, aabb: [a[0] + O, a[1] + O, a[2], a[3] + O, a[4] + O, a[5]] };
+    C.brushes.push(n); C.sel = { t: 'brush', id: n.id };
+  } else if (C.sel && C.sel.t === 'ent') {
+    const e = selEnt(); const o = e.origin;
+    const n = { id: C.entSeq++, classname: e.classname, origin: [o[0] + O, o[1] + O, o[2]], keys: { ...(e.keys || {}) } };
+    C.entities.push(n); C.sel = { t: 'ent', id: n.id };
+  } else return;
+  composeRefresh();
 }
 
 function composeBounds() {
@@ -1046,15 +1065,15 @@ $('gl').addEventListener('pointermove', e => {
   if (S.mode !== 'compose' || !C.drag || !C.drag.start) return;
   if (C.drag.ent) {
     const gp = groundPoint(e, C.drag.o0[2]); if (!gp) return;
-    C.drag.ent.origin = [C.drag.o0[0] + (gp.x - C.drag.start[0]),
-                         C.drag.o0[1] + (gp.y - C.drag.start[1]), C.drag.o0[2]];
+    C.drag.ent.origin = [snap1(C.drag.o0[0] + (gp.x - C.drag.start[0])),
+                         snap1(C.drag.o0[1] + (gp.y - C.drag.start[1])), C.drag.o0[2]];
     composeRefresh(); return;
   }
   if (C.drag.box) {
     const gp = groundPoint(e, C.drag.a0[2]); if (!gp) return;
-    const dx = gp.x - C.drag.start[0], dy = gp.y - C.drag.start[1];
-    const a = C.drag.a0;
-    C.drag.box.aabb = [a[0] + dx, a[1] + dy, a[2], a[3] + dx, a[4] + dy, a[5]];
+    const a = C.drag.a0, w = a[3] - a[0], d = a[4] - a[1];
+    const nx = snap1(a[0] + (gp.x - C.drag.start[0])), ny = snap1(a[1] + (gp.y - C.drag.start[1]));
+    C.drag.box.aabb = [nx, ny, a[2], nx + w, ny + d, a[5]];
     composeRefresh(); return;
   }
   const gp = groundPoint(e, C.drag.t0[2]); if (!gp) return;
