@@ -114,5 +114,8 @@ double tan( double x );
 int abs( int n );
 double fabs( double x );
 double acos( double x );
+double exp( double x );
+double log( double x );
+double pow( double x, double y );
 
 #endif // BG_LIB_H

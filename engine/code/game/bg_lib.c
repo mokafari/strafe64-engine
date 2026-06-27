@@ -809,6 +809,83 @@ double tan( double x ) {
 	return sin(x) / cos(x);
 }
 
+// STRAFE 64: the QVM libm omitted acos/exp/log/pow, but the custom gameplay
+// uses them (air-strafe angle meter, time-curve shaping, weapon falloff). The
+// engine binary provides atan2/sqrt/sin/cos to the VM, so build the rest on
+// top of those. acos is exact; exp/log/pow are series approximations, which is
+// fine for the visual/feel math that calls them.
+double acos( double x ) {
+	if ( x >= 1.0 ) {
+		return 0.0;
+	}
+	if ( x <= -1.0 ) {
+		return M_PI;
+	}
+	return atan2( sqrt( 1.0 - x * x ), x );
+}
+
+double log( double x ) {
+	int		n, k;
+	double	s, s2, numer, term, result;
+
+	if ( x <= 0.0 ) {
+		return 0.0;				// undefined; clamp for the VM
+	}
+
+	// reduce to m in [1,2): x = m * 2^n, so log(x) = log(m) + n*ln2
+	n = 0;
+	while ( x >= 2.0 ) { x *= 0.5; n++; }
+	while ( x <  1.0 ) { x *= 2.0; n--; }
+
+	// log(m) = 2*(s + s^3/3 + s^5/5 + ...), s = (m-1)/(m+1), |s| <= 1/3
+	s = ( x - 1.0 ) / ( x + 1.0 );
+	s2 = s * s;
+	numer = s;
+	term = s;
+	result = 0.0;
+	k = 1;
+	while ( term > 1e-12 || term < -1e-12 ) {
+		result += term / k;
+		numer *= s2;
+		term = numer;
+		k += 2;
+	}
+	result *= 2.0;
+
+	return result + n * 0.69314718055994530942;	// + n*ln2
+}
+
+double exp( double x ) {
+	int		n, k;
+	double	r, term, result;
+	const double ln2 = 0.69314718055994530942;
+
+	// range-reduce: x = n*ln2 + r, r in [-ln2/2, ln2/2]
+	n = (int)( x / ln2 + ( x >= 0.0 ? 0.5 : -0.5 ) );
+	r = x - n * ln2;
+
+	// Taylor series for exp(r); converges fast for small r
+	result = 1.0;
+	term = 1.0;
+	for ( k = 1; k <= 16; k++ ) {
+		term *= r / k;
+		result += term;
+	}
+
+	return result * powN( 2.0, n );
+}
+
+double pow( double base, double ex ) {
+	if ( base <= 0.0 ) {
+		if ( base == 0.0 ) {
+			return ( ex == 0.0 ) ? 1.0 : 0.0;
+		}
+		// negative base is only real for integer exponents
+		return powN( base, (int)ex );
+	}
+	return exp( ex * log( base ) );
+}
+
 
 static int randSeed = 0;
 

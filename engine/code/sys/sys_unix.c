@@ -113,6 +113,56 @@ static int Sys_Exec( void )
 	}
 }
 
+/*
+==============
+Sys_RunProcess
+
+Launch an external program and block until it exits. argv is a
+NULL-terminated array (argv[0] is the executable, found on $PATH via execvp).
+Returns the child's exit status, or -1 if the process could not be started.
+
+Used by the in-game FORGE bridge (Com_Forge_f) to run strafegen.py. Unlike
+Sys_Exec, this takes a caller-supplied argv so it is not tied to the dialog
+exec buffer.
+==============
+*/
+int Sys_RunProcess( const char **argv )
+{
+	pid_t pid;
+
+	if( !argv || !argv[ 0 ] )
+		return -1;
+
+	pid = fork( );
+
+	if( pid < 0 )
+		return -1;
+
+	if( pid )
+	{
+		// Parent: wait for the child to finish
+		int status;
+
+		if( waitpid( pid, &status, 0 ) < 0 )
+			return -1;
+
+		if( WIFEXITED( status ) )
+			return WEXITSTATUS( status );
+
+		return -1;
+	}
+	else
+	{
+		// Child
+		execvp( argv[ 0 ], (char * const *)argv );
+
+		// execvp only returns on failure
+		_exit( 127 );
+
+		return -1;
+	}
+}
+
 #ifdef __APPLE__
 
 /*

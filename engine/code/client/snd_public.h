@@ -31,6 +31,12 @@ void S_StartLocalSound( sfxHandle_t sfx, int channelNum );
 void S_StartBackgroundTrack( const char *intro, const char *loop );
 void S_StopBackgroundTrack( void );
 
+// called by the active sound backend when the current music track ends:
+// advances the music playlist (if one is loaded) and returns the next track in
+// 'out' (possibly "" to request a stop). returns qfalse when no playlist is
+// active, leaving the backend's own single-track loop behaviour intact.
+qboolean S_NextPlaylistTrack( char *out, int outSize );
+
 // cinematics and voice-over-network will send raw samples
 // 1.0 volume will be direct output of source samples
 void S_RawSamples(int stream, int samples, int rate, int width, int channels,

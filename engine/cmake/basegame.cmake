@@ -80,6 +80,7 @@ set(UI_SOURCES
     ${SOURCE_DIR}/game/bg_misc.c
     ${SOURCE_DIR}/game/bg_lib.c
     ${SOURCE_DIR}/q3_ui/ui_addbots.c
+    ${SOURCE_DIR}/q3_ui/ui_arena.c
     ${SOURCE_DIR}/q3_ui/ui_atoms.c
     ${SOURCE_DIR}/q3_ui/ui_cdkey.c
     ${SOURCE_DIR}/q3_ui/ui_cinematics.c
@@ -88,8 +89,10 @@ set(UI_SOURCES
     ${SOURCE_DIR}/q3_ui/ui_controls2.c
     ${SOURCE_DIR}/q3_ui/ui_credits.c
     ${SOURCE_DIR}/q3_ui/ui_demo2.c
+    ${SOURCE_DIR}/q3_ui/ui_dev.c
     ${SOURCE_DIR}/q3_ui/ui_display.c
     ${SOURCE_DIR}/q3_ui/ui_gameinfo.c
+    ${SOURCE_DIR}/q3_ui/ui_generate.c
     ${SOURCE_DIR}/q3_ui/ui_ingame.c
     ${SOURCE_DIR}/q3_ui/ui_loadconfig.c
     ${SOURCE_DIR}/q3_ui/ui_menu.c

@@ -875,6 +875,21 @@ void Sys_SetEnv(const char *name, const char *value)
 
 /*
 ==============
+Sys_RunProcess
+
+Launch an external program and block until it exits. Not yet implemented on
+Windows (the in-game FORGE bridge is unix-only for now) — returns -1.
+==============
+*/
+int Sys_RunProcess( const char **argv )
+{
+	(void)argv;
+	Com_Printf( "Sys_RunProcess: external tools are not supported on this platform\n" );
+	return -1;
+}
+
+/*
+==============
 Sys_PID
 ==============
 */

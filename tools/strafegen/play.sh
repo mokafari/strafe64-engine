@@ -51,6 +51,10 @@ if [ ! -f "$OA/baseoa/$NAME.pk3" ]; then
 	python3 "$HERE/strafegen.py" $GEN_ARGS --pk3 --out "$HERE/generated" || exit 1
 	cp "$HERE/generated/$NAME.pk3" "$OA/baseoa/" || exit 1
 fi
+# shared shader+textures live in ONE pak now (deduped) — deploy it alongside the
+# lean map pk3 or the map renders with the default grey shader.
+[ -f "$HERE/generated/zzz_strafe64_shader.pk3" ] && \
+	cp "$HERE/generated/zzz_strafe64_shader.pk3" "$OA/baseoa/"
 
 exec "$ENGINE/ioquake3.app/Contents/MacOS/ioquake3" \
 	+set com_basegame baseoa +set fs_basepath "$OA" \

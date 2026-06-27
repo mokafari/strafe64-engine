@@ -23,7 +23,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 /*
 =======================================================================
 
-CREDITS
+CREDITS  —  STRAFE 64
+
+The stock id Software / ioquake3 roll has been replaced with a themed
+NERV/MAGI sign-off. It is skippable: any key drops straight to quit.
+The engine attribution below keeps faith with the GPL it ships under.
 
 =======================================================================
 */
@@ -34,72 +38,30 @@ CREDITS
 
 typedef struct {
 	menuframework_s	menu;
-	int frame;
 } creditsmenu_t;
 
 static creditsmenu_t	s_credits;
 
-
-/*
-===============
-UI_CreditMenu_Draw_ioq3
-===============
-*/
-static void UI_CreditMenu_Draw_ioq3( void ) {
-	int		y;
-	int		i;
-
-	// These are all people that have made commits to Subversion, and thus
-	//  probably incomplete.
-	// (These are in alphabetical order, for the defense of everyone's egos.)
-	static const char *names[] = {
-		"Tim Angus",
-		"James Canete",
-		"Vincent Cojot",
-		"Ryan C. Gordon",
-		"Aaron Gyes",
-		"Zack Middleton",
-		"Ludwig Nussel",
-		"Julian Priestley",
-		"Scirocco Six",
-		"Thilo Schulz",
-		"Zachary J. Slater",
-		"Tony J. White",
-		"...and many, many others!",  // keep this one last.
-		NULL
-	};
-
-	// Center text vertically on the screen
-	y = (SCREEN_HEIGHT - ARRAY_LEN(names) * (1.42 * PROP_HEIGHT * PROP_SMALL_SIZE_SCALE)) / 2;
-
-	UI_DrawProportionalString( 320, y, "ioquake3 contributors:", UI_CENTER|UI_SMALLFONT, color_white );
-	y += 1.42 * PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-
-	for (i = 0; names[i]; i++) {
-		UI_DrawProportionalString( 320, y, names[i], UI_CENTER|UI_SMALLFONT, color_white );
-		y += 1.42 * PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	}
-
-	UI_DrawString( 320, 459, "https://www.ioquake3.org/", UI_CENTER|UI_SMALLFONT, color_red );
-}
+// NERV/MAGI palette (mirrors ui_menu.c)
+static vec4_t cr_amber = { 1.00f, 0.62f, 0.05f, 1.00f };
+static vec4_t cr_green = { 0.45f, 1.00f, 0.55f, 1.00f };
+static vec4_t cr_dim   = { 0.45f, 0.55f, 0.55f, 1.00f };
+static vec4_t cr_red   = { 1.00f, 0.16f, 0.22f, 1.00f };
 
 
 /*
 =================
 UI_CreditMenu_Key
+
+Skippable: any key (mouse or keyboard) quits the game immediately.
 =================
 */
 static sfxHandle_t UI_CreditMenu_Key( int key ) {
+	// ignore the character-repeat events, act on the key itself
 	if( key & K_CHAR_FLAG ) {
 		return 0;
 	}
-
-	s_credits.frame++;
-	if (s_credits.frame == 1) {
-		s_credits.menu.draw = UI_CreditMenu_Draw_ioq3;
-	} else {
-		trap_Cmd_ExecuteText( EXEC_APPEND, "quit\n" );
-	}
+	trap_Cmd_ExecuteText( EXEC_APPEND, "quit\n" );
 	return 0;
 }
 
@@ -107,60 +69,40 @@ static sfxHandle_t UI_CreditMenu_Key( int key ) {
 /*
 ===============
 UI_CreditMenu_Draw
+
+The NERV canvas is already painted behind this fullscreen menu; layer the
+STRAFE 64 sign-off on top.
 ===============
 */
 static void UI_CreditMenu_Draw( void ) {
+	vec4_t	cyan = { 0.20f, 0.95f, 1.00f, 0.55f };
+	vec4_t	red  = { 1.00f, 0.18f, 0.30f, 0.55f };
 	int		y;
 
-	y = 12;
-	UI_DrawProportionalString( 320, y, "id Software is:", UI_CENTER|UI_SMALLFONT, color_white );
+	// chromatic-split STRAFE 64 wordmark (matches the main menu)
+	UI_DrawProportionalString( 320 - 3, 96, "STRAFE 64", UI_CENTER, red );
+	UI_DrawProportionalString( 320 + 3, 96, "STRAFE 64", UI_CENTER, cyan );
+	UI_DrawProportionalString( 320,     96, "STRAFE 64", UI_CENTER, cr_amber );
 
-	y += 1.42 * PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Programming", UI_CENTER|UI_SMALLFONT, color_white );
-	y += PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "John Carmack, Robert A. Duffy, Jim Dose'", UI_CENTER|UI_SMALLFONT, color_white );
+	UI_DrawString( 320, 140, "MAGI-01  / /  PROJECT  No.666  / /  SPEED IS LIFE",
+		UI_CENTER|UI_SMALLFONT, cr_green );
 
-	y += 1.42 * PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Art", UI_CENTER|UI_SMALLFONT, color_white );
-	y += PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Adrian Carmack, Kevin Cloud,", UI_CENTER|UI_SMALLFONT, color_white );
-	y += PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Kenneth Scott, Seneca Menard, Fred Nilsson", UI_CENTER|UI_SMALLFONT, color_white );
+	y = 210;
+	UI_DrawString( 320, y, "DESIGN  -  CODE  -  WORLDS", UI_CENTER|UI_SMALLFONT, cr_dim );
+	y += 22;
+	UI_DrawProportionalString( 320, y, "GUSTAV LILJESTEN", UI_CENTER, cr_amber );
 
-	y += 1.42 * PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Game Designer", UI_CENTER|UI_SMALLFONT, color_white );
-	y += PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Graeme Devine", UI_CENTER|UI_SMALLFONT, color_white );
+	y += 60;
+	UI_DrawString( 320, y, "MOVEMENT IS THE WEAPON  / /  THE FLOOR IS NEVER SAFE",
+		UI_CENTER|UI_SMALLFONT, cr_green );
 
-	y += 1.42 * PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Level Design", UI_CENTER|UI_SMALLFONT, color_white );
-	y += PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Tim Willits, Christian Antkow, Paul Jaquays", UI_CENTER|UI_SMALLFONT, color_white );
+	// engine attribution — STRAFE 64 runs on ioquake3 / id Tech 3 (GPLv2)
+	UI_DrawString( 320, 404,
+		"built on ioquake3  /  id Tech 3 engine  -  GNU GPL v2",
+		UI_CENTER|UI_SMALLFONT, cr_dim );
 
-	y += 1.42 * PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "CEO", UI_CENTER|UI_SMALLFONT, color_white );
-	y += PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Todd Hollenshead", UI_CENTER|UI_SMALLFONT, color_white );
-
-	y += 1.42 * PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Director of Business Development", UI_CENTER|UI_SMALLFONT, color_white );
-	y += PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Marty Stratton", UI_CENTER|UI_SMALLFONT, color_white );
-
-	y += 1.42 * PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Biz Assist and id Mom", UI_CENTER|UI_SMALLFONT, color_white );
-	y += PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Donna Jackson", UI_CENTER|UI_SMALLFONT, color_white );
-
-	y += 1.42 * PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Development Assistance", UI_CENTER|UI_SMALLFONT, color_white );
-	y += PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawProportionalString( 320, y, "Eric Webb", UI_CENTER|UI_SMALLFONT, color_white );
-
-	y += 1.35 * PROP_HEIGHT * PROP_SMALL_SIZE_SCALE;
-	UI_DrawString( 320, y, "To order: 1-800-idgames     www.quake3arena.com     www.idsoftware.com", UI_CENTER|UI_SMALLFONT, color_red );
-	y += SMALLCHAR_HEIGHT;
-	UI_DrawString( 320, y, "Quake III Arena(c) 1999-2000, Id Software, Inc.  All Rights Reserved", UI_CENTER|UI_SMALLFONT, color_red );
+	UI_DrawString( 320, 446, "PRESS ANY KEY TO TERMINATE",
+		UI_CENTER|UI_SMALLFONT, cr_red );
 }
 
 

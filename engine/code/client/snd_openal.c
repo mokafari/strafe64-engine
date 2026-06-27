@@ -2148,8 +2148,15 @@ void S_AL_MusicProcess(ALuint b)
 		if(intro_stream)
 			intro_stream = NULL;
 		else
+		{
+			// if a playlist is loaded, advance to the next track; otherwise
+			// reopen the same loop track as before
+			char next[MAX_QPATH];
+			if(S_NextPlaylistTrack(next, sizeof(next)))
+				Q_strncpyz(s_backgroundLoop, next, sizeof(s_backgroundLoop));
 			mus_stream = S_CodecOpenStream(s_backgroundLoop);
-		
+		}
+
 		curstream = mus_stream;
 
 		if(!curstream)

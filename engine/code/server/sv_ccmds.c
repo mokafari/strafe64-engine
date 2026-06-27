@@ -162,6 +162,14 @@ static void SV_Map_f( void ) {
 		return;
 	}
 
+	// gate gameplay behind a valid license key
+	if ( !Com_LicenseValid() ) {
+		Com_Printf( S_COLOR_YELLOW "This copy of STRAFE 64 is unregistered.\n"
+			S_COLOR_WHITE "Enter the key from your purchase with:  "
+			S_COLOR_GREEN "license <YOUR-KEY>\n" );
+		return;
+	}
+
 	// make sure the level exists before trying to change, so that
 	// a typo at the server console won't end the game
 	Com_sprintf (expanded, sizeof(expanded), "maps/%s.bsp", map);

@@ -150,15 +150,47 @@ static qboolean G_LatticeTouches( int owner, const vec3_t o, float r2, qboolean 
 	int				i, idx;
 	latticeTrail_t	*t = &trails[owner];
 	vec3_t			d;
+	float			dist2;
 	int				selfMs = g_latticeSelfMs.integer > 0 ? g_latticeSelfMs.integer : LATTICE_SELF_MS;
+	float			clr2;
+	qboolean		attached = self;	// walking the fresh run of trail still wrapped on the body
+
+	// SELF body-clearance (the real slow-mo fix): the freshest CONTIGUOUS points
+	// within this radius are the carve you are physically standing in — they never
+	// chip you, no matter how the world clock is dilated. The old fixed-ms grace
+	// alone breaks in deep bullet-time: level.time crawls, so while you hover nearly
+	// frozen on a just-laid point that 700ms quietly elapses and your own fresh trail
+	// bites. Keying on DISTANCE instead makes it clock-proof. Only once the trail has
+	// first SEPARATED from your body by this gap can your lattice hurt you — i.e. when
+	// you run a retreat back into an OLDER loop of it (the intended self-kill). Sized a
+	// touch past the contact radius so the safe blob fully covers a contact.
+	{
+		float r = g_latticeRadius.value;
+		if ( r < 1 ) r = 40;
+		r *= 1.6f;
+		clr2 = r * r;
+	}
 
 	for ( i = 0 ; i < t->count ; i++ ) {
 		idx = ( t->head - 1 - i + LATTICE_PTS * 2 ) % LATTICE_PTS;
-		if ( self && level.time - t->pts[idx].time < selfMs ) {
-			continue;			// the part of the trail you're still inside (g_latticeSelfMs)
-		}
 		VectorSubtract( o, t->pts[idx].xyz, d );
-		if ( DotProduct( d, d ) <= r2 ) {
+		dist2 = DotProduct( d, d );
+
+		if ( self ) {
+			// skip the fresh carve still attached to your own body (clock-independent)
+			if ( attached ) {
+				if ( dist2 < clr2 ) {
+					continue;
+				}
+				attached = qfalse;		// trail has left the body; older loops can bite now
+			}
+			// keep the small ms cushion on top for the very freshest points
+			if ( level.time - t->pts[idx].time < selfMs ) {
+				continue;
+			}
+		}
+
+		if ( dist2 <= r2 ) {
 			return qtrue;
 		}
 	}
@@ -470,12 +502,12 @@ qtrue if the heat was resolved this call (caller should stop processing rules).
 ================
 */
 qboolean G_LatticeCheckWin( void ) {
+	int			i, alive, winner;
+	gclient_t	*cl;
+
 	if ( g_latticeBracket.integer ) {
 		return G_LatticeBracketCheck();
 	}
-
-	int			i, alive, winner;
-	gclient_t	*cl;
 
 	if ( level.latticeEnded ) {
 		return qtrue;		// already resolved, waiting on intermission

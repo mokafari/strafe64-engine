@@ -44,9 +44,11 @@ MAIN MENU
 // STRAFE 64 game modes (each launches a strafegen course with the right cvars)
 #define ID_S64_DAILY			20
 #define ID_S64_TRIAL			21
-#define ID_S64_VECTOR			22
+#define ID_S64_ARENA			22
 #define ID_S64_LATTICE			23
 #define ID_S64_PRACTICE			24
+#define ID_S64_FORGE			25
+#define ID_S64_DEV				26
 
 // flagship strafegen courses, kept in baseoa as .pk3
 #define S64_MAP_TOWER			"strafe64_1337_x3"
@@ -57,14 +59,18 @@ MAIN MENU
 
 #define MAIN_BANNER_MODEL				"models/mapobjects/banner/banner5.md3"
 #define MAIN_MENU_VERTICAL_SPACING		30
-#define MAIN_MENU_SYSTEM_SPACING		24
+#define MAIN_MENU_SYSTEM_SPACING		26
+
+// the dim "system" nav bar sits midway between the hero column and the
+// bottom status line (MULTIPLAYER / SETUP / MODS / QUIT)
+#define MAIN_MENU_BAR_Y					410
 
 // STRAFE 64 — NERV/MAGI "structural collapse" identity for the main menu
 static vec4_t s64_grid   = { 0.10f,  0.55f,  0.22f, 0.16f };  // MAGI green gridlines
-static vec4_t s64_amber  = { 1.00f,  0.62f,  0.05f, 1.00f };  // menu item amber
+static vec4_t menu_amber  = { 1.00f,  0.62f,  0.05f, 1.00f };  // menu item amber
 static vec4_t s64_green  = { 0.45f,  1.00f,  0.55f, 1.00f };  // terminal green
 static vec4_t s64_redhot = { 1.00f,  0.16f,  0.22f, 1.00f };  // warning red
-static vec4_t s64_dim    = { 0.45f,  0.55f,  0.55f, 1.00f };  // dim label
+static vec4_t menu_dim    = { 0.45f,  0.55f,  0.55f, 1.00f };  // dim label
 
 /*
 ===============
@@ -88,7 +94,7 @@ static void Strafe64_WarningBar( void ) {
 	hot[0] = 1.0f; hot[1] = 0.16f + 0.2f * pulse; hot[2] = 0.22f; hot[3] = 1.0f;
 	UI_DrawString( 22, 20, "WARNING", UI_LEFT|UI_SMALLFONT, hot );
 	UI_DrawString( 110, 20, "STRUCTURAL INTEGRITY FAILING",
-		UI_LEFT|UI_SMALLFONT, s64_dim );
+		UI_LEFT|UI_SMALLFONT, menu_dim );
 
 	// counts down, then loops — it is never not falling
 	secs = 599999 - ( ( uis.realtime / 1000 ) % 600000 );
@@ -120,14 +126,14 @@ static void Strafe64_Title( void ) {
 	UI_DrawProportionalString( 320 + 3, 70, "STRAFE 64",
 		UI_CENTER, cyan );
 	UI_DrawProportionalString( 320, 70, "STRAFE 64",
-		UI_CENTER, s64_amber );
+		UI_CENTER, menu_amber );
 
 	UI_DrawString( 320, 112, "MAGI-01  / /  VOID PROTOCOL  / /  SPEED IS LIFE",
 		UI_CENTER|UI_SMALLFONT, s64_green );
 
 	// EVANGELION-style status block under the wordmark
 	UI_DrawString( 320, 138, "EVACUATE BY MOVEMENT - THE FLOOR IS NEVER SAFE",
-		UI_CENTER|UI_SMALLFONT, s64_dim );
+		UI_CENTER|UI_SMALLFONT, menu_dim );
 }
 
 /*
@@ -148,13 +154,20 @@ static void Strafe64_Divider( void ) {
 ===============
 Strafe64_Footer
 
-Bottom status line + a NERV-style stamp.
+A slashed MAGI status line (real build version + the NERV build codename,
+"MELCHIOR" — one of the three MAGI, tying back to the MAGI-01 subtitle)
+above a thin rule, fencing the bottom system nav bar (MULTIPLAYER / SETUP
+/ MODS / QUIT) off from the hero column. The nav labels themselves are
+real menu items, painted by Menu_Draw.
 ===============
 */
 static void Strafe64_Footer( void ) {
-	UI_DrawString( 22, 452, "SYS 6.66   //   baseoa   //   vm_game 0   //   NERV",
-		UI_LEFT|UI_SMALLFONT, s64_green );
-	UI_DrawString( 618, 452, "PROJECT  No.666", UI_RIGHT|UI_SMALLFONT, s64_redhot );
+	// thin rule under the grey nav bar, then the green status line pinned to
+	// the very bottom edge
+	UI_FillRect( 40, MAIN_MENU_BAR_Y + 18, 560, 1, s64_grid );
+	UI_DrawString( 320, 460,
+		"STRAFE 64   //   v" PRODUCT_VERSION "   //   BUILD MELCHIOR   //   NERV   //   No.666",
+		UI_CENTER|UI_SMALLFONT, s64_green );
 }
 
 
@@ -163,11 +176,13 @@ typedef struct {
 
 	menutext_s		daily;
 	menutext_s		trial;
-	menutext_s		vector;
+	menutext_s		arena;
 	menutext_s		lattice;
 	menutext_s		practice;
+	menutext_s		forge;
 	menutext_s		multiplayer;
 	menutext_s		setup;
+	menutext_s		dev;
 	menutext_s		mods;
 	menutext_s		exit;
 
@@ -227,13 +242,11 @@ void Main_MenuEvent (void* ptr, int event) {
 		trap_Cmd_ExecuteText( EXEC_APPEND, "map " S64_MAP_TRIAL "\n" );
 		break;
 
-	case ID_S64_VECTOR:
-		// one gun, no void — speed is the whole weapon. fill with bots
-		trap_Cvar_SetValue( "g_lattice", 0 );
-		trap_Cvar_SetValue( "g_vectorgun", 1 );
-		trap_Cvar_SetValue( "g_voidRise", 0 );
-		trap_Cvar_Set( "bot_minplayers", "3" );
-		trap_Cmd_ExecuteText( EXEC_APPEND, "map " S64_MAP_ARENA "\n" );
+	case ID_S64_ARENA:
+		// the bullet-time combat arena — open its setup screen so the
+		// pilot picks the weapon ruleset (sword / vectorgun), the clock,
+		// the void and the opponent count before dropping in
+		UI_ArenaMenu();
 		break;
 
 	case ID_S64_LATTICE:
@@ -261,6 +274,18 @@ void Main_MenuEvent (void* ptr, int event) {
 		trap_Cvar_SetValue( "g_vectorgun", 0 );
 		trap_Cvar_SetValue( "g_voidRise", 0 );
 		trap_Cmd_ExecuteText( EXEC_APPEND, "map " S64_MAP_PRACTICE "\n" );
+		break;
+
+	case ID_S64_FORGE:
+		// the in-game generator: scrub strafegen's parameters, preview the
+		// layout and author a fresh course on the spot
+		UI_GenerateMenu();
+		break;
+
+	case ID_S64_DEV:
+		// the test bench: any map, any weapon, any combination of the
+		// gameplay levers + the visual/debug subpanels
+		UI_DevMenu();
 		break;
 
 	// ---- system --------------------------------------------------------
@@ -339,20 +364,15 @@ and that local cinematics are killed
 void UI_MainMenu( void ) {
 	int		y;
 	int		style = UI_CENTER | UI_DROPSHADOW;
-	int		sysstyle = UI_CENTER | UI_DROPSHADOW | UI_SMALLFONT;
+	int		sysstyle = UI_LEFT | UI_DROPSHADOW | UI_SMALLFONT;
+	int		bx, by, mw, sw, vw, dw, qw, bgap;
 
 	trap_Cvar_Set( "sv_killserver", "1" );
 
-	if( !uis.demoversion && !ui_cdkeychecked.integer ) {
-		char	key[17];
+	// STRAFE 64 is a standalone mod — there is no retail CD key to verify.
+	// The stock Q3 gate would otherwise trap every fresh profile on the
+	// "PLEASE ENTER YOUR CD KEY" screen before the main menu, so it is gone.
 
-		trap_GetCDKey( key, sizeof(key) );
-		if( trap_VerifyCDKey( key, NULL ) == qfalse ) {
-			UI_CDKeyMenu();
-			return;
-		}
-	}
-	
 	memset( &s_main, 0 ,sizeof(mainmenu_t) );
 	memset( &s_errorMessage, 0 ,sizeof(errorMessage_t) );
 
@@ -389,7 +409,7 @@ void UI_MainMenu( void ) {
 	s_main.daily.generic.id					= ID_S64_DAILY;
 	s_main.daily.generic.callback			= Main_MenuEvent;
 	s_main.daily.string						= "DAILY RUN";
-	s_main.daily.color						= s64_amber;
+	s_main.daily.color						= menu_amber;
 	s_main.daily.style						= style;
 
 	y += MAIN_MENU_VERTICAL_SPACING;
@@ -400,19 +420,19 @@ void UI_MainMenu( void ) {
 	s_main.trial.generic.id					= ID_S64_TRIAL;
 	s_main.trial.generic.callback			= Main_MenuEvent;
 	s_main.trial.string						= "TIME TRIAL";
-	s_main.trial.color						= s64_amber;
+	s_main.trial.color						= menu_amber;
 	s_main.trial.style						= style;
 
 	y += MAIN_MENU_VERTICAL_SPACING;
-	s_main.vector.generic.type				= MTYPE_PTEXT;
-	s_main.vector.generic.flags				= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
-	s_main.vector.generic.x					= 320;
-	s_main.vector.generic.y					= y;
-	s_main.vector.generic.id				= ID_S64_VECTOR;
-	s_main.vector.generic.callback			= Main_MenuEvent;
-	s_main.vector.string					= "VECTORGUN";
-	s_main.vector.color						= s64_amber;
-	s_main.vector.style						= style;
+	s_main.arena.generic.type				= MTYPE_PTEXT;
+	s_main.arena.generic.flags				= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
+	s_main.arena.generic.x					= 320;
+	s_main.arena.generic.y					= y;
+	s_main.arena.generic.id				= ID_S64_ARENA;
+	s_main.arena.generic.callback			= Main_MenuEvent;
+	s_main.arena.string					= "ARENA";
+	s_main.arena.color						= menu_amber;
+	s_main.arena.style						= style;
 
 	y += MAIN_MENU_VERTICAL_SPACING;
 	s_main.lattice.generic.type				= MTYPE_PTEXT;
@@ -422,7 +442,7 @@ void UI_MainMenu( void ) {
 	s_main.lattice.generic.id				= ID_S64_LATTICE;
 	s_main.lattice.generic.callback			= Main_MenuEvent;
 	s_main.lattice.string					= "LATTICE";
-	s_main.lattice.color					= s64_amber;
+	s_main.lattice.color					= menu_amber;
 	s_main.lattice.style					= style;
 
 	y += MAIN_MENU_VERTICAL_SPACING;
@@ -433,66 +453,107 @@ void UI_MainMenu( void ) {
 	s_main.practice.generic.id				= ID_S64_PRACTICE;
 	s_main.practice.generic.callback		= Main_MenuEvent;
 	s_main.practice.string					= "PRACTICE";
-	s_main.practice.color					= s64_amber;
+	s_main.practice.color					= menu_amber;
 	s_main.practice.style					= style;
 
-	// ---- system (smaller, dim green) -----------------------------------
-	y += MAIN_MENU_VERTICAL_SPACING + 12;
+	y += MAIN_MENU_VERTICAL_SPACING;
+	s_main.forge.generic.type				= MTYPE_PTEXT;
+	s_main.forge.generic.flags				= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
+	s_main.forge.generic.x					= 320;
+	s_main.forge.generic.y					= y;
+	s_main.forge.generic.id					= ID_S64_FORGE;
+	s_main.forge.generic.callback			= Main_MenuEvent;
+	s_main.forge.string						= "FORGE";
+	s_main.forge.color						= menu_amber;
+	s_main.forge.style						= style;
+
+	// ---- system: a horizontal nav bar across the bottom (where the old
+	// status-line flavour text used to sit) so the hero column owns the
+	// centre and nothing spills off the screen. Even gaps, group-centred. --
+	mw   = UI_ProportionalStringWidth( "MULTIPLAYER" ) * PROP_SMALL_SIZE_SCALE;
+	sw   = UI_ProportionalStringWidth( "SETUP" )       * PROP_SMALL_SIZE_SCALE;
+	vw   = UI_ProportionalStringWidth( "DEVMODE" )     * PROP_SMALL_SIZE_SCALE;
+	dw   = UI_ProportionalStringWidth( "MODS" )        * PROP_SMALL_SIZE_SCALE;
+	qw   = UI_ProportionalStringWidth( "QUIT" )        * PROP_SMALL_SIZE_SCALE;
+	bgap = 34;
+	bx   = 320 - ( mw + sw + vw + dw + qw + bgap * 4 ) / 2;	// left edge, centred
+	by   = MAIN_MENU_BAR_Y;
+
 	s_main.multiplayer.generic.type			= MTYPE_PTEXT;
-	s_main.multiplayer.generic.flags		= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
-	s_main.multiplayer.generic.x			= 320;
-	s_main.multiplayer.generic.y			= y;
+	s_main.multiplayer.generic.flags		= QMF_LEFT_JUSTIFY|QMF_PULSEIFFOCUS;
+	s_main.multiplayer.generic.x			= bx;
+	s_main.multiplayer.generic.y			= by;
 	s_main.multiplayer.generic.id			= ID_MULTIPLAYER;
 	s_main.multiplayer.generic.callback		= Main_MenuEvent;
 	s_main.multiplayer.string				= "MULTIPLAYER";
-	s_main.multiplayer.color				= s64_dim;
+	s_main.multiplayer.color				= menu_dim;
 	s_main.multiplayer.style				= sysstyle;
+	bx += mw + bgap;
 
-	y += MAIN_MENU_SYSTEM_SPACING;
 	s_main.setup.generic.type				= MTYPE_PTEXT;
-	s_main.setup.generic.flags				= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
-	s_main.setup.generic.x					= 320;
-	s_main.setup.generic.y					= y;
+	s_main.setup.generic.flags				= QMF_LEFT_JUSTIFY|QMF_PULSEIFFOCUS;
+	s_main.setup.generic.x					= bx;
+	s_main.setup.generic.y					= by;
 	s_main.setup.generic.id					= ID_SETUP;
 	s_main.setup.generic.callback			= Main_MenuEvent;
 	s_main.setup.string						= "SETUP";
-	s_main.setup.color						= s64_dim;
+	s_main.setup.color						= menu_dim;
 	s_main.setup.style						= sysstyle;
+	bx += sw + bgap;
 
-	y += MAIN_MENU_SYSTEM_SPACING;
+	// DEVMODE: the test bench — tinted red-hot so it reads as a dev affordance
+	s_main.dev.generic.type					= MTYPE_PTEXT;
+	s_main.dev.generic.flags				= QMF_LEFT_JUSTIFY|QMF_PULSEIFFOCUS;
+	s_main.dev.generic.x					= bx;
+	s_main.dev.generic.y					= by;
+	s_main.dev.generic.id					= ID_S64_DEV;
+	s_main.dev.generic.callback				= Main_MenuEvent;
+	s_main.dev.string						= "DEVMODE";
+	s_main.dev.color						= s64_redhot;
+	s_main.dev.style						= sysstyle;
+	bx += vw + bgap;
+
 	s_main.mods.generic.type				= MTYPE_PTEXT;
-	s_main.mods.generic.flags				= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
-	s_main.mods.generic.x					= 320;
-	s_main.mods.generic.y					= y;
+	s_main.mods.generic.flags				= QMF_LEFT_JUSTIFY|QMF_PULSEIFFOCUS;
+	s_main.mods.generic.x					= bx;
+	s_main.mods.generic.y					= by;
 	s_main.mods.generic.id					= ID_MODS;
 	s_main.mods.generic.callback			= Main_MenuEvent;
 	s_main.mods.string						= "MODS";
-	s_main.mods.color						= s64_dim;
+	s_main.mods.color						= menu_dim;
 	s_main.mods.style						= sysstyle;
+	bx += dw + bgap;
 
-	y += MAIN_MENU_SYSTEM_SPACING;
 	s_main.exit.generic.type				= MTYPE_PTEXT;
-	s_main.exit.generic.flags				= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
-	s_main.exit.generic.x					= 320;
-	s_main.exit.generic.y					= y;
+	s_main.exit.generic.flags				= QMF_LEFT_JUSTIFY|QMF_PULSEIFFOCUS;
+	s_main.exit.generic.x					= bx;
+	s_main.exit.generic.y					= by;
 	s_main.exit.generic.id					= ID_EXIT;
 	s_main.exit.generic.callback			= Main_MenuEvent;
 	s_main.exit.string						= "QUIT";
-	s_main.exit.color						= s64_dim;
+	s_main.exit.color						= menu_dim;
 	s_main.exit.style						= sysstyle;
 
 	Menu_AddItem( &s_main.menu,	&s_main.daily );
 	Menu_AddItem( &s_main.menu,	&s_main.trial );
-	Menu_AddItem( &s_main.menu,	&s_main.vector );
+	Menu_AddItem( &s_main.menu,	&s_main.arena );
 	Menu_AddItem( &s_main.menu,	&s_main.lattice );
 	Menu_AddItem( &s_main.menu,	&s_main.practice );
+	Menu_AddItem( &s_main.menu,	&s_main.forge );
 	Menu_AddItem( &s_main.menu,	&s_main.multiplayer );
 	Menu_AddItem( &s_main.menu,	&s_main.setup );
+	Menu_AddItem( &s_main.menu,	&s_main.dev );
 	Menu_AddItem( &s_main.menu,	&s_main.mods );
 	Menu_AddItem( &s_main.menu,	&s_main.exit );
 
 	trap_Key_SetCatcher( KEYCATCH_UI );
 	uis.menusp = 0;
 	UI_PushMenu ( &s_main.menu );
+
+	// unregistered copies land on the license screen first (the engine also
+	// blocks map loads until com_licensed is set; this is the place to fix it)
+	if( !trap_Cvar_VariableValue( "com_licensed" ) ) {
+		UI_CDKeyMenu();
+	}
 
 }

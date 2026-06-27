@@ -19,6 +19,8 @@ set(COMMON_SOURCES
     ${SOURCE_DIR}/qcommon/net_chan.c
     ${SOURCE_DIR}/qcommon/net_ip.c
     ${SOURCE_DIR}/qcommon/huffman.c
+    ${SOURCE_DIR}/qcommon/license.c
+    ${SOURCE_DIR}/qcommon/tweetnacl.c
     ${SOURCE_DIR}/qcommon/q_math.c
     ${SOURCE_DIR}/qcommon/q_shared.c
     ${SOURCE_DIR}/qcommon/unzip.c
@@ -34,6 +36,7 @@ set(COMMON_SOURCES
 disable_warnings(
     ${SOURCE_DIR}/qcommon/unzip.c
     ${SOURCE_DIR}/qcommon/ioapi.c
+    ${SOURCE_DIR}/qcommon/tweetnacl.c
 )
 
 add_git_dependency(${SOURCE_DIR}/qcommon/common.c)
