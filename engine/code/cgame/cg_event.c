@@ -1281,6 +1281,11 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 			cg.weaponKickTime = cg.time;
 			cg.weaponKickPitch = 2.6f * mag;					// brief downward bite
 			cg.weaponKickRoll = ( ( cg.swordSwingStep & 1 ) ? -1.0f : 1.0f ) * 1.8f * mag;
+			// the cut BITES: the blade sticks for a beat (hit-stop) then shudders.
+			// Together with the view punch this is what gives a connect real weight.
+			cg.swordHitStopTime = cg.time;
+			cg.swordQuiverTime  = cg.time;
+			cg.swordQuiverMag   = es->eventParm ? 8.0f : 5.0f;	// heavier on a finisher
 		}
 		break;
 

@@ -725,6 +725,9 @@ typedef struct {
 	int			swordSwingStep;		// combo index, drives swing direction / finisher
 	int			swordStartQuad;		// directional swing: start quadrant (from the fire event parm)
 	int			swordEndQuad;		// directional swing: end quadrant — the blade sweeps start->end
+	int			swordHitStopTime;	// cg.time a blade hit froze the swing (hit-stop), 0 = none
+	int			swordQuiverTime;	// cg.time a hit/parry set the blade quivering, 0 = none
+	float		swordQuiverMag;		// quiver amplitude (heavier on a finisher / parry)
 
 	// STRAFE 64: blade-edge motion trail — world-space history of the blade's
 	// guard and tip, sampled from the actual view-weapon transform each frame
@@ -1523,6 +1526,15 @@ qhandle_t CG_StatusHandle(int task);
 //
 void CG_Player( centity_t *cent );
 void CG_TriggerAcrobatic( centity_t *cent, int kind );
+
+// STRAFE 64: sword swing timing/shape, shared between the view weapon (cg_weapons.c)
+// and the third-person body pose (cg_players.c).
+#define SWORD_SWING_MS	250			// swing arc duration (≈ the 230ms fire cadence)
+#define SWORD_RECOVER_MS	130		// follow-through: blade eases back to guard after the strike
+#define SWORD_HITSTOP_MS	55		// blade "sticks" this long on a connect (hit-stop)
+float CG_SwordSwingFactor( float p );		// 0..1 swing progress -> eased strike envelope
+void  CG_SwordSlashAnglesForQuads( int startQuad, int endQuad, float f, qboolean finisher, vec3_t out );
+int   CG_SwordSwingDt( int swingTime );		// elapsed swing ms with hit-stop applied (local player)
 int  CG_GlowPilotCount( void );		// # of ET_PLAYER glow lights this frame (count-clamp)
 void CG_ResetPlayerEntity( centity_t *cent );
 void CG_AddRefEntityWithPowerups( refEntity_t *ent, entityState_t *state, int team );

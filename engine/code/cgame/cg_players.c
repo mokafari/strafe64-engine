@@ -2485,6 +2485,86 @@ static void CG_AcrobaticPose( centity_t *cent, vec3_t legs[3] ) {
 
 /*
 ===============
+CG_SwordSwingPose
+
+STRAFE 64: drive the WHOLE BODY through a sword swing, not just the weapon. The
+stock TORSO_ATTACK frame is a flat arm poke; layered on top of it we twist the
+torso through the swing's quadrant arc, lean into vertical cuts, plant the hips
+and lunge the legs into the strike, and lead the gaze with the head — a
+wound-spring that uncoils along the same start->end line the blade cuts. Holding
+block instead settles the body into a guard stance leaning toward the threat.
+Same axis-overlay approach as the wall-grip / slide poses.
+===============
+*/
+static void CG_SwordSwingPose( centity_t *cent, vec3_t legs[3], vec3_t torso[3], vec3_t head[3] ) {
+	int		dt;
+	float	f, amt, r, u, sr, su, er, eu;
+	float	twist, pitch, lunge;
+
+	if ( cent->currentState.weapon != WP_SWORD ) {
+		return;
+	}
+
+	// --- guard stance: hunch into the block and twist toward the side you're
+	// covering (from lateral velocity), so a held guard reads braced, not idle ---
+	if ( cent->currentState.eFlags & EF_BLOCKING ) {
+		vec3_t	vel, right, ang;
+		float	side;
+
+		if ( cent->currentState.number == cg.snap->ps.clientNum ) {
+			VectorCopy( cg.predictedPlayerState.velocity, vel );
+		} else {
+			VectorCopy( cent->currentState.pos.trDelta, vel );
+		}
+		VectorClear( ang );
+		ang[YAW] = cent->lerpAngles[YAW];
+		AngleVectors( ang, NULL, right, NULL );
+		side = DotProduct( vel, right ) * 0.02f;
+		if ( side > 12.0f )  side = 12.0f;
+		if ( side < -12.0f ) side = -12.0f;
+
+		CG_AxisRoll( torso, 2, side );		// twist toward the defended side
+		CG_AxisRoll( torso, 1, 8.0f );		// hunch forward into the guard
+		CG_AxisRoll( legs,  1, 5.0f );
+		CG_AxisRoll( head,  1, -6.0f );		// keep the gaze up over the blade
+		return;
+	}
+
+	dt = cg.time - cent->swordSwingTime;
+	if ( dt < 0 || dt >= SWORD_SWING_MS + SWORD_RECOVER_MS ) {
+		return;
+	}
+
+	if ( dt < SWORD_SWING_MS ) {
+		f   = CG_SwordSwingFactor( dt / (float)SWORD_SWING_MS );
+		amt = 1.0f;
+	} else {
+		// follow-through: hold the end pose and ease the body back to neutral
+		float rf = ( dt - SWORD_SWING_MS ) / (float)SWORD_RECOVER_MS;
+		f   = 1.0f;
+		amt = ( 1.0f - rf ) * ( 1.0f - rf );
+	}
+
+	BG_SwordQuadDir( cent->swordStartQuad, &sr, &su );
+	BG_SwordQuadDir( cent->swordEndQuad,   &er, &eu );
+	r = sr + ( er - sr ) * f;		// screen-space blade position along the arc
+	u = su + ( eu - su ) * f;
+
+	twist = 46.0f * r * amt;				// torso yaw through a horizontal sweep
+	pitch = 22.0f * ( -u ) * amt;			// back at wind-up, forward through a vertical cut
+	lunge = 12.0f * amt * ( f > 0.0f ? f : 0.0f );	// step the legs into the strike
+
+	// wound-spring: hips plant + lunge, torso carries the twist, head leads the gaze
+	CG_AxisRoll( legs,  1, lunge );
+	CG_AxisRoll( legs,  2, -0.25f * twist );
+	CG_AxisRoll( torso, 2, twist );
+	CG_AxisRoll( torso, 1, pitch );
+	CG_AxisRoll( head,  2, -0.30f * twist );
+	CG_AxisRoll( head,  1, -0.50f * pitch );
+}
+
+/*
+===============
 CG_SlidePose
 
 STRAFE 64: throw the whole body into a ground slide, the slide counterpart of
@@ -2751,6 +2831,10 @@ void CG_Player( centity_t *cent ) {
 	// STRAFE 64: cosmetic acrobatic flip / roll spin (air-jump somersault, dash
 	// roll). Rolls the legs axis so the whole body spins through the tag chain.
 	CG_AcrobaticPose( cent, legs.axis );
+
+	// STRAFE 64: whole-body sword swing — twist/lean/lunge through the swing arc
+	// (and guard-stance lean while blocking), on top of the MD3 attack frame.
+	CG_SwordSwingPose( cent, legs.axis, torso.axis, head.axis );
 
 	// get the animation state (after rotation, to allow feet shuffle)
 	CG_PlayerAnimation( cent, &legs.oldframe, &legs.frame, &legs.backlerp,
