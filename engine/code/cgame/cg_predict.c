@@ -621,6 +621,20 @@ void CG_PredictPlayerState( void ) {
 		//CG_CheckChangedPredictableEvents(&cg.predictedPlayerState);
 	}
 
+	// SUPERHOT slow-mo: in deep bullet-time the integer-ms world clock freezes
+	// between ticks, so Pmove() runs zero sub-steps for the freshest commands and
+	// PM_UpdateViewAngles never fires -> predicted viewangles stair-step and the
+	// mouse feels sticky exactly when you're swinging the sword in slow-mo. Where
+	// you look isn't a dilated physics quantity, so snap the view to the latest
+	// command every render frame, decoupled from timescale (the body origin stays
+	// predicted + real-time smoothed separately in CG_CalcViewValues). Runs before
+	// the !moved return so it still applies when the clock froze entirely, and
+	// before the mover adjust so platform-rotation compensation layers on top.
+	// Faded out by 0.999 so normal play keeps the loop's untouched viewangles.
+	if ( cg_pmove.timeScale < 0.999f ) {
+		PM_UpdateViewAngles( &cg.predictedPlayerState, &latestCmd );
+	}
+
 	if ( cg_showmiss.integer > 1 ) {
 		CG_Printf( "[%i : %i] ", cg_pmove.cmd.serverTime, cg.time );
 	}
