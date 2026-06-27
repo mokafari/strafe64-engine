@@ -566,7 +566,7 @@ const rgbHex = c => `#${c.map(v => Math.max(0, Math.min(255, v | 0)).toString(16
 
 function importToCompose() {
   if (!S.base || !S.imported) { toast('decompile a map first (Import), then edit it here', true); return; }
-  C.placed = []; C.brushes = []; C.brushSeq = 0; C.sel = null;
+  C.placed = []; C.brushes = []; C.entities = []; C.brushSeq = 0; C.sel = null;
   let note = '';
   if (S.base.edit_boxes && S.base.edit_boxes.length) {
     // clean exact solids decompiled from the collision brush lump
@@ -683,7 +683,9 @@ function buildUI() {
   $('theme').innerHTML = m.themes.map(t => `<option>${t}</option>`).join('');
   $('sections').innerHTML = m.sections.map(s =>
     `<label class="chk"><input type="checkbox" value="${s}" checked> ${s}</label>`).join('');
-  $('addEnt').innerHTML = m.entityPalette.map(e => `<option value="${e.classname}">${e.label}</option>`).join('');
+  const entOpts = m.entityPalette.map(e => `<option value="${e.classname}">${e.label}</option>`).join('');
+  $('addEnt').innerHTML = entOpts;
+  $('addEntC').innerHTML = entOpts;
   $('legend').innerHTML = m.legend.map(l =>
     `<div class="legend-row"><span class="swatch" style="background:${l.color}"></span>${l.role}</div>`).join('');
   syncKindUI();
@@ -718,8 +720,9 @@ function wire() {
   $('t2d').onclick = () => setView('2d');
   $('modeGen').onclick = () => switchMode('generate');
   $('modeCompose').onclick = () => switchMode('compose');
-  $('clearCompose').onclick = () => { C.placed = []; C.brushes = []; C.sel = null; composeRefresh(); };
+  $('clearCompose').onclick = () => { C.placed = []; C.brushes = []; C.entities = []; C.sel = null; composeRefresh(); };
   $('addBoxC').onclick = addBoxC;
+  $('placeEntC').onclick = () => { C.placingEnt = $('addEntC').value; toast(`click in the view to place a ${C.placingEnt}`); };
   $('autoBtn').onclick = () => autoLayout(parseInt($('autoSeed').value) || 0);
   $('autoRand').onclick = () => { $('autoSeed').value = Math.floor(Math.random() * 1e6); autoLayout(parseInt($('autoSeed').value)); };
   $('cExport').onclick = composeExport;
@@ -745,7 +748,7 @@ function setView(v) {
 // ================================================================= COMPOSE
 // Kit-bash mode: place section "parts" and snap their entry/exit connectors.
 const C = { catalog: null, byKey: {}, placed: [], seq: 0, sel: null, drag: null,
-            brushes: [], brushSeq: 0 };
+            brushes: [], brushSeq: 0, entities: [], entSeq: 0, placingEnt: null };
 const SNAP = 160;   // world-unit snap radius for connectors
 
 const yawOf = d => d[0] === 1 ? 0 : d[1] === 1 ? 90 : d[0] === -1 ? 180 : 270;
@@ -835,7 +838,7 @@ function autoLayout(seed) {
   const rng = mulberry32(seed | 0);
   const pick = arr => arr[Math.floor(rng() * arr.length)];
   const ri = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
-  C.placed = []; C.brushes = []; C.sel = null; C.seq = 0;
+  C.placed = []; C.brushes = []; C.entities = []; C.sel = null; C.seq = 0;
   const seq = ['start'];
   for (let i = 0; i < ri(1, 2); i++) seq.push(pick(['gaps', 'bhop']));
   if (rng() < 0.6) seq.push(pick(['turn_left', 'turn_right']));
@@ -861,6 +864,7 @@ function addBoxC() {
 }
 const selPart = () => C.sel && C.sel.t === 'part' ? C.placed.find(p => p.id === C.sel.id) : null;
 const selBrush = () => C.sel && C.sel.t === 'brush' ? C.brushes.find(b => b.id === C.sel.id) : null;
+const selEnt = () => C.sel && C.sel.t === 'ent' ? C.entities.find(e => e.id === C.sel.id) : null;
 
 function composeBounds() {
   let b = null;
@@ -933,6 +937,17 @@ function renderCompose3d() {
     if (S.layers.edges) worldGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25),
       new THREE.LineBasicMaterial({ color: selB ? 0xffb347 : 0x000000, transparent: true, opacity: selB ? 0.9 : 0.35 })));
   }
+  // placed entities (items / weapons / spawns)
+  if (S.layers.entities) for (const e of C.entities) {
+    const m = new THREE.Mesh(new THREE.OctahedronGeometry(18),
+      new THREE.MeshBasicMaterial({ color: entColor(e.classname) }));
+    m.position.set(e.origin[0], e.origin[1], e.origin[2] + 18);
+    m.userData = { entId: e.id }; worldGroup.add(m); composePickables.push(m);
+    if (C.sel && C.sel.t === 'ent' && C.sel.id === e.id)
+      worldGroup.add(new THREE.Box3Helper(new THREE.Box3(
+        new THREE.Vector3(e.origin[0] - 24, e.origin[1] - 24, e.origin[2]),
+        new THREE.Vector3(e.origin[0] + 24, e.origin[1] + 24, e.origin[2] + 48)), 0xffb347));
+  }
   // selection bbox
   if (_selBox) { worldGroup.remove(_selBox); _selBox = null; }
   const b = composeBounds();
@@ -965,10 +980,29 @@ $('gl').addEventListener('pointerdown', e => {
   pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
   pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
+  // placement mode: next click drops the chosen entity
+  if (C.placingEnt) {
+    const hit0 = raycaster.intersectObjects(composePickables.filter(p => p.userData.instId != null || p.userData.brushId != null), false)[0];
+    let pt;
+    if (hit0) pt = hit0.point;
+    else { const pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -composeBounds()[2]); pt = new THREE.Vector3(); raycaster.ray.intersectPlane(pl, pt); }
+    if (pt) {
+      const id = C.entSeq++;
+      C.entities.push({ id, classname: C.placingEnt, origin: [Math.round(pt.x), Math.round(pt.y), Math.round(pt.z) + 24] });
+      C.sel = { t: 'ent', id };
+    }
+    C.placingEnt = null; composeRefresh();
+    return;
+  }
   const hit = raycaster.intersectObjects(composePickables, false)[0];
   if (!hit) return;
   const ud = hit.object.userData;
-  if (ud.brushId != null) {                       // free box brush
+  if (ud.entId != null) {                         // placed entity
+    const ent = C.entities.find(x => x.id === ud.entId);
+    C.sel = { t: 'ent', id: ent.id };
+    const gp = groundPoint(e, ent.origin[2]);
+    C.drag = { ent, start: gp ? [gp.x, gp.y] : null, o0: [...ent.origin] };
+  } else if (ud.brushId != null) {                // free box brush
     const box = C.brushes.find(b => b.id === ud.brushId);
     C.sel = { t: 'brush', id: box.id };
     const gp = groundPoint(e, box.aabb[2]);
@@ -984,6 +1018,12 @@ $('gl').addEventListener('pointerdown', e => {
 });
 $('gl').addEventListener('pointermove', e => {
   if (S.mode !== 'compose' || !C.drag || !C.drag.start) return;
+  if (C.drag.ent) {
+    const gp = groundPoint(e, C.drag.o0[2]); if (!gp) return;
+    C.drag.ent.origin = [C.drag.o0[0] + (gp.x - C.drag.start[0]),
+                         C.drag.o0[1] + (gp.y - C.drag.start[1]), C.drag.o0[2]];
+    composeRefresh(); return;
+  }
   if (C.drag.box) {
     const gp = groundPoint(e, C.drag.a0[2]); if (!gp) return;
     const dx = gp.x - C.drag.start[0], dy = gp.y - C.drag.start[1];
@@ -1023,6 +1063,19 @@ function composeRefresh() { renderCompose3d(); drawCompose2d(); renderComposeIns
 
 function renderComposeInspector() {
   const el = $('composeInspector');
+  const ent = selEnt();
+  if (ent) {
+    const lbl = ['X', 'Y', 'Z'];
+    el.innerHTML = `<div class="kv"><span>entity</span><b>${ent.classname}</b></div>`
+      + '<div class="grid3">' + ent.origin.map((v, i) =>
+        `<div><label>${lbl[i]}</label><input type="number" step="8" data-eo="${i}" value="${Math.round(v)}"></div>`).join('') + '</div>'
+      + '<button class="sm danger" id="delEnt" style="width:100%;margin-top:8px">delete entity</button>';
+    el.querySelectorAll('[data-eo]').forEach(inp => inp.onchange = () => {
+      ent.origin[+inp.dataset.eo] = parseFloat(inp.value); composeRefresh();
+    });
+    $('delEnt').onclick = () => { C.entities = C.entities.filter(x => x.id !== ent.id); C.sel = null; composeRefresh(); };
+    updateConnStatus(); return;
+  }
   const box = selBrush();
   if (box) {
     const lbl = ['min X', 'min Y', 'min Z', 'max X', 'max Y', 'max Z'];
@@ -1117,10 +1170,18 @@ function drawCompose2d() {
     }
     ctx.globalAlpha = 1;
   }
+  for (const e of C.entities) {
+    ctx.fillStyle = entColor(e.classname);
+    ctx.beginPath(); ctx.arc(px(e.origin[0]), py(e.origin[1]), 5, 0, 7); ctx.fill();
+    if (C.sel && C.sel.t === 'ent' && C.sel.id === e.id) {
+      ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 2; ctx.stroke();
+    }
+  }
 }
 
 async function composeExport() {
   if (!C.placed.length && !C.brushes.length) { toast('add a section or a box first', true); return; }
+  const placedEnts = C.entities.map(e => ({ classname: e.classname, origin: e.origin }));
   const formats = [];
   if ($('cBsp').checked) formats.push('bsp');
   if ($('cMap').checked) formats.push('map');
@@ -1130,7 +1191,7 @@ async function composeExport() {
   try {
     const placed = C.placed.map(p => ({ key: p.key, yaw: p.yaw, translate: p.translate }));
     const brushes = C.brushes.map(b => ({ aabb: b.aabb, role: b.role, color: b.color }));
-    const res = await api.composeExport({ placed, brushes, opts: { void: true }, formats, name: $('cName').value });
+    const res = await api.composeExport({ placed, brushes, entities: placedEnts, opts: { void: true }, formats, name: $('cName').value });
     const st = res.stats;
     $('cResult').innerHTML = `<b style="color:var(--green)">✓ ${res.name}</b><br>`
       + res.outputs.map(o => `<span class="pill">${o}</span>`).join(' ')

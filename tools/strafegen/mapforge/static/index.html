@@ -107,8 +107,12 @@
       <hr>
       <h2>Freeform</h2>
       <button class="sm" id="addBoxC" style="width:100%">+ add box brush</button>
-      <div class="hint">drop an arbitrary box (wall, platform, cover) anywhere —
-        baked in alongside the sections on export</div>
+      <div class="row" style="margin-top:6px">
+        <select id="addEntC"></select>
+        <button class="sm" id="placeEntC">place</button>
+      </div>
+      <div class="hint">drop boxes (walls, platforms, cover) or entities (items,
+        weapons, spawns) anywhere — baked in alongside the sections on export</div>
 
       <h2>Layout</h2>
       <div id="placedList" class="muted">no sections placed yet</div>

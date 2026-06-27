@@ -50,6 +50,9 @@ arbitrary map, not just a straight chain.
   anywhere with `+ add box brush`, edit their AABB + role, drag them in the view;
   they bake into the export alongside the sections. A map can be sections, free
   brushes, or any mix — a real "build any geometry" editor.
+- **Place entities** — drop items, weapons, and extra spawns from the palette
+  (click to place), drag/retype/delete them; baked into the export. Geometry +
+  entities = complete map authoring.
 - **Export** bakes the placed parts into one sealed map — geometry transformed
   and merged, a sky enclosure + rising-void rescue added automatically, race
   triggers carried from the start/finish parts — then writes `.bsp` / `.map` /

@@ -112,13 +112,14 @@ def _compose_export(req):
     placed = req.get("placed") or []
     opts = req.get("opts") or {}
     brushes = req.get("brushes") or []
+    place_entities = req.get("entities") or []
     formats = set(req.get("formats") or ["bsp"])
     name = (req.get("name") or "").strip() or "strafe64_forged"
     name = "".join(c for c in name if c.isalnum() or c in "_-")
     os.makedirs(GENERATED, exist_ok=True)
 
     def build():
-        return scene.compose(placed, opts, brushes)
+        return scene.compose(placed, opts, brushes, place_entities)
     sg.validate_spawns(build())                         # fail fast on a bad layout
     bsp_path = os.path.join(GENERATED, f"{name}.bsp")
     stats = sg.BspWriter(build()).write(bsp_path)       # fresh course (write mutates)
