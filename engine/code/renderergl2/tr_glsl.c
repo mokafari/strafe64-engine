@@ -30,6 +30,8 @@ extern const char *fallbackShader_depthoffield_vp;
 extern const char *fallbackShader_depthoffield_fp;
 extern const char *fallbackShader_colorgrade_vp;
 extern const char *fallbackShader_colorgrade_fp;
+extern const char *fallbackShader_bodycam_vp;
+extern const char *fallbackShader_bodycam_fp;
 extern const char *fallbackShader_calclevels4x_vp;
 extern const char *fallbackShader_calclevels4x_fp;
 extern const char *fallbackShader_depthblur_vp;
@@ -1567,6 +1569,21 @@ void GLSL_InitGPUShaders(void)
 
 	numEtcShaders++;
 
+	// STRAFE 64 bodycam finish pass: warp + crunch + chroma + scanline + grain
+	attribs = ATTR_POSITION | ATTR_TEXCOORD;
+	extradefines[0] = '\0';
+
+	if (!GLSL_InitGPUShader(&tr.bodycamShader, "bodycam", attribs, qtrue, extradefines, qtrue, fallbackShader_bodycam_vp, fallbackShader_bodycam_fp))
+	{
+		ri.Error(ERR_FATAL, "Could not load bodycam shader!");
+	}
+
+	GLSL_InitUniforms(&tr.bodycamShader);
+	GLSL_SetUniformInt(&tr.bodycamShader, UNIFORM_SCREENIMAGEMAP, TB_COLORMAP);
+	GLSL_FinishGPUShader(&tr.bodycamShader);
+
+	numEtcShaders++;
+
 #if 0
 	attribs = ATTR_POSITION | ATTR_TEXCOORD;
 	extradefines[0] = '\0';
@@ -1637,6 +1654,7 @@ void GLSL_ShutdownGPUShaders(void)
 
 	GLSL_DeleteGPUShader(&tr.depthOfFieldShader);
 	GLSL_DeleteGPUShader(&tr.colorGradeShader);
+	GLSL_DeleteGPUShader(&tr.bodycamShader);
 }
 
 

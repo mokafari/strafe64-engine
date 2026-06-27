@@ -529,6 +529,50 @@ static void CG_OffsetFirstPersonView( void ) {
 		angles[ROLL]  += crandom() * cg.viewShake * 0.5f;
 	}
 
+	// STRAFE 64 bodycam: handheld vest-cam motion -- what actually sells "held by
+	// a person" on top of the post-process look. Two detuned sines per axis at
+	// incommensurate frequencies (0.83/1.91, 0.71/1.63) so the drift never
+	// visibly loops -> reads "human", not "machine". A footstep bounce gated by
+	// horizontal speed is the biggest realism lever (stand still -> near-still
+	// cam; sprint -> heavy bounce), plus a quick depth-scaled landing jolt.
+	// Real-time clock (trap_Milliseconds), NOT cg.time, so the operator keeps
+	// breathing at wall-clock rate in bullet-time -- same rationale as CG_MoveKick.
+	if ( cg_bodycam.integer ) {
+		float	t    = trap_Milliseconds() * 0.001f;
+		float	amp  = cg_bodycamScale.value;
+		float	spd  = sqrt( cg.predictedPlayerState.velocity[0] * cg.predictedPlayerState.velocity[0]
+						   + cg.predictedPlayerState.velocity[1] * cg.predictedPlayerState.velocity[1] );
+		float	sref = spd / 320.0f;
+		float	bcPitch, bcYaw, bcRoll, stepPhase;
+
+		// idle breathing + irregular drift
+		bcPitch = sin( t * 0.55f * M_PI * 2.0f ) * 0.35f
+				+ sin( t * 0.83f + 1.7f ) * 0.20f
+				+ sin( t * 1.91f + 4.2f ) * 0.10f;
+		bcYaw   = cos( t * 0.55f * M_PI * 1.7f ) * 0.245f
+				+ sin( t * 0.71f + 3.3f ) * 0.20f
+				+ sin( t * 1.63f + 0.9f ) * 0.10f;
+		bcRoll  = sin( t * 0.47f + 2.1f ) * 0.24f;
+
+		// footstep bounce: cadence and amplitude both scale with speed
+		stepPhase = sin( t * ( spd * 0.02f ) );
+		bcPitch  += fabs( stepPhase ) * sref * 1.6f * 0.6f;
+		bcRoll   += stepPhase * sref * 0.8f;
+
+		// landing impulse: brief downward jolt scaled by fall depth, eased out
+		{
+			float	ld = (float)( cg.time - cg.landTime );
+			if ( ld >= 0 && ld < 220.0f && cg.landChange < 0 ) {
+				float	k = 1.0f - ld / 220.0f;
+				bcPitch += k * k * ( -cg.landChange / 24.0f ) * 2.5f;
+			}
+		}
+
+		angles[PITCH] += bcPitch * amp;
+		angles[YAW]   += bcYaw   * amp;
+		angles[ROLL]  += bcRoll  * amp;
+	}
+
 //===================================
 
 	// add view height

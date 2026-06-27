@@ -1235,6 +1235,8 @@ extern	vmCvar_t		cg_centertime;
 extern	vmCvar_t		cg_runpitch;
 extern	vmCvar_t		cg_runroll;
 extern	vmCvar_t		cg_moveKick;
+extern	vmCvar_t		cg_bodycam;			// handheld vest-cam view motion (0 = off)
+extern	vmCvar_t		cg_bodycamScale;	// overall amplitude of the handheld motion
 extern	vmCvar_t		cg_bobup;
 extern	vmCvar_t		cg_bobpitch;
 extern	vmCvar_t		cg_bobroll;

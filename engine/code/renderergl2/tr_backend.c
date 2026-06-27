@@ -1423,6 +1423,48 @@ static void RB_DrawGreyscale(const FBO_t *src)
 
 /*
 =============
+RB_PresentFinish
+
+The final copy of the composited (tonemapped LDR) scene to the screen, folding
+in the STRAFE 64 finish passes so each one doubles as the present blit instead of
+costing its own scratch round-trip:
+
+  grade only    : colour-grade src -> screen
+  bodycam only  : bodycam src -> screen
+  grade+bodycam : colour-grade src -> scratch, then bodycam scratch -> screen
+  neither       : a plain fast blit src -> screen
+
+Chaining grade before bodycam puts the cheap-camera artifacts (warp / aberration
+/ scanline / grain) on the already-graded image, which is what reads right.
+=============
+*/
+static void RB_PresentFinish(FBO_t *src)
+{
+	qboolean grade   = (qboolean)(r_postProcess->integer && r_grade->integer && src->colorImage[0]);
+	qboolean bodycam = (qboolean)(r_postProcess->integer && r_bodycam->integer && src->colorImage[0]);
+
+	if (grade && bodycam && tr.screenScratchFbo)
+	{
+		RB_ColorGrade(src, tr.screenScratchFbo);
+		RB_Bodycam(tr.screenScratchFbo, NULL);
+	}
+	else if (bodycam)
+	{
+		RB_Bodycam(src, NULL);
+	}
+	else if (grade)
+	{
+		// the colour-grade/FXAA pass doubles as the present blit (no scratch)
+		RB_ColorGrade(src, NULL);
+	}
+	else
+	{
+		FBO_FastBlit(src, NULL, NULL, NULL, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	}
+}
+
+/*
+=============
 RB_PresentToScreen
 
 =============
@@ -1452,24 +1494,16 @@ static void RB_PresentToScreen(void)
 		{
 			RB_DrawGreyscale(src);
 		}
-		else if (r_postProcess->integer && r_grade->integer && src->colorImage[0])
-		{
-			// the colour-grade/FXAA pass doubles as the present blit (no scratch)
-			RB_ColorGrade((FBO_t *)src, NULL);
-		}
 		else
 		{
-			FBO_FastBlit(src, NULL, NULL, NULL, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+			RB_PresentFinish((FBO_t *)src);
 		}
 		return;
 	}
 
 	if (tr.renderFbo)
 	{
-		if (r_postProcess->integer && r_grade->integer && tr.renderFbo->colorImage[0])
-			RB_ColorGrade(tr.renderFbo, NULL);
-		else
-			FBO_FastBlit(tr.renderFbo, NULL, NULL, NULL, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		RB_PresentFinish(tr.renderFbo);
 	}
 }
 

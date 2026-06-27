@@ -170,6 +170,14 @@ cvar_t  *r_gradeSaturation;
 cvar_t  *r_gradeTemp;
 cvar_t  *r_vignette;
 cvar_t  *r_filmGrain;
+cvar_t  *r_bodycam;
+cvar_t  *r_bodycamWarp;
+cvar_t  *r_bodycamChroma;
+cvar_t  *r_bodycamCrunch;
+cvar_t  *r_bodycamScanline;
+cvar_t  *r_bodycamGrain;
+cvar_t  *r_bodycamVignette;
+cvar_t  *r_bodycamClip;
 cvar_t  *r_sunShadows;
 cvar_t  *r_shadowFilter;
 cvar_t  *r_shadowSoftness;
@@ -1377,6 +1385,23 @@ void R_Register( void )
 	r_gradeTemp = ri.Cvar_Get( "r_gradeTemp", "0.04", CVAR_ARCHIVE );
 	r_vignette = ri.Cvar_Get( "r_vignette", "0.18", CVAR_ARCHIVE );
 	r_filmGrain = ri.Cvar_Get( "r_filmGrain", "0.03", CVAR_ARCHIVE );
+
+	// STRAFE 64 bodycam finish pass: the cheap-vest-cam look (barrel warp,
+	// sensor crunch, chromatic aberration, rolling-shutter scanlines, sensor
+	// grain, heavy vignette, blown highlights). Runs as the present blit after
+	// the colour grade. Everything keys off the output resolution so it reads
+	// the same at any res. Always compiled -> every knob tunes live (r_bodycam 0
+	// skips the whole pass). Defaults are the Unrecord-strong look; for a
+	// subtle/plays-clean preset try warp 0.05 / chroma 0.5 / crunch 0.95 /
+	// scanline 0.02 / grain 0.04 / vignette 0.35.
+	r_bodycam = ri.Cvar_Get( "r_bodycam", "0", CVAR_ARCHIVE );
+	r_bodycamWarp = ri.Cvar_Get( "r_bodycamWarp", "0.12", CVAR_ARCHIVE );
+	r_bodycamChroma = ri.Cvar_Get( "r_bodycamChroma", "1.4", CVAR_ARCHIVE );
+	r_bodycamCrunch = ri.Cvar_Get( "r_bodycamCrunch", "0.85", CVAR_ARCHIVE );
+	r_bodycamScanline = ri.Cvar_Get( "r_bodycamScanline", "0.06", CVAR_ARCHIVE );
+	r_bodycamGrain = ri.Cvar_Get( "r_bodycamGrain", "0.10", CVAR_ARCHIVE );
+	r_bodycamVignette = ri.Cvar_Get( "r_bodycamVignette", "0.55", CVAR_ARCHIVE );
+	r_bodycamClip = ri.Cvar_Get( "r_bodycamClip", "0.04", CVAR_ARCHIVE );
 
 	r_sunlightMode = ri.Cvar_Get( "r_sunlightMode", "1", CVAR_ARCHIVE | CVAR_LATCH );
 

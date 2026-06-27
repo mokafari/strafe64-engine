@@ -718,3 +718,95 @@ void RB_ColorGrade(FBO_t *srcFbo, FBO_t *dstFbo)
 	GLSL_SetUniformVec4(&tr.colorGradeShader, UNIFORM_COLORGRADEFX, gradeFx);
 	RB_InstantQuad2(quadVerts, texCoords);
 }
+
+
+/*
+=============
+RB_Bodycam
+
+STRAFE 64 bodycam finish pass. The cheap-vest-cam look layered onto the
+tonemapped LDR scene as the present blit: barrel warp, low-res sensor crunch,
+chromatic aberration, rolling-shutter scanlines, animated sensor grain, heavy
+vignette and blown highlights. Runs after RB_ColorGrade (when both are on) so
+the artifacts sit on final display values.
+
+Same shape as RB_ColorGrade: a fullscreen NDC quad with an identity MVP,
+sampling the source scene and writing straight into dstFbo (NULL == the default
+framebuffer / screen), so this pass doubles as the present blit -- no scratch
+round-trip. Everything is keyed off the output resolution (no hardcoded pixel
+sizes), reusing the colour-grade uniform slots:
+  u_ViewInfo     = resW, resH, time(sec), -
+  u_ColorGrade   = warp, chroma, crunch, scanline
+  u_ColorGradeFx = grain, vignette, highlight-clip, -
+No-ops cleanly when r_bodycam is off or the source has no colour texture.
+=============
+*/
+void RB_Bodycam(FBO_t *srcFbo, FBO_t *dstFbo)
+{
+	vec4_t viewInfo, params0, params1;
+	vec4_t quadVerts[4];
+	vec2_t texCoords[4];
+	mat4_t mvp;
+	int    dstW, dstH;
+
+	if (!r_bodycam->integer)
+		return;
+
+	if (!srcFbo || !srcFbo->colorImage[0])
+		return;
+
+	// resolution drives crunch/aberration/scanline/grain (native or dynamic);
+	// floatTime gives the grain/scanline drift a real-time second clock.
+	VectorSet4(viewInfo,
+	           (float)glConfig.vidWidth,
+	           (float)glConfig.vidHeight,
+	           backEnd.refdef.floatTime,
+	           0.0f);
+	VectorSet4(params0,
+	           r_bodycamWarp->value,
+	           r_bodycamChroma->value,
+	           r_bodycamCrunch->value,
+	           r_bodycamScanline->value);
+	VectorSet4(params1,
+	           r_bodycamGrain->value,
+	           r_bodycamVignette->value,
+	           r_bodycamClip->value,
+	           0.0f);
+
+	VectorSet4(quadVerts[0], -1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[1],  1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[2],  1.0f, -1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[3], -1.0f, -1.0f, 0.0f, 1.0f);
+
+	texCoords[0][0] = 0.0f; texCoords[0][1] = 1.0f;
+	texCoords[1][0] = 1.0f; texCoords[1][1] = 1.0f;
+	texCoords[2][0] = 1.0f; texCoords[2][1] = 0.0f;
+	texCoords[3][0] = 0.0f; texCoords[3][1] = 0.0f;
+
+	if (dstFbo)
+	{
+		dstW = dstFbo->width;
+		dstH = dstFbo->height;
+	}
+	else
+	{
+		dstW = glConfig.vidWidth;
+		dstH = glConfig.vidHeight;
+	}
+
+	FBO_Bind(dstFbo);
+	qglViewport(0, 0, dstW, dstH);
+	qglScissor (0, 0, dstW, dstH);
+
+	GL_State(GLS_DEPTHTEST_DISABLE);
+
+	Mat4Identity(mvp);
+
+	GLSL_BindProgram(&tr.bodycamShader);
+	GLSL_SetUniformMat4(&tr.bodycamShader, UNIFORM_MODELVIEWPROJECTIONMATRIX, mvp);
+	GL_BindToTMU(srcFbo->colorImage[0], TB_COLORMAP);
+	GLSL_SetUniformVec4(&tr.bodycamShader, UNIFORM_VIEWINFO,     viewInfo);
+	GLSL_SetUniformVec4(&tr.bodycamShader, UNIFORM_COLORGRADE,   params0);
+	GLSL_SetUniformVec4(&tr.bodycamShader, UNIFORM_COLORGRADEFX, params1);
+	RB_InstantQuad2(quadVerts, texCoords);
+}

@@ -1635,6 +1635,7 @@ typedef struct {
 	shaderProgram_t depthBlurShader[4];
 	shaderProgram_t depthOfFieldShader;	// STRAFE 64 cinematic DoF
 	shaderProgram_t colorGradeShader;	// STRAFE 64 FXAA + grade + vignette + grain
+	shaderProgram_t bodycamShader;		// STRAFE 64 bodycam: warp/chroma/crunch/scanline/grain
 	shaderProgram_t testcubeShader;
 	shaderProgram_t greyscaleShader;
 
@@ -1863,6 +1864,14 @@ extern  cvar_t  *r_gradeSaturation;	// saturation (1 = neutral)
 extern  cvar_t  *r_gradeTemp;		// white balance (+ = warmer)
 extern  cvar_t  *r_vignette;		// edge darkening strength
 extern  cvar_t  *r_filmGrain;		// animated film grain strength
+extern  cvar_t  *r_bodycam;			// STRAFE 64 bodycam finish-pass master toggle
+extern  cvar_t  *r_bodycamWarp;		// barrel distortion strength
+extern  cvar_t  *r_bodycamChroma;	// chromatic aberration (px at edge)
+extern  cvar_t  *r_bodycamCrunch;	// sensor resolution scale (1 = native)
+extern  cvar_t  *r_bodycamScanline;	// rolling-shutter line darkness
+extern  cvar_t  *r_bodycamGrain;	// sensor noise amount
+extern  cvar_t  *r_bodycamVignette;	// bodycam edge darkening
+extern  cvar_t  *r_bodycamClip;		// highlight blow-out lift
 extern  cvar_t  *r_sunShadows;
 extern  cvar_t  *r_shadowSoftness;	// STRAFE 64 soft-shadow penumbra width (PCF kernel scale)
 extern  cvar_t  *r_shadowFilter;
