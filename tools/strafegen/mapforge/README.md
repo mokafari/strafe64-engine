@@ -27,8 +27,10 @@ Two modes, switched at the top of the left panel:
 Build a course by hand from reusable section parts — start pad, strafe gaps,
 bhop lane, fork, slalom, slide ramp, walljump hall, hurdles, movers, hazard
 pits, double-jump tower, finish gate — **and geometric primitives**: straight
-floor, ramp up/down, stairs, **turn left/right** (reorient the route 90°), and an
-open arena pad. The sections all run +Y; the turn primitives let a layout route
+floor, ramp up/down, stairs, **turn left/right** (reorient the route 90°), a
+**T-split** (one entry, three exits — branch the route), and an open arena pad.
+Connectors snap by *kind* (entry ↔ exit), so a split's several exits each accept
+a continuation — build branching, non-linear topology, not just a single chain. The sections all run +Y; the turn primitives let a layout route
 in any direction and the ramps/stairs change elevation, so you can shape an
 arbitrary map, not just a straight chain.
 

@@ -762,7 +762,7 @@ const rotDir = (d, yaw) => { const [x, y] = rotxy(d[0], d[1], yaw); return [Math
 function worldConn(inst, c) {
   const [rx, ry] = rotxy(c.pos[0], c.pos[1], inst.yaw);
   return { pos: [rx + inst.translate[0], ry + inst.translate[1], c.pos[2] + inst.translate[2]],
-           dir: rotDir(c.dir, inst.yaw), id: c.id };
+           dir: rotDir(c.dir, inst.yaw), id: c.id, kind: c.kind || (c.id === 'in' ? 'in' : 'out') };
 }
 function mate(localConn, target) {       // place so localConn mates target (world)
   const yaw = ((yawOf(target.dir) - yawOf(localConn.dir)) % 360 + 360) % 360;
@@ -776,13 +776,13 @@ function partConns(inst) { return C.byKey[inst.key].connectors.map(c => worldCon
 // instance sits on top of it
 function isConnected(inst, wc) {
   return C.placed.some(o => o.id !== inst.id &&
-    partConns(o).some(oc => oc.id !== wc.id && dist3(oc.pos, wc.pos) < 4));
+    partConns(o).some(oc => oc.kind !== wc.kind && dist3(oc.pos, wc.pos) < 4));
 }
-function freeOutSlots(exceptId) {     // world 'out' connectors not yet connected
+function freeOutSlots(exceptId) {     // world exit connectors not yet connected
   const out = [];
   for (const o of C.placed) {
     if (o.id === exceptId) continue;
-    for (const wc of partConns(o)) if (wc.id === 'out' && !isConnected(o, wc)) out.push(wc);
+    for (const wc of partConns(o)) if (wc.kind === 'out' && !isConnected(o, wc)) out.push(wc);
   }
   return out;
 }
@@ -810,7 +810,7 @@ function _placePart(key) {
   const slots = freeOutSlots(inst.id);
   if (slots.length) {
     const target = slots[slots.length - 1];
-    const localIn = C.byKey[key].connectors.find(c => c.id === 'in');
+    const localIn = C.byKey[key].connectors.find(c => (c.kind || c.id) === 'in');
     const mt = mate(localIn, target); inst.yaw = mt.yaw; inst.translate = mt.translate;
   }
   C.placed.push(inst);
@@ -913,7 +913,7 @@ function renderCompose3d() {
     for (const c of part.connectors) {
       const wc = worldConn(inst, c);
       const conn = isConnected(inst, wc);
-      const col = c.id === 'in' ? 0xff6b6b : 0x8fff8f;
+      const col = wc.kind === 'in' ? 0xff6b6b : 0x8fff8f;
       const dot = new THREE.Mesh(new THREE.SphereGeometry(conn ? 14 : 22, 12, 12),
         new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: conn ? 0.35 : 1 }));
       dot.position.set(c.pos[0], c.pos[1], c.pos[2] + 24);
@@ -1011,7 +1011,7 @@ function trySnap(inst) {
   }
   let best = null, bd = SNAP;
   for (const m of mine) for (const t of targets) {
-    if (m.id === t.id) continue;                 // in<->out only
+    if (m.kind === t.kind) continue;             // entry <-> exit only
     const d = dist3(m.pos, t.pos);
     if (d < bd) { bd = d; best = { local: C.byKey[inst.key].connectors.find(c => c.id === m.id), target: t }; }
   }
@@ -1103,7 +1103,7 @@ function drawCompose2d() {
     ctx.globalAlpha = 1;
     for (const c of part.connectors) {
       const wc = worldConn(inst, c);
-      ctx.fillStyle = c.id === 'in' ? '#ff6b6b' : '#8fff8f';
+      ctx.fillStyle = wc.kind === 'in' ? '#ff6b6b' : '#8fff8f';
       ctx.beginPath(); ctx.arc(px(wc.pos[0]), py(wc.pos[1]), isConnected(inst, wc) ? 3 : 6, 0, 7); ctx.fill();
     }
   }

@@ -511,6 +511,7 @@ PRIMITIVE_PARTS = [
     ("stairs",     "Stairs up",        "primitive"),
     ("turn_left",  "Turn left 90°",    "primitive"),
     ("turn_right", "Turn right 90°",   "primitive"),
+    ("split",      "T-split (3-way)",  "primitive"),
     ("arena",      "Open arena pad",   "primitive"),
 ]
 _SECTION_METHOD = {k: m for (k, m, _l, _g) in SECTION_PARTS}
@@ -527,6 +528,7 @@ def _build_primitive(key):
     box = lambda mn, mx, pal=sg.SRC_ORANGE, tex=sg.TEX_FLOOR: \
         S.append(sg.make_box(mn, mx, tex=tex, palette=pal))
     exit_ = ((0.0, 512.0, 0.0), (0, 1))
+    conns = None     # primitives with >1 exit (split) set their own connector list
     if key == "floor":
         box((-128, 0, -24), (128, 512, 0))
     elif key == "ramp_up":
@@ -547,13 +549,21 @@ def _build_primitive(key):
     elif key == "turn_right":
         box((-256, 0, -24), (256, 512, 0))
         exit_ = ((256.0, 256.0, 0.0), (1, 0))
+    elif key == "split":
+        box((-320, 0, -24), (320, 256, 0))           # T / 3-way junction pad
+        conns = [
+            {"id": "in",   "pos": [0.0, 0.0, 0.0],     "dir": [0, 1],  "kind": "in"},
+            {"id": "out",  "pos": [0.0, 256.0, 0.0],   "dir": [0, 1],  "kind": "out"},
+            {"id": "outL", "pos": [-320.0, 128.0, 0.0], "dir": [-1, 0], "kind": "out"},
+            {"id": "outR", "pos": [320.0, 128.0, 0.0],  "dir": [1, 0],  "kind": "out"},
+        ]
     elif key == "arena":
         box((-512, 0, -24), (512, 1024, 0))
         exit_ = ((0.0, 1024.0, 0.0), (0, 1))
     else:
         raise ValueError(f"unknown primitive: {key}")
     return {"key": key, "solids": S, "entities": [], "triggers": [], "movers": [],
-            "entry": ((0.0, 0.0, 0.0), (0, 1)), "exit": exit_}
+            "entry": ((0.0, 0.0, 0.0), (0, 1)), "exit": exit_, "connectors": conns}
 
 
 def _build_part(key):
@@ -587,9 +597,10 @@ def serialize_part(key):
     brushes = [_serialize_brush(i, b, bounds, detect_enclosure=False)
                for i, b in enumerate(P["solids"])]
     entities = [_serialize_entity(i, e) for i, e in enumerate(P["entities"])]
-    conns = [{"id": "in",  "pos": [0.0, 0.0, 0.0], "dir": list(P["entry"][1])},
-             {"id": "out", "pos": [float(c) for c in P["exit"][0]],
-              "dir": list(P["exit"][1])}]
+    conns = P.get("connectors") or [
+        {"id": "in",  "pos": [0.0, 0.0, 0.0], "dir": list(P["entry"][1]), "kind": "in"},
+        {"id": "out", "pos": [float(c) for c in P["exit"][0]],
+         "dir": list(P["exit"][1]), "kind": "out"}]
     return {"key": key, "label": label, "group": group, "bounds": bounds,
             "brushes": brushes, "entities": entities, "connectors": conns}
 
