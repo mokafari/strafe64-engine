@@ -2637,6 +2637,174 @@ static void Com_DetectSSE(void)
 
 #endif
 
+// in-game FORGE bridge: run strafegen.py as a child process, drop the fresh
+// .bsp/.aas into the writable game dir, then devmap it. Driven by the FORGE
+// menu (ui_generate.c).
+#define FORGE_STRAFEGEN_DEFAULT "/Users/gustav/strafe64-engine/tools/strafegen/strafegen.py"
+
+cvar_t	*forge_python;
+cvar_t	*forge_strafegen;
+
+/*
+=================
+Com_Forge_f
+
+Usage: forge <kind> <seed> [difficulty] [length] [novoid]
+
+Generates a strafegen course and loads it. kind is one of
+course|combat|arena|surf|killbox. The map basename is forced to
+forge_<kind>_<seed> so the load is deterministic.
+=================
+*/
+static void Com_Forge_f( void ) {
+	const char	*kind, *seed, *diff, *length, *flag, *arch, *size, *dens;
+	const char	*vscale, *hscale, *density;
+	const char	*writedir;
+	const char	*argv[36];
+	char		outdir[MAX_OSPATH];
+	char		basedir[MAX_OSPATH];
+	char		name[MAX_QPATH];
+	qboolean	lengthy;
+	qboolean	novoid;
+	qboolean	nogfx;
+	int			argc = Cmd_Argc();
+	int			n = 0;
+	int			ret;
+
+	if ( argc < 3 ) {
+		Com_Printf( "usage: forge <course|combat|arena|surf|surfturn|killbox|"
+			"lattice> <seed> [difficulty] [length] [novoid] [archetype|-] "
+			"[nogfx] [small|normal|large|huge] [sparse|normal|dense]\n" );
+		return;
+	}
+
+	kind   = Cmd_Argv( 1 );
+	seed   = Cmd_Argv( 2 );
+	diff   = ( argc > 3 ) ? Cmd_Argv( 3 ) : "1";
+	length = ( argc > 4 ) ? Cmd_Argv( 4 ) : "1";
+	novoid = ( argc > 5 ) && !Q_stricmp( Cmd_Argv( 5 ), "novoid" );
+	// arg 6: killbox archetype token, or "-" for none (seed-random)
+	arch   = ( argc > 6 && Q_stricmp( Cmd_Argv( 6 ), "-" ) ) ? Cmd_Argv( 6 ) : NULL;
+	// arg 8/9: size + density presets -> strafegen --gen-* float flags
+	size   = ( argc > 8 ) ? Cmd_Argv( 8 ) : "normal";
+	dens   = ( argc > 9 ) ? Cmd_Argv( 9 ) : "normal";
+	vscale = hscale = density = NULL;
+	if ( !Q_stricmp( size, "small" ) )      { vscale = "0.75"; hscale = "0.75"; }
+	else if ( !Q_stricmp( size, "large" ) ) { vscale = "1.3";  hscale = "1.3";  }
+	else if ( !Q_stricmp( size, "huge" ) )  { vscale = "1.7";  hscale = "1.6";  }
+	if ( !Q_stricmp( dens, "sparse" ) )     density = "0.5";
+	else if ( !Q_stricmp( dens, "dense" ) ) density = "1.8";
+	// arg 7: "nogfx" disables the graphics-recipe shaders
+	nogfx  = ( argc > 7 ) && !Q_stricmp( Cmd_Argv( 7 ), "nogfx" );
+
+	// kind -> strafegen flag (NULL for the default course)
+	lengthy = qfalse;
+	if ( !Q_stricmp( kind, "course" ) ) {
+		flag = NULL;
+		lengthy = qtrue;
+	} else if ( !Q_stricmp( kind, "combat" ) ) {
+		flag = "--combat";
+		lengthy = qtrue;
+	} else if ( !Q_stricmp( kind, "arena" ) ) {
+		flag = "--arena";
+	} else if ( !Q_stricmp( kind, "surf" ) ) {
+		flag = "--surf";
+	} else if ( !Q_stricmp( kind, "surfturn" ) ) {
+		flag = "--surfturn";
+	} else if ( !Q_stricmp( kind, "killbox" ) ) {
+		flag = "--killbox";
+	} else if ( !Q_stricmp( kind, "lattice" ) ) {
+		flag = "--latticearena";
+	} else {
+		Com_Printf( "forge: unknown kind '%s' (course|combat|arena|surf|"
+			"surfturn|killbox|lattice)\n", kind );
+		return;
+	}
+
+	Com_sprintf( name, sizeof( name ), "forge_%s_%s", kind, seed );
+	// Write into the FS write dir. fs_homepath is normally the writable home,
+	// but some launch configs leave it empty (then "%s/.../maps" would resolve
+	// to an absolute "/baseoa/maps" at the filesystem root — read-only, and the
+	// generator dies with EROFS). Fall back to fs_basepath, which the FS also
+	// searches at load time, so the freshly-written .bsp is still found.
+	writedir = Cvar_VariableString( "fs_homepath" );
+	if ( !writedir[0] ) {
+		writedir = Cvar_VariableString( "fs_basepath" );
+	}
+	Com_sprintf( outdir, sizeof( outdir ), "%s/%s/maps",
+		writedir, com_basegame->string );
+	Com_sprintf( basedir, sizeof( basedir ), "%s/%s",
+		writedir, com_basegame->string );
+
+	argv[n++] = forge_python->string;
+	argv[n++] = forge_strafegen->string;
+	argv[n++] = seed;
+	if ( flag ) {
+		argv[n++] = flag;
+	}
+	if ( arch && !Q_stricmp( kind, "killbox" ) ) {
+		argv[n++] = "--arch";
+		argv[n++] = arch;
+	}
+	argv[n++] = "--difficulty";
+	argv[n++] = diff;
+	if ( lengthy ) {
+		argv[n++] = "--length";
+		argv[n++] = length;
+	}
+	if ( novoid ) {
+		argv[n++] = "--no-void";
+	}
+	if ( nogfx ) {
+		argv[n++] = "--no-gfx";
+	}
+	if ( vscale ) {
+		argv[n++] = "--gen-vscale";
+		argv[n++] = vscale;
+		argv[n++] = "--gen-hscale";
+		argv[n++] = hscale;
+	}
+	if ( density ) {
+		argv[n++] = "--gen-density";
+		argv[n++] = density;
+	}
+	argv[n++] = "--name";
+	argv[n++] = name;
+	argv[n++] = "--out";
+	argv[n++] = outdir;
+	argv[n] = NULL;
+
+	Com_Printf( "FORGE: generating %s (seed %s, %s%s%s) ...\n", name, seed, kind,
+		arch ? " / " : "", arch ? arch : "" );
+
+	ret = Sys_RunProcess( argv );
+	if ( ret != 0 ) {
+		Com_Printf( S_COLOR_RED "FORGE: strafegen failed (exit %d). "
+			"Check forge_python / forge_strafegen.\n", ret );
+		return;
+	}
+
+	// Ensure the shared identity shader pak (zzz_strafe64_shader.pk3) sits next
+	// to the map, so the loose .bsp renders with real shaders rather than the
+	// grey default even in a fresh game dir. Idempotent; non-fatal on failure.
+	n = 0;
+	argv[n++] = forge_python->string;
+	argv[n++] = forge_strafegen->string;
+	argv[n++] = "--emit-shared";
+	argv[n++] = basedir;
+	if ( nogfx ) {
+		argv[n++] = "--no-gfx";
+	}
+	argv[n] = NULL;
+	if ( Sys_RunProcess( argv ) != 0 ) {
+		Com_Printf( S_COLOR_YELLOW "FORGE: warning - could not refresh the "
+			"shared shader pak; map may render untextured.\n" );
+	}
+
+	Com_Printf( "FORGE: loading %s\n", name );
+	Cbuf_AddText( va( "devmap %s\n", name ) );
+}
+
 /*
 =================
 Com_InitRand
@@ -2722,6 +2890,12 @@ void Com_Init( char *commandLine ) {
 	Cmd_AddCommand ("writeconfig", Com_WriteConfig_f );
 	Cmd_SetCommandCompletionFunc( "writeconfig", Cmd_CompleteCfgName );
 	Cmd_AddCommand("game_restart", Com_GameRestart_f);
+
+	// in-game FORGE bridge (strafegen child process); paths are overridable so a
+	// moved checkout still works
+	forge_python    = Cvar_Get( "forge_python", "python3", CVAR_ARCHIVE );
+	forge_strafegen = Cvar_Get( "forge_strafegen", FORGE_STRAFEGEN_DEFAULT, CVAR_ARCHIVE );
+	Cmd_AddCommand( "forge", Com_Forge_f );
 
 	Com_ExecuteCfg();
 
@@ -2849,6 +3023,9 @@ void Com_Init( char *commandLine ) {
 
 	// make sure single player is off by default
 	Cvar_Set("ui_singlePlayerActive", "0");
+
+	// validate any installed license key (config has been exec'd by now)
+	Com_InitLicense();
 
 	com_fullyInitialized = qtrue;
 

@@ -32,10 +32,31 @@ CONFIRMATION MENU
 #include "ui_local.h"
 
 
-#define ART_CONFIRM_FRAME	"menu/art/cut_frame"
-
 #define ID_CONFIRM_NO		10
 #define ID_CONFIRM_YES		11
+
+// STRAFE 64 NERV palette (mirrors ui_menu.c / ui_qmenu.c)
+static vec4_t cf_amber = { 1.00f, 0.62f, 0.05f, 1.00f };
+static vec4_t cf_green = { 0.45f, 1.00f, 0.55f, 1.00f };
+static vec4_t cf_dim   = { 0.45f, 0.55f, 0.55f, 1.00f };
+static vec4_t cf_panel = { 0.02f, 0.04f, 0.06f, 0.94f };
+static vec4_t cf_edge  = { 0.10f, 0.55f, 0.22f, 0.60f };
+
+/*
+=================
+Confirm_Panel
+
+A themed dark MAGI panel + green border, replacing OpenArena's gothic
+cut_frame art behind every confirm / message box.
+=================
+*/
+static void Confirm_Panel( void ) {
+	// centered on x=320; snug + symmetric around the label (184), the
+	// question (212) and the YES/NO row (264..~291)
+	UI_FillRect( 160, 170, 320, 142, cf_panel );
+	UI_DrawRect( 160, 170, 320, 142, cf_edge );
+	UI_DrawString( 320, 184, "[  CONFIRM  ]", UI_CENTER|UI_SMALLFONT, cf_green );
+}
 
 
 typedef struct {
@@ -120,13 +141,13 @@ MessaheMenu_Draw
 */
 static void MessageMenu_Draw( void ) {
 	int i,y;
-	
-	UI_DrawNamedPic( 142, 118, 359, 256, ART_CONFIRM_FRAME );
-	
-	y = 188;
+
+	Confirm_Panel();
+
+	y = 200;
 	for(i=0; s_confirm.lines[i]; i++)
 	{
-		UI_DrawProportionalString( 320, y, s_confirm.lines[i], s_confirm.style, color_red );
+		UI_DrawProportionalString( 320, y, s_confirm.lines[i], s_confirm.style, cf_amber );
 		y += 18;
 	}
 
@@ -143,9 +164,9 @@ ConfirmMenu_Draw
 =================
 */
 static void ConfirmMenu_Draw( void ) {
-	UI_DrawNamedPic( 142, 118, 359, 256, ART_CONFIRM_FRAME );
-	UI_DrawProportionalString( 320, 204, s_confirm.question, s_confirm.style, color_red );
-	UI_DrawProportionalString( s_confirm.slashX, 265, "/", UI_LEFT|UI_INVERSE, color_red );
+	Confirm_Panel();
+	UI_DrawProportionalString( 320, 212, s_confirm.question, s_confirm.style, cf_amber );
+	UI_DrawProportionalString( s_confirm.slashX, 265, "/", UI_LEFT|UI_INVERSE, cf_dim );
 
 	Menu_Draw( &s_confirm.menu );
 
@@ -161,7 +182,7 @@ ConfirmMenu_Cache
 =================
 */
 void ConfirmMenu_Cache( void ) {
-	trap_R_RegisterShaderNoMip( ART_CONFIRM_FRAME );
+	// themed panel is drawn procedurally — no stock art to register
 }
 
 
@@ -212,7 +233,7 @@ void UI_ConfirmMenu_Style( const char *question, int style, void (*draw)( void )
 	s_confirm.yes.generic.x			= l1;
 	s_confirm.yes.generic.y			= 264;
 	s_confirm.yes.string			= "YES";
-	s_confirm.yes.color				= color_red;
+	s_confirm.yes.color				= cf_amber;
 	s_confirm.yes.style				= UI_LEFT;
 
 	s_confirm.no.generic.type		= MTYPE_PTEXT;      
@@ -222,7 +243,7 @@ void UI_ConfirmMenu_Style( const char *question, int style, void (*draw)( void )
 	s_confirm.no.generic.x		    = l3;
 	s_confirm.no.generic.y		    = 264;
 	s_confirm.no.string				= "NO";
-	s_confirm.no.color			    = color_red;
+	s_confirm.no.color			    = cf_amber;
 	s_confirm.no.style			    = UI_LEFT;
 
 	Menu_AddItem( &s_confirm.menu,	&s_confirm.yes );             
@@ -282,7 +303,7 @@ void UI_Message( const char **lines ) {
 	s_confirm.yes.generic.x			= l1;
 	s_confirm.yes.generic.y			= 280;
 	s_confirm.yes.string			= "OK";
-	s_confirm.yes.color				= color_red;
+	s_confirm.yes.color				= cf_amber;
 	s_confirm.yes.style				= UI_LEFT;
 
 	Menu_AddItem( &s_confirm.menu,	&s_confirm.yes );

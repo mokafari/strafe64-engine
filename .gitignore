@@ -10,5 +10,14 @@ tools/strafegen/generated_fog/
 tools/strafegen/__pycache__/
 tools/strafegen/shaderlib/__pycache__/
 tools/strafegen/sweep_results.jsonl
+# downloaded third-party study maps (~166 MB, not ours to version)
+tools/strafegen/maps_study/
+# built q3map2 binary + generated/asset textures (regenerable)
+tools/strafegen/q3map2
+tools/strafegen/skytex/
+# compiled WASM demo build + bundled assets (rebuildable)
+web-demo/
+# local Claude Code session config (machine-specific)
+.claude/
 *.log
 .DS_Store

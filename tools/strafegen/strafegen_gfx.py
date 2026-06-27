@@ -36,10 +36,8 @@ import math
 import random
 import struct
 
-# ----------------------------------------------------------------------
-# self-contained TGA writer (mirrors strafegen._tga32: 32-bit BGRA, bottom-up)
-# ----------------------------------------------------------------------
-
+# Shared 32-bit TGA writer (was duplicated here; single home is strafegen_tga).
+from strafegen_tga import _tga32, _clamp8
 
 # Shader names for the component materials, so generators can route faces to
 # them by name (e.g. tex=gfx.TEX_HULL). HULL/CHROME are opaque and solid-safe;
@@ -48,22 +46,6 @@ TEX_HULL   = "textures/strafe64/hull"
 TEX_CHROME = "textures/strafe64/chrome"
 TEX_PLASMA = "textures/strafe64/plasma"
 TEX_BEAM   = "strafe64/beam"
-
-
-def _tga32(w, h, px):
-    """Uncompressed 32-bit TGA. px is a flat list of (r,g,b) rows top->bottom."""
-    hdr = struct.pack("<BBBHHBHHHHBB",
-                      0, 0, 2, 0, 0, 0, 0, 0, w, h, 32, 8)  # bottom-up, 8 alpha
-    out = bytearray(hdr)
-    for y in range(h - 1, -1, -1):
-        row = px[y * w:(y + 1) * w]
-        for r, g, b in row:
-            out += bytes((b, g, r, 255))
-    return bytes(out)
-
-
-def _clamp8(v):
-    return 0 if v < 0 else (255 if v > 255 else int(v))
 
 
 # ======================================================================
@@ -85,12 +67,22 @@ SUN_SHADOW_SCALE  = 0.5      # GL2 cascade darkness/coverage (0..1-ish)
 
 
 def sun_keyword():
-    """The q3gl2_sun shader line. Arg order verified against our renderergl2
-    fork (tr_shader.c): r g b  intensity  degrees(azimuth)  elevation  shadowScale."""
+    """The sun keywords for the sky shader.
+
+    q3gl2_sun  = the RUNTIME directional sun + GL2 cascaded shadows (renderergl2;
+                 arg order verified in tr_shader.c: r g b intensity degrees
+                 elevation shadowScale).
+    q3map_sun / q3map_skylight = the COMPILE-TIME (q3map2) sun + hemispheric sky
+                 fill, used when a map is baked (--bake). Same colour/direction so
+                 baked and dynamic agree. Harmless at runtime (renderergl2 parses
+                 q3map_sun as a sun too — same direction, redundant)."""
     r, g, b = SUN_COLOR
     return ("\tq3gl2_sun %g %g %g %g %g %g %g\n"
             % (r, g, b, SUN_INTENSITY,
-               SUN_AZIMUTH_DEG, SUN_ELEVATION_DEG, SUN_SHADOW_SCALE))
+               SUN_AZIMUTH_DEG, SUN_ELEVATION_DEG, SUN_SHADOW_SCALE)
+            + "\tq3map_sun %g %g %g %g %g %g\n"
+            % (r, g, b, 120, SUN_AZIMUTH_DEG, SUN_ELEVATION_DEG)
+            + "\tq3map_skylight 60 3\n")          # soft dusk hemisphere fill
 
 
 def inject_sun(shader_script):

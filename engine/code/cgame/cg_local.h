@@ -1263,6 +1263,10 @@ extern	vmCvar_t		cg_swordTrailTipX;
 extern	vmCvar_t		cg_swordTrailTipY;
 extern	vmCvar_t		cg_swordTrailTipZ;
 extern	vmCvar_t		cg_swordTrailAlpha;	// slash-trail brightness multiplier (0..1)
+extern	vmCvar_t		cg_swordCarryPitch;	// third-person idle katana carry pose (model-space deg)
+extern	vmCvar_t		cg_swordCarryYaw;
+extern	vmCvar_t		cg_swordCarryRoll;
+extern	vmCvar_t		cg_swordCarryBack;	// pull the hilt back toward the hand (units along blade)
 extern	vmCvar_t		cg_drawGun;
 extern	vmCvar_t		cg_viewsize;
 extern	vmCvar_t		cg_tracerChance;

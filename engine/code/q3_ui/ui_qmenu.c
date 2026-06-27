@@ -46,15 +46,18 @@ vec4_t color_yellow	    = {1.00f, 1.00f, 0.00f, 1.00f};
 vec4_t color_blue	    = {0.00f, 0.00f, 1.00f, 1.00f};
 vec4_t color_lightOrange    = {1.00f, 0.68f, 0.00f, 1.00f };
 vec4_t color_orange	    = {1.00f, 0.43f, 0.00f, 1.00f};
-vec4_t color_red	    = {1.00f, 0.00f, 0.00f, 1.00f};
+// STRAFE 64: the stock OpenArena menus colour their item text "red" — retint
+// it to the NERV amber so every stock screen's labels match the main menu in
+// one place instead of editing ~27 files.
+vec4_t color_red	    = {1.00f, 0.62f, 0.05f, 1.00f};
 vec4_t color_dim	    = {0.00f, 0.00f, 0.00f, 0.25f};
 
-// current color scheme
+// current color scheme — STRAFE 64 NERV terminal
 vec4_t pulse_color          = {1.00f, 1.00f, 1.00f, 1.00f};
-vec4_t text_color_disabled  = {0.50f, 0.50f, 0.50f, 1.00f};	// light gray
-vec4_t text_color_normal    = {1.00f, 0.43f, 0.00f, 1.00f};	// light orange
-vec4_t text_color_highlight = {1.00f, 1.00f, 0.00f, 1.00f};	// bright yellow
-vec4_t listbar_color        = {1.00f, 0.43f, 0.00f, 0.30f};	// transluscent orange
+vec4_t text_color_disabled  = {0.45f, 0.55f, 0.55f, 1.00f};	// dim teal-gray
+vec4_t text_color_normal    = {1.00f, 0.62f, 0.05f, 1.00f};	// NERV amber
+vec4_t text_color_highlight = {0.45f, 1.00f, 0.55f, 1.00f};	// MAGI green (focus)
+vec4_t listbar_color        = {0.10f, 0.55f, 0.22f, 0.30f};	// translucent green bar
 vec4_t text_color_status    = {1.00f, 1.00f, 1.00f, 1.00f};	// bright white	
 
 // action widget
@@ -145,15 +148,28 @@ static void BText_Init( menutext_s *t )
 	t->generic.flags |= QMF_INACTIVE;
 }
 
+// STRAFE 64 — shared NERV/MAGI palette so every framework-drawn menu reads
+// as one terminal (mirrors ui_menu.c / ui_arena.c).
+static vec4_t s64_amber  = { 1.00f, 0.62f, 0.05f, 1.00f };  // headings / focus
+static vec4_t s64_dim    = { 0.45f, 0.55f, 0.55f, 1.00f };  // dim labels
+static vec4_t s64_panel  = { 0.02f, 0.04f, 0.06f, 0.92f };  // overlay panel fill
+static vec4_t s64_edge   = { 0.10f, 0.55f, 0.22f, 0.55f };  // green panel border
+
 /*
 =================
 BText_Draw
+
+STRAFE 64: the stock OpenArena banner font is gone — every menu banner is
+drawn in the amber NERV headline face (matching the main-menu wordmark)
+with a thin green rule under it, so SETUP / SYSTEM SETUP / CONTROLS / etc.
+all read as part of the same console.
 =================
 */
 static void BText_Draw( menutext_s *t )
 {
 	int		x;
 	int		y;
+	int		w;
 	float*	color;
 
 	x = t->generic.x;
@@ -162,9 +178,18 @@ static void BText_Draw( menutext_s *t )
 	if (t->generic.flags & QMF_GRAYED)
 		color = text_color_disabled;
 	else
-		color = t->color;
+		color = s64_amber;
 
-	UI_DrawBannerString( x, y, t->string, t->style, color );
+	UI_DrawProportionalString( x, y, t->string, t->style, color );
+
+	// green underline, sized to the title and aligned to its justification
+	w = UI_ProportionalStringWidth( t->string ) * UI_ProportionalSizeScale( t->style );
+	if (t->style & UI_CENTER)
+		UI_FillRect( x - w / 2, y + PROP_HEIGHT + 2, w, 1, s64_edge );
+	else if (t->style & UI_RIGHT)
+		UI_FillRect( x - w, y + PROP_HEIGHT + 2, w, 1, s64_edge );
+	else
+		UI_FillRect( x, y + PROP_HEIGHT + 2, w, 1, s64_edge );
 }
 
 /*
@@ -231,6 +256,48 @@ static void PText_Draw( menutext_s *t )
 	}
 
 	UI_DrawProportionalString( x, y, t->string, style, color );
+}
+
+// STRAFE 64: button-label face is small-font so the longest words (SKIRMISH,
+// REFRESH) never overrun a 128px stock button box.
+#define S64_BTN_SCALE	PROP_SMALL_SIZE_SCALE
+
+/*
+=================
+S64_ButtonLabel
+
+Map a stock OpenArena button shader (menu/art/<word>_0|_1) to a themed text
+label, or NULL if it is not a known text button. Widget graphics (sliders,
+switches, fx swatches, model/map previews) are intentionally absent so they
+keep their art.
+=================
+*/
+static const char *S64_ButtonLabel( const char *name ) {
+	static const struct { const char *needle; const char *label; } tbl[] = {
+		{ "back_",     "< BACK"   },
+		{ "create_",   "CREATE"   },
+		{ "refresh_",  "REFRESH"  },
+		{ "specify_",  "SPECIFY"  },
+		{ "connect_",  "CONNECT"  },
+		{ "play_",     "PLAY"     },
+		{ "accept_",   "ACCEPT"   },
+		{ "delete_",   "DELETE"   },
+		{ "fight_",    "FIGHT"    },
+		{ "load_",     "LOAD"     },
+		{ "save_",     "SAVE"     },
+		{ "next_",     "NEXT"     },
+		{ "reset_",    "RESET"    },
+		{ "replay_",   "REPLAY"   },
+		{ "skirmish_", "SKIRMISH" },
+		{ "menu_",     "MENU"     },
+	};
+	int	i;
+
+	for ( i = 0; i < (int)ARRAY_LEN( tbl ); i++ ) {
+		if ( strstr( name, tbl[i].needle ) )
+			return tbl[i].label;
+	}
+	return NULL;
 }
 
 /*
@@ -300,6 +367,63 @@ void Bitmap_Draw( menubitmap_s *b )
 	else if (b->generic.flags & QMF_CENTER_JUSTIFY)
 	{
 		x = x - w/2;
+	}
+
+	// STRAFE 64: intercept the stock OpenArena menu chrome so every menu
+	// inherits the NERV look without per-file edits. Click regions are set
+	// in Bitmap_Init, so swapping the art for themed text/glyphs is purely
+	// cosmetic.
+	{
+		qboolean	foc   = ( Menu_ItemAtCursor( b->generic.parent ) == b );
+		float		ty    = y + h / 2.0f - ( PROP_HEIGHT * S64_BTN_SCALE ) / 2.0f;
+		const char	*nm   = b->generic.name;
+		const char	*label;
+
+		// gothic frame / cut_frame / addbotframe panels: behind a fullscreen
+		// menu the NERV backdrop already frames the screen, so drop them;
+		// for an overlay (in-game ESC, add/remove bots) draw a clean dark
+		// panel with a green edge instead of the OA art.
+		if ( nm && strstr( nm, "frame" ) )
+		{
+			if ( !( uis.activemenu && uis.activemenu->fullscreen ) )
+			{
+				UI_FillRect( x, y, w, h, s64_panel );
+				UI_DrawRect( x, y, w, h, s64_edge );
+			}
+			return;
+		}
+
+		// scroll-arrow track background: drop it (the direction glyphs below
+		// stand in for the control).
+		if ( nm && strstr( nm, "arrows" ) )
+			return;
+
+		// scroll-arrow direction buttons carry only a focuspic (no base
+		// shader) -> a themed glyph, amber on focus.
+		if ( b->focuspic && strstr( b->focuspic, "arrows" ) )
+		{
+			const char *g = strstr( b->focuspic, "top" )  ? "^"
+			              : strstr( b->focuspic, "bot" )  ? "v"
+			              : strstr( b->focuspic, "left" ) ? "<"
+			              :                                 ">";
+			UI_DrawProportionalString( x + w / 2, ty, g,
+				UI_CENTER|UI_SMALLFONT, foc ? s64_amber : s64_dim );
+			return;
+		}
+
+		// stock text buttons -> a centered themed label (BACK stays left,
+		// hugging the screen edge it lives on).
+		label = nm ? S64_ButtonLabel( nm ) : NULL;
+		if ( label )
+		{
+			if ( strstr( nm, "back_" ) )
+				UI_DrawProportionalString( x + 12, ty, label,
+					UI_LEFT|UI_SMALLFONT, foc ? s64_amber : s64_dim );
+			else
+				UI_DrawProportionalString( x + w / 2, ty, label,
+					UI_CENTER|UI_SMALLFONT, foc ? s64_amber : s64_dim );
+			return;
+		}
 	}
 
 	// used to refresh shader

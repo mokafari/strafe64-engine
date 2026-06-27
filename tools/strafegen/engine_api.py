@@ -189,7 +189,7 @@ class EngineError(RuntimeError):
     pass
 
 
-def deploy_dylibs(oa: str = DEFAULT_OA, cfgs: bool = True, force: bool = False) -> list[str]:
+def deploy_dylibs(oa: str = DEFAULT_OA, cfgs: bool = True, force: bool = False) -> dict:
     """Copy the freshly-built modded dylibs into <oa>/baseoa and re-sign them.
 
     Mirrors run.sh: the three dylibs share networked headers, so they must be
@@ -199,27 +199,44 @@ def deploy_dylibs(oa: str = DEFAULT_OA, cfgs: bool = True, force: bool = False) 
     All-or-nothing guard: if any deployed dylib is NEWER than our build output, a
     concurrent build deployed it — don't regress it (or mix a stale set with a
     fresh one). Skip the deploy and use what's there. `force=True` overrides.
+
+    Returns a structured result so a skip is *loud*, never a silent empty list:
+        {"deployed": [...names], "skipped": bool, "reason": str|None,
+         "blockers": [...names], "cfgs": [...names]}
     """
     import sys
     dest = Path(oa) / GAME
     dest.mkdir(parents=True, exist_ok=True)
     srcs = {n: BUILD_BASEQ3 / f"{n}.dylib" for n in DYLIBS
             if (BUILD_BASEQ3 / f"{n}.dylib").exists()}
-    if not force:
-        for name, src in srcs.items():
-            dst = dest / f"{name}.dylib"
-            if dst.exists() and dst.stat().st_mtime > src.stat().st_mtime + 1:
-                sys.stderr.write(
-                    f"deploy_dylibs: deployed {name}.dylib is newer than the build output "
-                    f"(concurrent build?) — keeping the deployed set, skipping deploy "
-                    f"(force=True to override).\n")
-                done = []
-                if cfgs:
-                    for cfg in ("strafe64.cfg", "psx.cfg"):
-                        s = STRAFEGEN / cfg
-                        if s.exists():
-                            shutil.copy2(s, dest / cfg)
-                return done
+
+    def _copy_cfgs() -> list[str]:
+        out = []
+        if cfgs:
+            for cfg in ("strafe64.cfg", "psx.cfg"):
+                s = STRAFEGEN / cfg
+                if s.exists():
+                    shutil.copy2(s, dest / cfg)
+                    out.append(cfg)
+        return out
+
+    if not srcs:
+        return {"deployed": [], "skipped": True, "blockers": [], "cfgs": _copy_cfgs(),
+                "reason": f"no built dylibs in {BUILD_BASEQ3} — run a build first"}
+
+    # Concurrent-build guard: any deployed dylib NEWER than our build output means
+    # another process already deployed a fresher set — don't regress it.
+    blockers = [name for name, src in srcs.items()
+                if (dest / f"{name}.dylib").exists()
+                and (dest / f"{name}.dylib").stat().st_mtime > src.stat().st_mtime + 1]
+    if blockers and not force:
+        reason = (f"deployed {', '.join(b + '.dylib' for b in blockers)} newer than the build "
+                  f"output (concurrent build?) — kept the deployed set, deploy SKIPPED "
+                  f"(pass force=True to override)")
+        sys.stderr.write(f"deploy_dylibs: {reason}\n")
+        return {"deployed": [], "skipped": True, "blockers": blockers,
+                "cfgs": _copy_cfgs(), "reason": reason}
+
     done = []
     for name, src in srcs.items():
         dst = dest / f"{name}.dylib"
@@ -227,12 +244,8 @@ def deploy_dylibs(oa: str = DEFAULT_OA, cfgs: bool = True, force: bool = False) 
         subprocess.run(["codesign", "-f", "-s", "-", str(dst)],
                        capture_output=True, timeout=60)
         done.append(name)
-    if cfgs:
-        for cfg in ("strafe64.cfg", "psx.cfg"):
-            src = STRAFEGEN / cfg
-            if src.exists():
-                shutil.copy2(src, dest / cfg)
-    return done
+    return {"deployed": done, "skipped": False, "blockers": [],
+            "cfgs": _copy_cfgs(), "reason": None}
 
 
 class EngineSession:
@@ -307,6 +320,11 @@ class EngineSession:
         self._pipe_fd: int | None = None
         self._log_fp = None
         self._cap = None
+        # the bullet-time core (g_timeBind) is auto-disabled by scripted-driving /
+        # capture helpers so timing is deterministic; we stash the prior value here
+        # so it can be restored (otherwise "test the slow-mo" silently leaves it off
+        # — the recurring "static slow-mo" phantom bug).
+        self._saved_timebind: str | None = None
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -553,7 +571,19 @@ class EngineSession:
             raise EngineError("session not started")
         if not self.alive:
             raise EngineError("engine has exited")
-        os.write(self._pipe_fd, (cmd.rstrip("\n") + "\n").encode())
+        data = (cmd.rstrip("\n") + "\n").encode()
+        # The engine can die between the alive-check above and the write (TOCTOU),
+        # turning the FIFO into a broken pipe. Translate that (and short writes)
+        # into a clean EngineError instead of leaking a raw BrokenPipeError.
+        try:
+            written = 0
+            while written < len(data):
+                n = os.write(self._pipe_fd, data[written:])
+                if n <= 0:
+                    raise EngineError("engine pipe write made no progress (engine gone?)")
+                written += n
+        except (BrokenPipeError, OSError) as e:
+            raise EngineError(f"engine has exited (pipe write failed: {e})") from e
 
     def _read_new(self) -> str:
         if not self._log_fp:
@@ -620,6 +650,27 @@ class EngineSession:
 
     def cvarlist(self, prefix: str = "") -> str:
         return self.console(f"cvarlist {prefix}".strip())
+
+    def _disable_time_bind(self):
+        """Turn off the bullet-time clock for deterministic scripted driving,
+        remembering the prior value (once) so restore_time_bind() can put it back.
+        Without this, driving the player to 'test' time-bind silently leaves it
+        off — the recurring 'static slow-mo' false bug."""
+        if self._saved_timebind is None:
+            try:
+                self._saved_timebind = self.get_cvar("g_timeBind") or "1"
+            except EngineError:
+                self._saved_timebind = "1"
+        self.set_cvar("g_timeBind", 0, confirm=False)
+
+    def restore_time_bind(self) -> str | None:
+        """Restore g_timeBind to the value it had before a scripted-driving /
+        capture helper disabled it. No-op if it was never disabled."""
+        if self._saved_timebind is None:
+            return None
+        self.set_cvar("g_timeBind", self._saved_timebind, confirm=False)
+        val, self._saved_timebind = self._saved_timebind, None
+        return val
 
     # -- movement model ------------------------------------------------------
 
@@ -762,12 +813,29 @@ class EngineSession:
         raise EngineError("no apistate reply (needs the rebuilt qagame + client mode)")
 
     def measure(self, subject="self", seconds: float = 4.0, hz: int = 10,
-                field: str = "speed") -> dict:
+                field: str = "speed", keepalive: bool = True) -> dict:
         """Sample a subject's `field` (speed, health, air, wj, dj) over `seconds`
         → metrics. Quantifies a run (bhop chain, slide-jump, surf line) or moveset
         usage so movement can be judged by the numbers, not by eye. subject:
         'self' (the player you're driving), 'follow' (the bot you're spectating),
-        or a client name/number."""
+        or a client name/number.
+
+        keepalive (default True): hold the bullet-time clock off for the window so
+        the world runs at real speed while sampling — otherwise g_timeBindMin
+        near-freezes time whenever the player is still, which reads as a frozen
+        body and yields garbage samples. Restored afterwards. No-op if an outer
+        scope (e.g. play_mode) already disabled it."""
+        # only manage time-bind if nobody outer already has (avoid clobbering it)
+        managed = keepalive and self._saved_timebind is None
+        if managed:
+            self._disable_time_bind()
+        try:
+            return self._measure_loop(subject, seconds, hz, field)
+        finally:
+            if managed:
+                self.restore_time_bind()
+
+    def _measure_loop(self, subject, seconds, hz, field) -> dict:
         interval = 1.0 / max(1, hz)
         samples, t0 = [], time.time()
         while time.time() - t0 < seconds:
@@ -1106,8 +1174,9 @@ class EngineSession:
         self.set_cvar("g_forceRespawn", 1, confirm=False)
         # the bullet-time core near-freezes game time when the player is still
         # (g_timeBindMin), which stretches the respawn timer to tens of real
-        # seconds while dead. Disable it so audition runs at normal speed.
-        self.set_cvar("g_timeBind", 0, confirm=False)
+        # seconds while dead. Disable it so audition runs at normal speed
+        # (restorable via restore_time_bind()).
+        self._disable_time_bind()
         self.third_person(True)
         self.command("kill")          # respawn so the new model loads
         time.sleep(min(settle, 2.5))
@@ -1235,11 +1304,15 @@ class EngineSession:
                      "movedown", "attack", "speed", "left", "right",
                      "lookup", "lookdown")
 
-    def play_mode(self, weapon: int | None = None, first_person: bool = True):
-        """Leave spectator and become a live, controllable player at normal time
-        speed (so interaction isn't slowed by the bullet-time core)."""
+    def play_mode(self, weapon: int | None = None, first_person: bool = True,
+                  time_bind: bool = False):
+        """Leave spectator and become a live, controllable player. By default the
+        bullet-time core is disabled so interaction isn't slowed (and is stashed
+        for restore_time_bind()); pass time_bind=True to keep it on — e.g. when you
+        are specifically driving the player to test the slow-mo feature."""
         self.set_cvar("g_forceRespawn", 1, confirm=False)
-        self.set_cvar("g_timeBind", 0, confirm=False)
+        if not time_bind:
+            self._disable_time_bind()
         self.command("team free")
         time.sleep(0.7)
         self.tap("attack", 0.1)        # respawn if waiting on the fire-to-spawn prompt
@@ -1615,7 +1688,7 @@ class EngineSession:
         engine_state for other maps."""
         if not self.cheats:
             raise EngineError("capture_death needs cheats (client mode / devmap)")
-        self.set_cvar("g_timeBind", 0, confirm=False)   # don't freeze the death
+        self._disable_time_bind()                        # don't freeze the death (restored below)
         self.set_cvar("g_forceRespawn", 0, confirm=False)  # let the body lie so we can film it
         self.play_mode()
         # teleport to open space so the third-person cam isn't jammed into a wall
@@ -1642,6 +1715,7 @@ class EngineSession:
                     frames.append(p)
         finally:
             self.cinematic(False)
+            self.restore_time_bind()
         labels = ([f"-{n_pre - i}" for i in range(n_pre)] +
                   ["KILL"] + [f"+{i+1}" for i in range(len(frames) - n_pre - 1)]
                   if len(frames) > n_pre else [f"-{n_pre - i}" for i in range(n_pre)])
@@ -1974,7 +2048,13 @@ def rebuild(clean: bool = False, deploy: bool = True, oa: str = DEFAULT_OA,
     result = dict(returncode=proc.returncode,
                   stdout=proc.stdout[-4000:], stderr=proc.stderr[-4000:])
     if proc.returncode == 0 and deploy:
-        result["deployed"] = deploy_dylibs(oa)
+        dep = deploy_dylibs(oa)
+        result["deploy"] = dep
+        result["deployed"] = dep["deployed"]          # back-compat: the name list
+        if dep["skipped"]:
+            # Make a skipped deploy impossible to mistake for "nothing changed":
+            # this is the #1 stale-binary footgun (engine keeps the old dylib).
+            result["warning"] = f"DEPLOY SKIPPED — {dep['reason']}"
     return result
 
 

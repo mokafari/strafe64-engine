@@ -114,10 +114,11 @@ MField_Paste
 ================
 */
 void MField_Paste( mfield_t *edit ) {
-	char	pasteBuffer[64];
+	char	pasteBuffer[MAX_EDIT_LINE];
 	int		pasteLen, i;
 
-	trap_GetClipboardData( pasteBuffer, 64 );
+	// MAX_EDIT_LINE so long license keys (~146 chars) paste without truncating
+	trap_GetClipboardData( pasteBuffer, sizeof( pasteBuffer ) );
 
 	// send as if typed, so insert / overstrike works properly
 	pasteLen = strlen( pasteBuffer );
@@ -139,8 +140,12 @@ Key events are used for non-printable characters, others are gotten from char ev
 void MField_KeyDownEvent( mfield_t *edit, int key ) {
 	int		len;
 
-	// shift-insert is paste
+	// shift-insert and ctrl-v are paste (ctrl-v for the long license key)
 	if ( ( ( key == K_INS ) || ( key == K_KP_INS ) ) && trap_Key_IsDown( K_SHIFT ) ) {
+		MField_Paste( edit );
+		return;
+	}
+	if ( ( key == 'v' || key == 'V' ) && trap_Key_IsDown( K_CTRL ) ) {
 		MField_Paste( edit );
 		return;
 	}

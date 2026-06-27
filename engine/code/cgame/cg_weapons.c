@@ -1205,7 +1205,15 @@ static void CG_AddWeaponWithPowerups( refEntity_t *gun, int powerups ) {
 
 static void CG_SwordSlashTrail( const refEntity_t *gun );	// STRAFE 64
 static void CG_SwordSlashTrailEx( const refEntity_t *gun, int swingTime,
-		int *trailNum, int *trailLastTime, vec3_t *tipPath, vec3_t *basePath );
+		int *trailNum, int *trailLastTime, vec3_t *tipPath, vec3_t *basePath,
+		float reach );
+
+// STRAFE 64: shared sword swing timing/envelope. Declared here (defined further
+// down with the view weapon) so the third-person blade arc in CG_AddPlayerWeapon
+// reads the SAME motion as the first-person slash in CG_AddViewWeapon.
+#define	SWORD_SWING_MS	250		// swing arc duration (≈ the 230ms fire cadence)
+#define	LERPF(a,b,f)	( (a) + ( (b) - (a) ) * (f) )
+static float CG_SwordSwingFactor( float p );
 
 /*
 =============
@@ -1286,18 +1294,66 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	MatrixMultiply(lerped.axis, ((refEntity_t *)parent)->axis, gun.axis);
 	gun.backlerp = parent->backlerp;
 
-	// STRAFE 64: visible guard for OTHER players/bots — there is no block torso
-	// anim, so when a third-person swordsman raises EF_BLOCKING we rotate the
-	// blade up and across the body. A held katana now reads as "guarding" at a
-	// glance, mirroring the first-person guard pose in CG_AddViewWeapon.
-	if ( !ps && weaponNum == WP_SWORD
-			&& ( cent->currentState.eFlags & EF_BLOCKING ) ) {
-		vec3_t	guardAng = { -55.0f, 0.0f, 25.0f };	// pitch the blade up, lay it across
+	// STRAFE 64: third-person blade pose for OTHER players/bots. The stock
+	// TORSO_ATTACK md3 frames only thrust the arm forward — a flat "poke" that
+	// reads nothing like a sword cut. We rotate the world-space blade ourselves:
+	//   - guarding (EF_BLOCKING): hold it up and across the body, and
+	//   - swinging: arc it through a real diagonal samurai slash, mirroring the
+	//     first-person motion in CG_AddViewWeapon so onlookers see clean cross-cuts
+	//     and overhead finishers instead of a straight stab.
+	// Rotations are applied in the weapon's model space (rot * gun.axis), the same
+	// way the guard pose was, and BEFORE the model + slash trail are emitted so both
+	// follow the arc.
+	if ( !ps && weaponNum == WP_SWORD ) {
 		vec3_t	rot[3], posed[3];
 
-		AnglesToAxis( guardAng, rot );
-		MatrixMultiply( rot, gun.axis, posed );
-		AxisCopy( posed, gun.axis );
+		if ( cent->currentState.eFlags & EF_BLOCKING ) {
+			vec3_t	guardAng = { -55.0f, 0.0f, 25.0f };	// pitch the blade up, lay it across
+			AnglesToAxis( guardAng, rot );
+			MatrixMultiply( rot, gun.axis, posed );
+			AxisCopy( posed, gun.axis );
+		} else {
+			int		dt = cg.time - cent->swordSwingTime;
+
+			if ( dt >= 0 && dt < SWORD_SWING_MS ) {
+				float	p = dt / (float)SWORD_SWING_MS;
+				float	f = CG_SwordSwingFactor( p );
+				int		step = cent->swordSwingStep % 3;
+				float	dir = ( cent->swordSwingStep & 1 ) ? -1.0f : 1.0f;
+				vec3_t	slashAng;
+
+				if ( step == 2 ) {
+					// overhead finisher: big vertical chop down through the target
+					slashAng[PITCH] = LERPF( -82.0f, 72.0f, f );
+					slashAng[YAW]   = LERPF(  12.0f * dir, -10.0f * dir, f );
+					slashAng[ROLL]  = LERPF(  14.0f * dir, -10.0f * dir, f );
+				} else {
+					// diagonal cross-slash (kesa-giri): rear back to one side, then
+					// sweep across and down to the opposite hip, alternating each swing
+					slashAng[PITCH] = LERPF( -52.0f, 64.0f, f );
+					slashAng[YAW]   = LERPF(  88.0f * dir, -82.0f * dir, f );
+					slashAng[ROLL]  = LERPF( -44.0f * dir, 38.0f * dir, f );
+				}
+				AnglesToAxis( slashAng, rot );
+				MatrixMultiply( rot, gun.axis, posed );
+				AxisCopy( posed, gun.axis );
+			} else {
+				// idle / running CARRY pose. With no swing, the raw tag_weapon
+				// orientation juts the katana straight forward like a rifle — it reads
+				// as a stick poking out, not a held sword. Tip the blade into a natural
+				// samurai ready hold. Live-tunable via cg_swordCarry{Pitch,Yaw,Roll}.
+				vec3_t	carryAng;
+				carryAng[PITCH] = cg_swordCarryPitch.value;
+				carryAng[YAW]   = cg_swordCarryYaw.value;
+				carryAng[ROLL]  = cg_swordCarryRoll.value;
+				AnglesToAxis( carryAng, rot );
+				MatrixMultiply( rot, gun.axis, posed );
+				AxisCopy( posed, gun.axis );
+				// the model origin sits a touch ahead of the grip; pull it back along
+				// the (rotated) blade so the hilt seats into the hand.
+				VectorMA( gun.origin, -cg_swordCarryBack.value, gun.axis[0], gun.origin );
+			}
+		}
 	}
 
 	CG_AddWeaponWithPowerups( &gun, cent->currentState.powerups );
@@ -1319,8 +1375,14 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 			// body's ribbon leaked into the main view as a second "stuck" streak
 			// beside the real view-weapon trail. Skip the body ribbon for the
 			// local pilot unless we're actually in third person.
+			// reach 1.0: the weapon model is identical to the first-person one
+			// (attached at tag_weapon), so the tuned tip offset tracks the actual
+			// blade edge here too. Sampling further out (a higher reach) detaches the
+			// ribbon — it sweeps a bigger arc than the blade and flies off the model.
+			// Length comes from the deeper trail history + wider swing arc instead.
 			CG_SwordSlashTrailEx( &gun, cent->swordSwingTime, &cent->swordTrailNum,
-					&cent->swordTrailLastTime, cent->swordTipPath, cent->swordBasePath );
+					&cent->swordTrailLastTime, cent->swordTipPath, cent->swordBasePath,
+					1.0f );
 		}
 	}
 
@@ -1410,8 +1472,6 @@ CG_AddViewWeapon
 Add the weapon, and flash for the player's view
 ==============
 */
-#define	SWORD_SWING_MS	250		// first-person swing arc duration (≈ the 230ms fire cadence)
-#define	LERPF(a,b,f)	( (a) + ( (b) - (a) ) * (f) )
 
 /*
 ==============
@@ -1446,7 +1506,9 @@ consecutive samples. Bright at the newest edge, fading down the tail. Local
 player only; the ribbon is degenerate (invisible) when the blade isn't moving.
 ==============
 */
-#define	SWORD_TRAIL_PTS	8		// history depth — shorter = tighter slash, less additive saturation
+#define	SWORD_TRAIL_PTS	12		// history depth (== the swordTipPath/swordBasePath buffer size in
+									// cg_local.h) — deeper history traces more of the swept arc so the
+									// blade-tracking ribbon reads as a full slash, not a stub
 
 static void CG_SwordSlashVert( polyVert_t *v, const vec3_t xyz, float intensity ) {
 	intensity *= cg_swordTrailAlpha.value;		// live brightness control
@@ -1464,8 +1526,13 @@ static void CG_SwordSlashVert( polyVert_t *v, const vec3_t xyz, float intensity 
 // other player/bot rendered in third person (state on their centity_t). All the
 // swing/trail bookkeeping it needs is passed in, so the ribbon is per-entity and
 // several swordsmen can streak at once.
+// reach scales how far down the blade the trail's tip is sampled (1.0 = the
+// tuned first-person lever). The third-person body is a small, distant model
+// whose blade only pivots about the hilt, so it samples further out (reach > 1)
+// to sweep a longer, more readable ribbon — a real samurai arc, not a stub.
 static void CG_SwordSlashTrailEx( const refEntity_t *gun, int swingTime,
-		int *trailNum, int *trailLastTime, vec3_t *tipPath, vec3_t *basePath ) {
+		int *trailNum, int *trailLastTime, vec3_t *tipPath, vec3_t *basePath,
+		float reach ) {
 	vec3_t	base, tip;
 	int		i, n;
 
@@ -1480,20 +1547,23 @@ static void CG_SwordSlashTrailEx( const refEntity_t *gun, int swingTime,
 	}
 
 	// blade edge in world space, straight from the rendered weapon transform.
-	// guard and tip offsets (model space) are cvar-tunable for live alignment.
+	// guard and tip offsets (model space) are cvar-tunable for live alignment;
+	// the tip rides `reach`× further out so a wider swing draws a longer streak.
 	VectorCopy( gun->origin, base );
 	VectorMA( base, cg_swordTrailBaseX.value, gun->axis[0], base );
 	VectorMA( base, cg_swordTrailBaseY.value, gun->axis[1], base );
 	VectorMA( base, cg_swordTrailBaseZ.value, gun->axis[2], base );
 	VectorCopy( gun->origin, tip );
-	VectorMA( tip, cg_swordTrailTipX.value, gun->axis[0], tip );
-	VectorMA( tip, cg_swordTrailTipY.value, gun->axis[1], tip );
-	VectorMA( tip, cg_swordTrailTipZ.value, gun->axis[2], tip );
+	VectorMA( tip, cg_swordTrailTipX.value * reach, gun->axis[0], tip );
+	VectorMA( tip, cg_swordTrailTipY.value * reach, gun->axis[1], tip );
+	VectorMA( tip, cg_swordTrailTipZ.value * reach, gun->axis[2], tip );
 
 	// break the trail on a discontinuity: a new swing snaps the blade back to
 	// its wind-up pose, so don't streak a quad across the gap (or from stale
-	// samples after a weapon/teleport). Start the next swing's trail fresh.
-	if ( *trailNum > 0 && Distance( tip, tipPath[0] ) > 40.0f ) {
+	// samples after a weapon/teleport). Start the next swing's trail fresh. The
+	// threshold scales with reach since the longer lever moves the tip further
+	// per frame on a fast swing (and fast-moving bots translate it more too).
+	if ( *trailNum > 0 && Distance( tip, tipPath[0] ) > 64.0f * reach ) {
 		*trailNum = 0;
 	}
 
@@ -1530,8 +1600,10 @@ static void CG_SwordSlashTrailEx( const refEntity_t *gun, int swingTime,
 }
 
 static void CG_SwordSlashTrail( const refEntity_t *gun ) {
+	// first-person view weapon: the lever is already tuned for the big on-screen
+	// blade, so sample at the nominal reach.
 	CG_SwordSlashTrailEx( gun, cg.swordSwingTime, &cg.swordTrailNum,
-			&cg.swordTrailLastTime, cg.swordTipPath, cg.swordBasePath );
+			&cg.swordTrailLastTime, cg.swordTipPath, cg.swordBasePath, 1.0f );
 }
 
 void CG_AddViewWeapon( playerState_t *ps ) {

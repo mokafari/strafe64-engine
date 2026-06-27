@@ -86,6 +86,7 @@ vmCvar_t bot_swordBlock;		// STRAFE 64: bots parry incoming katana swings (react
 vmCvar_t bot_dash;				// STRAFE 64: bots tap the SHIFT dash (BUTTON_DASH) to close on enemies / extend gap-leaps
 vmCvar_t bot_slide;				// STRAFE 64: bots crouch-slide (slidehops on fast, straight sections)
 vmCvar_t bot_airStrafe;			// STRAFE 64: bots carve for speed in the air (pure A/D strafe at the optimal angle while turning toward the goal)
+vmCvar_t bot_brake;				// STRAFE 64: bots ease off the bhop when closing on a goal so they settle onto items instead of overshooting at full speed
 vmCvar_t bot_unstick;			// STRAFE 64: bots break out of wall grinding/circling with a ninja wall-kick
 
 void ExitLevel( void );
@@ -1174,6 +1175,27 @@ static void BotApplyMoveset(bot_state_t *bs) {
 		}
 	}
 
+	// APPROACH BRAKE: the moveset bhops flat-out, but settling onto an item / making a
+	// tight nav turn needs precision — at full speed the bot sails past the goal and
+	// clips geometry, then stalls recovering (the speed-crashing-to-0 we measured). So
+	// when the actual destination (the AAS top goal) is close and we're carrying too
+	// much speed to land on it, stop forcing the bhop: drop jump so the bot touches
+	// down and ground friction scrubs the overshoot. Self-clearing — once the goal is
+	// reached the top goal jumps far away and the bhop chain resumes.
+	if (bot_brake.integer) {
+		bot_goal_t	goal;
+		if (trap_BotGetTopGoal(bs->gs, &goal)) {
+			float	dx = goal.origin[0] - ps->origin[0];
+			float	dy = goal.origin[1] - ps->origin[1];
+			float	gdist = (float)sqrt(dx * dx + dy * dy);
+			speed = (float)sqrt(ps->velocity[0] * ps->velocity[0] + ps->velocity[1] * ps->velocity[1]);
+			if (gdist < 200.0f && speed > 400.0f) {
+				cmd->upmove = 0;	// drop the bhop — land and let friction brake onto the goal
+				return;
+			}
+		}
+	}
+
 	// AIR-STRAFE CARVE: BotAirStrafe (view phase) led the view phi_opt off velocity
 	// toward the goal — hold pure strafe, no forward, so the high-accel A/D cap
 	// regime builds speed while the carve curves velocity toward the goal. The air
@@ -1817,7 +1839,14 @@ int BotAISetupClient(int client, struct bot_settings_s *settings, qboolean resta
 	}
 
 	if (!trap_AAS_Initialized()) {
-		BotAI_Print(PRT_FATAL, "AAS not initialized\n");
+		// Throttle: a batch addbot on a map with no .aas (e.g. a forged map
+		// whose bspc pass failed) would otherwise print this once per bot every
+		// attempt. Collapse to one informative line every few seconds.
+		static int lastAASWarn;
+		if (!lastAASWarn || level.time - lastAASWarn > 5000 || level.time < lastAASWarn) {
+			BotAI_Print(PRT_FATAL, "AAS not initialized (map has no .aas — bots disabled)\n");
+			lastAASWarn = level.time;
+		}
 		return qfalse;
 	}
 
@@ -2056,6 +2085,7 @@ int BotAIStartFrame(int time) {
 	trap_Cvar_Update(&bot_slide);
 	trap_Cvar_Update(&bot_unstick);
 	trap_Cvar_Update(&bot_airStrafe);
+	trap_Cvar_Update(&bot_brake);
 
 	if (bot_report.integer) {
 //		BotTeamplayReport();
@@ -2318,7 +2348,8 @@ int BotAISetup( int restart ) {
 	trap_Cvar_Register(&bot_dash, "bot_dash", "1", 0);
 	trap_Cvar_Register(&bot_slide, "bot_slide", "1", 0);
 	trap_Cvar_Register(&bot_unstick, "bot_unstick", "1", 0);
-	trap_Cvar_Register(&bot_airStrafe, "bot_airStrafe", "0", 0);
+	trap_Cvar_Register(&bot_airStrafe, "bot_airStrafe", "1", 0);
+	trap_Cvar_Register(&bot_brake, "bot_brake", "1", 0);
 
 	//if the game is restarted for a tournament
 	if (restart) {

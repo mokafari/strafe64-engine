@@ -1037,7 +1037,11 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			// without this the blade-on-blade clash was visually silent. Spray
 			// off the guard face (viewforward) at the impact, or the body if no
 			// impact point.
-			VectorCopy( point ? point : targ->r.currentOrigin, clashAt );
+			if ( point ) {
+				VectorCopy( point, clashAt );
+			} else {
+				VectorCopy( targ->r.currentOrigin, clashAt );
+			}
 			spark = G_TempEntity( clashAt, EV_BULLET_HIT_WALL );
 			spark->s.eventParm = DirToByte( vf );
 			spark->s.otherEntityNum = targ->s.number;

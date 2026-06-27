@@ -290,17 +290,29 @@ void trigger_teleporter_touch (gentity_t *self, gentity_t *other, trace_t *trace
 		return;
 	}
 
-	TeleportPlayer( other, dest->s.origin, dest->s.angles );
+	// STRAFE 64: RESCUE (spawnflag 2) — fall-catch / checkpoint reset. Set the
+	// player down on the pad instead of spitting them out at 400u/s (which flung
+	// a rescued faller off the next ledge → respawn-mid-air-and-die on courses).
+	if ( self->spawnflags & 2 ) {
+		TeleportPlayerRescue( other, dest->s.origin, dest->s.angles );
+	} else {
+		TeleportPlayer( other, dest->s.origin, dest->s.angles );
+	}
 }
 
 
-/*QUAKED trigger_teleport (.5 .5 .5) ? SPECTATOR
+/*QUAKED trigger_teleport (.5 .5 .5) ? SPECTATOR RESCUE
 Allows client side prediction of teleportation events.
 Must point at a target_position, which will be the teleport destination.
 
 If spectator is set, only spectators can use this teleport
 Spectator teleporters are not normally placed in the editor, but are created
 automatically near doors to allow spectators to move through them
+
+STRAFE 64: if RESCUE is set, the player is set down on the destination pad
+(momentum zeroed, facing the dest angle) instead of being flung out at 400u/s
+— used by course fall-catch / checkpoint resets so a rescued faller resumes
+standing instead of being launched off the next ledge.
 */
 void SP_trigger_teleport( gentity_t *self ) {
 	InitTrigger (self);

@@ -1,0 +1,6 @@
+__pycache__/
+# Secrets and minted-key records must never be committed.
+keys/
+ledger.csv
+batch*.txt
+*.key

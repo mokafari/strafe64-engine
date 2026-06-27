@@ -962,6 +962,12 @@ void Com_Init( char *commandLine );
 void Com_Frame( void );
 void Com_Shutdown( void );
 
+// license.c -- offline Ed25519 license-key verification
+extern cvar_t	*com_licensed;		// ROM 0/1: a valid key is installed
+extern cvar_t	*com_licenseTier;	// ROM int: tier of the installed key
+void		Com_InitLicense( void );
+qboolean	Com_LicenseValid( void );
+
 
 /*
 ==============================================================
@@ -1140,6 +1146,10 @@ void	Sys_Sleep(int msec);
 qboolean Sys_LowPhysicalMemory( void );
 
 void Sys_SetEnv(const char *name, const char *value);
+
+// run an external program (NULL-terminated argv) and block until it exits;
+// returns the child exit status, or -1 if it could not be started
+int Sys_RunProcess( const char **argv );
 
 typedef enum
 {

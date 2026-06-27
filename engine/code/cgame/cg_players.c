@@ -1261,8 +1261,14 @@ static void CG_PlayerAnimation( centity_t *cent, int *legsOld, int *legs, float 
 
 	ci = &cgs.clientinfo[ clientNum ];
 
-	// do the shuffle turn frames locally
-	if ( cent->pe.legs.yawing && ( cent->currentState.legsAnim & ~ANIM_TOGGLEBIT ) == LEGS_IDLE ) {
+	// STRAFE 64: freeze the legs into a static crouch while sliding. The server
+	// keeps playing the crouch-WALK shuffle (PM_Footsteps has no slide anim), and
+	// that shuffle is what makes a slide read as a crouch-walk. Holding the still
+	// crouch-idle pose, plus the CG_SlidePose recline, sells the ground slide.
+	if ( ( cent->currentState.eFlags & EF_SLIDING ) && cg_slidePose.integer ) {
+		CG_RunLerpFrame( ci, &cent->pe.legs, LEGS_IDLECR, speedScale );
+	} else if ( cent->pe.legs.yawing && ( cent->currentState.legsAnim & ~ANIM_TOGGLEBIT ) == LEGS_IDLE ) {
+		// do the shuffle turn frames locally
 		CG_RunLerpFrame( ci, &cent->pe.legs, LEGS_TURN, speedScale );
 	} else {
 		CG_RunLerpFrame( ci, &cent->pe.legs, cent->currentState.legsAnim, speedScale );
@@ -2408,6 +2414,81 @@ static void CG_WallGripPose( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 
 /*
 ===============
+CG_SlidePose
+
+STRAFE 64: throw the whole body into a ground slide, the slide counterpart of
+CG_WallGripPose. Driven off the networked EF_SLIDING flag (so it reads on bots
+and remote pilots too, no client-side detector needed), eased per-entity so
+entry and recovery roll smoothly rather than snap.
+
+A crouch pose alone reads as a crouch-walk, so this kicks the legs out in front,
+reclines the torso back so the butt drops toward the deck, and keeps the head up
+looking ahead — an Apex / Titanfall baseball slide. The matching vertical drop
+of the body onto the ground is applied to legs.origin back in CG_Player (the tag
+chain hangs off it). Banks into the carve from lateral velocity so the body
+echoes the slide camera roll. Layered on the MD3 axes from CG_PlayerAngles
+before the tag chain composes torso and head, exactly like the wall-grip pose.
+===============
+*/
+// pitch about the side axis (axis 1): per the wall-grip hunch, +deg pitches the
+// top forward, -deg leans it back. Legs kick out in front, torso reclines back to
+// the deck, head counter-pitches up so the gaze stays level and readable.
+#define SLIDE_LEG_PITCH		-50.0f
+#define SLIDE_TORSO_PITCH	-30.0f
+#define SLIDE_HEAD_PITCH	 60.0f
+#define SLIDE_DROP			  9.0f		// units the body sinks onto the deck
+
+static void CG_SlidePose( centity_t *cent, vec3_t legs[3], vec3_t torso[3], vec3_t head[3] ) {
+	float	target, s, k, lean, side;
+	vec3_t	angles, right, vel;
+
+	if ( !cg_slidePose.integer ) {
+		return;
+	}
+
+	// ease the recline amount toward 1 while sliding, back to 0 on release
+	target = ( cent->currentState.eFlags & EF_SLIDING ) ? 1.0f : 0.0f;
+	cent->pe.slide += ( target - cent->pe.slide ) * 0.18f;
+	s = cent->pe.slide;
+	if ( s < 0.01f ) {
+		cent->pe.slideLean = 0;
+		return;
+	}
+
+	// signed bank from lateral velocity, matching the slide camera carve.
+	// authoritative predicted velocity for our own body, networked trDelta for others.
+	if ( cent->currentState.number == cg.snap->ps.clientNum ) {
+		VectorCopy( cg.predictedPlayerState.velocity, vel );
+	} else {
+		VectorCopy( cent->currentState.pos.trDelta, vel );
+	}
+	VectorClear( angles );
+	angles[YAW] = cent->lerpAngles[YAW];
+	AngleVectors( angles, NULL, right, NULL );
+	side = DotProduct( vel, right );
+	target = side * 0.0016f;				// lateral speed -> signed lean fraction
+	if ( target > 1.0f ) {
+		target = 1.0f;
+	} else if ( target < -1.0f ) {
+		target = -1.0f;
+	}
+	cent->pe.slideLean += ( target - cent->pe.slideLean ) * 0.16f;
+	lean = cent->pe.slideLean;
+
+	k = cg_slidePoseScale.value;
+
+	CG_AxisRoll( legs,  1, SLIDE_LEG_PITCH   * s * k );	// kick the legs out in front
+	CG_AxisRoll( torso, 1, SLIDE_TORSO_PITCH * s * k );	// recline the torso back to the deck
+	CG_AxisRoll( head,  1, SLIDE_HEAD_PITCH  * s * k );	// head holds level, looking ahead
+
+	// bank into the carve (roll about forward), the body echoing the camera roll.
+	CG_AxisRoll( legs,  0, -14.0f * lean * s * k );
+	CG_AxisRoll( torso, 0,  -6.0f * lean * s * k );
+	CG_AxisRoll( head,  0,   8.0f * lean * s * k );		// head counter-rolls upright
+}
+
+/*
+===============
 CG_DashGlitchGhost
 
 STRAFE 64: a short, audio-reactive chromatic after-image left on an air-dash
@@ -2593,6 +2674,9 @@ void CG_Player( centity_t *cent ) {
 	// tag chain composes torso/head onto the legs.
 	CG_WallGripPose( cent, legs.axis, torso.axis, head.axis );
 
+	// STRAFE 64: procedural crouch-slide recline, same axis-overlay approach.
+	CG_SlidePose( cent, legs.axis, torso.axis, head.axis );
+
 	// get the animation state (after rotation, to allow feet shuffle)
 	CG_PlayerAnimation( cent, &legs.oldframe, &legs.frame, &legs.backlerp,
 		 &torso.oldframe, &torso.frame, &torso.backlerp );
@@ -2622,6 +2706,14 @@ void CG_Player( centity_t *cent ) {
 	legs.customSkin = ci->legsSkin;
 
 	VectorCopy( cent->lerpOrigin, legs.origin );
+
+	// STRAFE 64: drop the whole body onto the deck during a slide so the butt
+	// sits on the ground while the legs (kicked forward in CG_SlidePose) skim it.
+	// The torso/head tag chain hangs off legs.origin, so lowering it sinks all
+	// three. Eased via cent->pe.slide so it tracks the same ramp as the pose.
+	if ( cent->pe.slide > 0.01f ) {
+		legs.origin[2] -= cent->pe.slide * SLIDE_DROP * cg_slidePoseScale.value;
+	}
 
 	VectorCopy( cent->lerpOrigin, legs.lightingOrigin );
 	legs.shadowPlane = shadowPlane;

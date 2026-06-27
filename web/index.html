@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>STRAFE 64 — Speed is the only thing holding the simulation together</title>
+<meta name="description" content="STRAFE 64 — a PlayStation-era movement shooter rendered on a dying MAGI defense terminal. Air-strafe, bhop, slide, walljump and bend time with a katana. Speed = accuracy." />
+<meta property="og:title" content="STRAFE 64 // MACH 64" />
+<meta property="og:description" content="A PlayStation-era racing sim, rendered on a dying MAGI defense terminal. The world dies if you stand still." />
+<meta property="og:image" content="assets/combat-trails.jpg" />
+<meta property="og:type" content="website" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ===== GLOBAL OVERLAYS ===== -->
+<div class="fx-scanlines" aria-hidden="true"></div>
+<div class="fx-vignette" aria-hidden="true"></div>
+<div class="fx-grain" aria-hidden="true"></div>
+
+<!-- ===== VOID COLLAPSE GAUGE (scroll progress) ===== -->
+<aside class="collapse" aria-hidden="true">
+  <div class="collapse__label">VOID<br>COLLAPSE</div>
+  <div class="collapse__track"><div class="collapse__fill" id="collapseFill"></div></div>
+  <div class="collapse__num"><span id="collapseM">000</span>m</div>
+</aside>
+
+<!-- ===== NAV DOTS ===== -->
+<nav class="dots" id="dots" aria-label="section navigation"></nav>
+
+<!-- ===== TOP STATUS BAR ===== -->
+<header class="topbar">
+  <div class="topbar__sys">SYS&nbsp;6.66 <span class="sep">//</span> NERV <span class="sep">//</span> PROJECT&nbsp;No.666</div>
+  <nav class="topbar__nav">
+    <a href="#manifesto">DOCTRINE</a>
+    <a href="#kit">KIT</a>
+    <a href="#timebind">TIME</a>
+    <a href="#signal">SIGNAL</a>
+    <a href="#modes">MODES</a>
+    <a href="#acquire">ACQUIRE</a>
+  </nav>
+  <a href="#acquire" class="topbar__cta">▶ ACQUIRE LICENSE</a>
+</header>
+
+<!-- ===== HERO ===== -->
+<section class="hero" id="top">
+  <canvas class="hero__stars" id="stars" aria-hidden="true"></canvas>
+  <div class="hero__bg" style="background-image:url('assets/combat-trails.jpg')" aria-hidden="true"></div>
+  <div class="hero__scrim" aria-hidden="true"></div>
+
+  <!-- MAGI corner brackets -->
+  <div class="bracket bracket--tl" aria-hidden="true"></div>
+  <div class="bracket bracket--tr" aria-hidden="true"></div>
+  <div class="bracket bracket--bl" aria-hidden="true"></div>
+  <div class="bracket bracket--br" aria-hidden="true"></div>
+
+  <div class="hero__boot" id="boot" aria-hidden="true"></div>
+
+  <div class="hero__inner">
+    <div class="hero__kicker">// REALTIME SIMULATION ONLINE</div>
+    <h1 class="wordmark" data-text="STRAFE 64">STRAFE&nbsp;64</h1>
+    <div class="hero__sub">MACH&nbsp;64 <span class="sep">·</span> MOVEMENT BLADE SHOOTER</div>
+    <p class="hero__tag">Speed is the only thing holding the simulation together.<br>
+      <span class="hero__tag-dim">Stop moving and the world dies around you.</span></p>
+
+    <div class="hero__cta">
+      <a href="#acquire" class="btn btn--amber">▶ ACQUIRE LICENSE</a>
+      <button type="button" class="btn btn--ghost js-trailer">▶ WATCH TRAILER</button>
+    </div>
+    <a class="hero__demo js-demo" href="#">↧ or download the free demo <span>&rarr;</span></a>
+
+    <!-- live HUD readout strip -->
+    <div class="hero__hud">
+      <div class="readout"><span class="readout__lbl">VEL</span><span class="readout__val" id="velNum">0964</span><span class="readout__u">u/s</span></div>
+      <div class="readout"><span class="readout__lbl">SYNC</span><span class="readout__val readout__val--green">100%</span></div>
+      <div class="readout"><span class="readout__lbl">HOP</span><span class="readout__val">×<span id="hopNum">24</span></span></div>
+      <div class="readout"><span class="readout__lbl">FLOW</span><span class="readout__bar"><i id="flowBar"></i></span></div>
+    </div>
+  </div>
+
+  <a href="#manifesto" class="hero__scroll" aria-label="scroll down">
+    <span>DESCEND</span><span class="hero__chev">▼</span>
+  </a>
+  <div class="marquee" aria-hidden="true"><div class="marquee__row" id="marquee"></div></div>
+</section>
+
+<!-- ===== MANIFESTO ===== -->
+<section class="band band--manifesto" id="manifesto">
+  <div class="wrap">
+    <div class="kicker reveal">// DOCTRINE</div>
+    <h2 class="big reveal">A PlayStation-era racing sim,<br>rendered on a <em>dying MAGI defense terminal.</em></h2>
+    <p class="lede reveal">You are the pilot inside a low-poly world that is collapsing in real time — and you are also the operator watching that collapse on an amber-on-black ops screen. Two lenses, one frame.</p>
+
+    <div class="pillars">
+      <article class="pillar reveal">
+        <div class="pillar__no">01</div>
+        <h3>READ AT&nbsp;SPEED</h3>
+        <p>You move at 320–960 u/s. Every ledge, every mechanic, every threat is legible in a quarter-second glance. N64 clarity — not realism.</p>
+      </article>
+      <article class="pillar reveal" style="--d:.08s">
+        <div class="pillar__no">02</div>
+        <h3>SPEED&nbsp;=&nbsp;LIFE</h3>
+        <p>The screen rewards momentum and visibly decays when you stop. Color, FOV, audio and the HUD all read off one flow value. Stillness is death.</p>
+      </article>
+      <article class="pillar reveal" style="--d:.16s">
+        <div class="pillar__no">03</div>
+        <h3>TWO LENSES</h3>
+        <p>The world is a PSX/N64 simulation. The HUD is a NERV/MAGI operator overlay. Intentionally different media, layered on the same screen.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ===== THE KIT (MOVEMENT) ===== -->
+<section class="band" id="kit">
+  <div class="wrap">
+    <div class="kicker reveal">// PILOT KIT</div>
+    <h2 class="big reveal">Nine ways to never touch the brakes.</h2>
+    <p class="lede reveal">A full Quake-into-Titanfall movement stack. Chain it and the speed compounds — and in STRAFE 64, <strong>speed is accuracy.</strong> The faster you move, the tighter you read.</p>
+
+    <div class="kit">
+      <div class="kit-card reveal" style="--hue:var(--sec-bhop)">
+        <div class="kit-card__tag">AIR</div>
+        <h4>Air-Strafe</h4><p>Carve velocity out of thin air. A real strafe meter shows your optimal gain angle live.</p>
+      </div>
+      <div class="kit-card reveal" style="--hue:var(--sec-bhop);--d:.04s">
+        <div class="kit-card__tag">CHAIN</div>
+        <h4>Bunny-Hop</h4><p>Land, jump, never lose a frame. The hop counter climbs; so does the floor.</p>
+      </div>
+      <div class="kit-card reveal" style="--hue:var(--sec-slide);--d:.08s">
+        <div class="kit-card__tag">LOW</div>
+        <h4>Slide-Hop</h4><p>Titanfall-grade momentum slides — locked speed, low camera, kinetic slow-mo.</p>
+      </div>
+      <div class="kit-card reveal" style="--hue:var(--sec-walls);--d:.12s">
+        <div class="kit-card__tag">VERT</div>
+        <h4>Wall-Jump</h4><p>Kick off any surface. Reset your air-jump and keep the line going skyward.</p>
+      </div>
+      <div class="kit-card reveal" style="--hue:var(--sec-tower);--d:.16s">
+        <div class="kit-card__tag">AIR</div>
+        <h4>Air-Jump</h4><p>A second jump mid-flight with a view-punch that sells every meter of height.</p>
+      </div>
+      <div class="kit-card reveal" style="--hue:var(--sec-gap);--d:.2s">
+        <div class="kit-card__tag">BURST</div>
+        <h4>Dash</h4><p>Tap to blink. A clean directional burst that feeds straight back into a hop.</p>
+      </div>
+      <div class="kit-card reveal" style="--hue:var(--ac-cyan);--d:.24s">
+        <div class="kit-card__tag">GRACE</div>
+        <h4>Coyote Time</h4><p>Run off a ledge and you still get the jump. Forgiveness tuned to the millisecond.</p>
+      </div>
+      <div class="kit-card reveal" style="--hue:var(--green);--d:.28s">
+        <div class="kit-card__tag">PULL</div>
+        <h4>Grapple</h4><p>Instant trace-attach with a spring-damper rope. Swing, yank, slingshot — never stiff.</p>
+      </div>
+      <div class="kit-card reveal" style="--hue:var(--sec-finish);--d:.32s">
+        <div class="kit-card__tag">EDGE</div>
+        <h4>Mantle &amp; Terminal-V</h4><p>Catch ledges, cap your fall, keep your flow. The kit has no dead frames.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== TIME-BIND ===== -->
+<section class="band band--dark" id="timebind">
+  <div class="wrap timebind">
+    <div class="timebind__copy">
+      <div class="kicker reveal">// TIME-BIND ENGINE</div>
+      <h2 class="big reveal">Time moves<br>when <em>you</em> do.</h2>
+      <p class="lede reveal">STRAFE 64's signature: the world clock is bound to your motion. Stand still and time near-freezes to a crawl. Swing the blade and time <strong>surges</strong> forward in a rush. You are not in bullet-time — you <em>are</em> the clock.</p>
+      <ul class="ticks reveal">
+        <li><b>STILL → 0.05×</b> the simulation holds its breath</li>
+        <li><b>SWING → 1.0×</b> commit, and time snaps to full speed</li>
+        <li>Audio &amp; music pitch-bend with the clock in real time</li>
+        <li>Every duel becomes a Matrix-rotate you author yourself</li>
+      </ul>
+    </div>
+    <figure class="timebind__media reveal">
+      <video id="btVideo" src="assets/bullettime-assassins.mp4" muted loop playsinline preload="metadata"></video>
+      <figcaption>// REC · BULLET-TIME ORBIT · 0.15× · LIVE CAPTURE</figcaption>
+      <div class="bracket bracket--tl mini"></div><div class="bracket bracket--br mini"></div>
+    </figure>
+  </div>
+</section>
+
+<!-- ===== SIGNAL / AUDIO-VISUAL ===== -->
+<section class="band band--signal" id="signal">
+  <div class="wrap signal">
+    <div class="signal__copy">
+      <div class="kicker reveal">// SIGNAL CHAIN</div>
+      <h2 class="big reveal">The world moves<br>to the <em>music.</em></h2>
+      <p class="lede reveal">STRAFE 64 is a synesthetic machine. Every shader breathes with the soundtrack — bass, mid and high envelopes warp the geometry in real time. And in bullet-time the audio itself <strong>pitch-bends with the world clock</strong>: stretch the moment and the music stretches with you.</p>
+      <ul class="ticks reveal">
+        <li><b>REACTIVE</b> shaders pulse to bass / mid / high bands</li>
+        <li><b>VARISPEED</b> SFX &amp; music pitch-bend with time-bind</li>
+        <li><b>SCORE</b> original synthwave, built for the run</li>
+      </ul>
+    </div>
+
+    <div class="signal__deck reveal">
+      <div class="player" id="player">
+        <canvas class="player__viz" id="viz" aria-hidden="true"></canvas>
+        <div class="player__bar">
+          <button class="player__play" id="playBtn" aria-label="play / pause">▶</button>
+          <div class="player__now">
+            <span class="player__lbl">NOW PLAYING <span class="player__alias">// mokafari</span></span>
+            <span class="player__title" id="nowTitle">— select a track —</span>
+          </div>
+          <span class="player__time" id="nowTime">0:00</span>
+        </div>
+        <ol class="player__list" id="trackList"></ol>
+        <div class="player__note" id="playerNote">▸ Soundtrack by <b>mokafari</b>. Tracks drop here as they land — add files to <code>assets/music/</code>.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== THE BLADE / COMBAT ===== -->
+<section class="band" id="blade">
+  <div class="wrap">
+    <div class="kicker reveal">// THE KATANA</div>
+    <h2 class="big reveal">Combat fused into movement.</h2>
+    <p class="lede reveal">No stopping to fight. The blade is part of the line — combo strings, dismemberment, blade-trail arcs, and a guard that <strong>parries incoming bolts straight back at the shooter.</strong> Swing and the world clock surges with you. Speed is the defense.</p>
+
+    <div class="combat">
+      <figure class="combat__big reveal">
+        <img src="assets/combat-trails.jpg" alt="Two assassins clash mid-air, cyan speed-trails and blood marks across a dusk arena" loading="lazy" />
+        <figcaption>SLASH · DISMEMBER · KEEP MOVING</figcaption>
+      </figure>
+      <div class="combat__col">
+        <figure class="combat__sm reveal" style="--d:.06s">
+          <img src="assets/combat-katana.jpg" alt="Katana strike, magenta lattice walls" loading="lazy" />
+          <figcaption>WP_SWORD · COMBO CHAIN</figcaption>
+        </figure>
+        <figure class="combat__sm reveal" style="--d:.12s">
+          <img src="assets/blood-impact.jpg" alt="Blood impact and ground pools" loading="lazy" />
+          <figcaption>MOUSE2 · DEFLECT &amp; PARRY</figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== THE VECTORGUN ===== -->
+<section class="band band--dark" id="vectorgun">
+  <div class="wrap weaponfeat">
+    <figure class="weaponfeat__media reveal">
+      <img src="assets/vectorgun.jpg" alt="The vectorgun firing a void-blue vector bolt across the dusk arena" loading="lazy" />
+      <span class="weaponfeat__sig" style="--c:#5B6BFF">VOID-BLUE</span>
+      <figcaption>WP_VECTOR · INSTANT BOLT</figcaption>
+      <div class="bracket bracket--tl mini"></div><div class="bracket bracket--br mini"></div>
+    </figure>
+    <div class="weaponfeat__copy">
+      <div class="kicker reveal">// THE VECTORGUN</div>
+      <h2 class="big reveal">The ranged answer.</h2>
+      <p class="lede reveal">When you can't close the gap, the vectorgun does. One void-blue vector bolt — the brightest thing on the screen at the instant of fire — fast, surgical, and tuned to the same rule as the blade: <strong>speed is lethality.</strong></p>
+      <ul class="ticks reveal">
+        <li><b>VOID-BLUE</b> the bolt reads against the black</li>
+        <li><b>SPEED-SCALED</b> the faster you move, the harder it lands</li>
+        <li><b>DEFLECTABLE</b> bolts can be sliced from the air — yours and theirs</li>
+        <li><b>SWAP</b> blade &harr; gun on the fly in the Arena</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===== MODES ===== -->
+<section class="band" id="modes">
+  <div class="wrap">
+    <div class="kicker reveal">// OPERATION TYPES</div>
+    <h2 class="big reveal">Four ways to run the gauntlet.</h2>
+    <div class="modes">
+      <article class="mode reveal">
+        <div class="mode__img" style="background-image:url('assets/combat-trails.jpg')"></div>
+        <div class="mode__body">
+          <h3>ARENA</h3>
+          <p>A bullet-time duel against the Assassins. Deep-blue ring, audio-reactive trails, sword or vectorgun. Time bends with every swing.</p>
+        </div>
+      </article>
+      <article class="mode reveal" style="--d:.08s">
+        <div class="mode__img" style="background-image:url('assets/lattice-wall.jpg')"></div>
+        <div class="mode__body">
+          <h3>LATTICE</h3>
+          <p>Last-pilot-alive. Your speed-trail hardens into damaging walls behind you. Fence your rivals into their own momentum.</p>
+        </div>
+      </article>
+      <article class="mode reveal" style="--d:.16s">
+        <div class="mode__img" style="background-image:url('assets/arena-pit.jpg')"></div>
+        <div class="mode__body">
+          <h3>KILLBOX</h3>
+          <p>A vertical melee arena built around a centerpiece archetype — spire, spiral tower, pillar forest, hollow ring. Momentum portals included.</p>
+        </div>
+      </article>
+      <article class="mode reveal" style="--d:.24s">
+        <div class="mode__img" style="background-image:url('assets/world-dusk.jpg')"></div>
+        <div class="mode__body">
+          <h3>TIME TRIAL <span class="mode__ghost">+ GHOST</span></h3>
+          <p>Race the clock and your own replay. The ghost dilates with your slow-mo; the finish line stays honest. Beat green, beat yourself.</p>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ===== THE WORLD ===== -->
+<section class="band band--dark" id="world">
+  <div class="wrap">
+    <div class="kicker reveal">// THE VOID</div>
+    <h2 class="big reveal">An infinite, procedurally-grown world<br>where color <em>is</em> the instruction.</h2>
+    <p class="lede reveal">Every map is generated on demand. The world is flat-shaded vertex-lit geometry under a Bryce dusk sky — and the mechanic of a section is encoded in its color, so you read what to do before you arrive. Learn the vocabulary once; it holds forever.</p>
+
+    <div class="legend">
+      <div class="legend__chip reveal" style="--c:var(--sec-start)"><i></i><b>START</b><span>go</span></div>
+      <div class="legend__chip reveal" style="--c:var(--sec-gap);--d:.03s"><i></i><b>GAP</b><span>air</span></div>
+      <div class="legend__chip reveal" style="--c:var(--sec-bhop);--d:.06s"><i></i><b>BHOP</b><span>keep hopping</span></div>
+      <div class="legend__chip reveal" style="--c:var(--sec-slide);--d:.09s"><i></i><b>SLIDE</b><span>get low</span></div>
+      <div class="legend__chip reveal" style="--c:var(--sec-walls);--d:.12s"><i></i><b>WALLS</b><span>walljump</span></div>
+      <div class="legend__chip reveal" style="--c:var(--sec-tower);--d:.15s"><i></i><b>TOWER</b><span>vertical</span></div>
+      <div class="legend__chip reveal" style="--c:var(--sec-finish);--d:.18s"><i></i><b>FINISH</b><span>end</span></div>
+      <div class="legend__chip reveal" style="--c:var(--sec-danger);--d:.21s"><i></i><b>DANGER</b><span>hurt</span></div>
+    </div>
+
+    <div class="features3">
+      <div class="feat reveal"><h4>Audio-Reactive</h4><p>Music drives the shaders. Bass, mid and high envelopes warp the world geometry in time with the track.</p></div>
+      <div class="feat reveal" style="--d:.08s"><h4>Baked &amp; Lit</h4><p>Sun, ambient occlusion and bounce baked into vertex color. HDR, bloom and sun-shadows on the GL2 path.</p></div>
+      <div class="feat reveal" style="--d:.16s"><h4>Forge It In-Game</h4><p>Generate a fresh map from the menu — pick the archetype, weapon and graphics, and drop straight in.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== GALLERY ===== -->
+<section class="band" id="gallery">
+  <div class="wrap">
+    <div class="kicker reveal">// CAPTURE LOG</div>
+    <h2 class="big reveal">Live frames from the simulation.</h2>
+    <div class="gallery">
+      <a class="shot reveal" href="assets/world-dusk.jpg" target="_blank"><img src="assets/world-dusk.jpg" alt="Dusk world with section-colored platforms" loading="lazy"><span>VOID · SECTION COLOR</span></a>
+      <a class="shot reveal" href="assets/combat-trails.jpg" target="_blank" style="--d:.05s"><img src="assets/combat-trails.jpg" alt="Mid-air assassin duel with speed trails" loading="lazy"><span>DUEL · SPEED TRAILS</span></a>
+      <a class="shot reveal" href="assets/arena-pit.jpg" target="_blank" style="--d:.1s"><img src="assets/arena-pit.jpg" alt="Arena pit with floating platforms" loading="lazy"><span>ARENA · KILL FLOOR</span></a>
+      <a class="shot reveal" href="assets/pilot-lattice.jpg" target="_blank" style="--d:.15s"><img src="assets/pilot-lattice.jpg" alt="Pilot beside lattice walls" loading="lazy"><span>LATTICE · TRAIL WALL</span></a>
+      <a class="shot reveal" href="assets/lattice-wall.jpg" target="_blank" style="--d:.2s"><img src="assets/lattice-wall.jpg" alt="Lattice wall hardening" loading="lazy"><span>LATTICE · HARDEN</span></a>
+      <a class="shot reveal" href="assets/combat-katana.jpg" target="_blank" style="--d:.25s"><img src="assets/combat-katana.jpg" alt="Katana combat" loading="lazy"><span>BLADE · DISMEMBER</span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== SPEC (AC-DATA) ===== -->
+<section class="band band--data" id="spec">
+  <div class="wrap">
+    <div class="kicker kicker--blue reveal">// AC-DATA · SPECIFICATION</div>
+    <h2 class="big big--blue reveal">Cold hardware readout.</h2>
+    <div class="spec">
+      <div class="spec__row reveal"><span class="spec__k">ENGINE</span><span class="spec__v">idTech3 fork · STRAFE 64 runtime</span></div>
+      <div class="spec__row reveal"><span class="spec__k">RENDER PATH</span><span class="spec__v">PSX/N64 crunch · GL2 HDR · bloom · SSAO · sun-shadows</span></div>
+      <div class="spec__row reveal"><span class="spec__k">VELOCITY BAND</span><span class="spec__v">320 – 960+ u/s</span></div>
+      <div class="spec__row reveal"><span class="spec__k">TIME-BIND</span><span class="spec__v">0.05× – 1.0× · motion-bound world clock</span></div>
+      <div class="spec__row reveal"><span class="spec__k">MOVEMENT</span><span class="spec__v">air-strafe · bhop · slide · walljump · airjump · dash · grapple</span></div>
+      <div class="spec__row reveal"><span class="spec__k">WEAPONS</span><span class="spec__v">katana · vectorgun · swap on the fly in the Arena</span></div>
+      <div class="spec__row reveal"><span class="spec__k">MODES</span><span class="spec__v">Arena · Lattice · Killbox · Time-Trial + Ghost</span></div>
+      <div class="spec__row reveal"><span class="spec__k">WORLD</span><span class="spec__v">infinite procedural · audio-reactive · in-game forge</span></div>
+      <div class="spec__row reveal"><span class="spec__k">BOTS</span><span class="spec__v">4-layer AI · air-strafe · parry · dash · slide-hop</span></div>
+      <div class="spec__row reveal"><span class="spec__k">PLATFORM</span><span class="spec__v">Windows · macOS · Linux</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== ACQUIRE ===== -->
+<section class="band band--acquire" id="acquire">
+  <div class="wrap">
+    <div class="kicker reveal">// ACCESS CONTROL</div>
+    <h2 class="big reveal">Acquire your license key.</h2>
+    <p class="lede reveal">Every copy ships with a signed Ed25519 license key. One purchase, every platform, free updates as the simulation grows.</p>
+    <div class="demo-callout reveal">
+      <div><b>Just want a taste?</b> The free demo runs a full set of procedural courses — no key required.</div>
+      <a href="#" class="btn btn--ghost js-demo">↧ DOWNLOAD FREE DEMO</a>
+    </div>
+
+    <div class="tiers">
+      <article class="tier reveal">
+        <div class="tier__name">PILOT</div>
+        <div class="tier__price"><b>$19</b></div>
+        <ul>
+          <li>Full game · all modes</li>
+          <li>Infinite procedural worlds</li>
+          <li>Windows · macOS · Linux</li>
+          <li>Signed lifetime license key</li>
+        </ul>
+        <a href="#" class="btn btn--amber tier__cta">▶ ACQUIRE</a>
+      </article>
+      <article class="tier tier--feat reveal" style="--d:.08s">
+        <div class="tier__flag">RECOMMENDED</div>
+        <div class="tier__name">OPERATOR</div>
+        <div class="tier__price"><b>$29</b></div>
+        <ul>
+          <li>Everything in PILOT</li>
+          <li>Original synthwave score by mokafari</li>
+          <li>In-game Forge map authoring</li>
+          <li>Ghost-race leaderboards</li>
+          <li>Name in the credits crawl</li>
+        </ul>
+        <a href="#" class="btn btn--amber tier__cta">▶ ACQUIRE</a>
+      </article>
+      <article class="tier reveal" style="--d:.16s">
+        <div class="tier__name">ARCHITECT</div>
+        <div class="tier__price"><b>$59</b></div>
+        <ul>
+          <li>Everything in OPERATOR</li>
+          <li>Full source access</li>
+          <li>strafegen toolchain</li>
+          <li>Priority build channel</li>
+        </ul>
+        <a href="#" class="btn btn--amber tier__cta">▶ ACQUIRE</a>
+      </article>
+    </div>
+    <p class="fineprint reveal">Built on GPL foundations (OpenArena / ioquake3). Keys are cryptographically signed; lose the world, keep the line.</p>
+  </div>
+</section>
+
+<!-- ===== FOOTER ===== -->
+<footer class="foot">
+  <div class="wrap foot__grid">
+    <div class="foot__brand">
+      <div class="wordmark wordmark--sm" data-text="STRAFE 64">STRAFE&nbsp;64</div>
+      <p>SYS 6.66 // NERV // PROJECT No.666<br>Speed = accuracy. Stillness = death.<br>Original score by <span style="color:var(--ac-cyan)">mokafari</span>.</p>
+    </div>
+    <nav class="foot__nav">
+      <a href="#manifesto">Doctrine</a>
+      <a href="#kit">Pilot Kit</a>
+      <a href="#timebind">Time-Bind</a>
+      <a href="#modes">Modes</a>
+      <a href="#spec">Spec</a>
+      <a href="#acquire">Acquire</a>
+    </nav>
+  </div>
+  <div class="foot__bar">© STRAFE 64 — a movement blade shooter rendered on a dying terminal. <span class="sep">//</span> Keep moving.</div>
+</footer>
+
+<!-- ===== TRAILER MODAL ===== -->
+<div class="modal" id="trailer" aria-hidden="true">
+  <div class="modal__backdrop" data-close></div>
+  <div class="modal__box">
+    <button class="modal__close" data-close aria-label="close trailer">✕ CLOSE</button>
+    <video id="trailerVid" src="assets/bullettime-assassins.mp4" controls loop playsinline preload="metadata"></video>
+    <div class="modal__cap">// LIVE CAPTURE · BULLET-TIME RUN · 0.15×</div>
+  </div>
+</div>
+
+<script src="main.js"></script>
+</body>
+</html>
