@@ -1,0 +1,87 @@
+/* MapForge — STRAFE 64 MAGI-terminal theme (matches web/style.css vocabulary). */
+:root {
+  --void: #0a0a0f;
+  --panel: #15151c;
+  --panel2: #1d1d27;
+  --line: #2a2a36;
+  --ink: #e8e8f0;
+  --dim: #8a8a99;
+  --amber: #ffb347;
+  --blue: #6fb6ff;
+  --green: #8fff8f;
+  --red: #ff6b6b;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; background: var(--void); color: var(--ink);
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
+  overflow: hidden;
+}
+#app { display: grid; grid-template-columns: 300px 1fr 280px; height: 100vh; }
+
+/* ---- panels ---- */
+.panel { background: var(--panel); border-right: 1px solid var(--line);
+  overflow-y: auto; padding: 12px; }
+.panel.right { border-right: none; border-left: 1px solid var(--line); }
+.brand { color: var(--amber); font-weight: 700; letter-spacing: 2px; font-size: 15px;
+  margin: 0 0 2px; }
+.brand small { color: var(--dim); font-weight: 400; letter-spacing: 1px; font-size: 10px;
+  display: block; margin-top: 2px; }
+h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--amber);
+  border-bottom: 1px solid var(--line); padding-bottom: 4px; margin: 18px 0 8px; }
+label { display: block; color: var(--dim); margin: 8px 0 3px; font-size: 11px; }
+select, input[type=text], input[type=number] {
+  width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--ink);
+  padding: 5px 6px; border-radius: 3px; font-family: inherit; font-size: 12px; }
+input[type=range] { width: 100%; }
+.row { display: flex; gap: 6px; }
+.row > * { flex: 1; }
+.chk { display: flex; align-items: center; gap: 6px; color: var(--ink); margin: 3px 0; }
+.chk input { width: auto; flex: none; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+
+button {
+  background: var(--panel2); color: var(--ink); border: 1px solid var(--line);
+  padding: 7px 10px; border-radius: 3px; cursor: pointer; font-family: inherit;
+  font-size: 12px; }
+button:hover { border-color: var(--amber); color: var(--amber); }
+button.primary { background: var(--amber); color: #1a1300; border-color: var(--amber);
+  font-weight: 700; }
+button.primary:hover { filter: brightness(1.1); }
+button.sm { padding: 4px 7px; font-size: 11px; }
+button.danger:hover { border-color: var(--red); color: var(--red); }
+
+/* ---- viewport ---- */
+#view { position: relative; background: #07070b; }
+/* NB: don't use a shared `#view canvas` rule — its ID specificity would beat
+   `#view2d { display:none }` and leave the 2D canvas painting over the 3D one. */
+#gl { display: block; width: 100%; height: 100%; }
+#view2d { position: absolute; inset: 0; display: none; width: 100%; height: 100%;
+  background: #07070b; }
+.viewbar { position: absolute; top: 10px; left: 10px; display: flex; gap: 6px;
+  flex-wrap: wrap; z-index: 5; }
+.viewbar .toggle { background: rgba(21,21,28,.85); }
+.viewbar .toggle.on { border-color: var(--amber); color: var(--amber); }
+#status { position: absolute; bottom: 10px; left: 10px; right: 10px; z-index: 5;
+  color: var(--dim); font-size: 11px; pointer-events: none;
+  text-shadow: 0 1px 2px #000; }
+#busy { position: absolute; top: 10px; right: 10px; z-index: 6; color: var(--amber);
+  display: none; }
+
+/* ---- right panel: inspector + export + legend ---- */
+.kv { display: flex; justify-content: space-between; color: var(--dim); font-size: 11px;
+  margin: 2px 0; }
+.kv b { color: var(--ink); font-weight: 600; }
+.legend-row { display: flex; align-items: center; gap: 7px; margin: 2px 0; font-size: 11px;
+  color: var(--dim); }
+.swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid #0006; flex: none; }
+.muted { color: var(--dim); font-size: 11px; line-height: 1.5; }
+.editcount { color: var(--amber); }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+  background: var(--panel2); border: 1px solid var(--amber); color: var(--ink);
+  padding: 8px 14px; border-radius: 4px; z-index: 20; max-width: 70vw; display: none; }
+.toast.err { border-color: var(--red); color: var(--red); }
+hr { border: none; border-top: 1px solid var(--line); margin: 14px 0; }
+.hint { color: var(--dim); font-size: 10px; margin-top: 4px; }
+.pill { display: inline-block; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 10px; padding: 1px 8px; font-size: 10px; color: var(--dim); }

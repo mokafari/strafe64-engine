@@ -4,6 +4,11 @@
 > `engine_api.py` / `engine_mcp.py` let Claude hook directly into a running
 > engine to read/set cvars, tune the movement model live, change maps, take
 > screenshots, read telemetry, and rebuild the mod.
+>
+> **Want to see & edit maps in a browser?** See [mapforge/](mapforge/) —
+> `python3 mapforge/server.py --open` launches a local web tool that generates
+> any kind, renders it in an orbitable 3D view (+ 2D plan/elevation), lets you
+> move/add/delete entities and box brushes, and exports `.bsp` / `.map` / `.pk3`.
 
 Seed-based course generator in the STRAFE 64 mold. It writes **playable
 IBSP v46 `.bsp` files directly** — no q3map compile pass, no Radiant —
