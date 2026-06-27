@@ -32,6 +32,7 @@ sys.path.insert(0, STRAFEGEN)                # so `import scene` / `import straf
 import scene                                  # noqa: E402
 import strafegen as sg                        # noqa: E402
 import bsp_import                             # noqa: E402
+import bsp_learn                              # noqa: E402
 
 # directories the importer is allowed to read maps from (local dev tool):
 # generated/ plus anything in $MAPFORGE_MAPS (colon-separated)
@@ -81,6 +82,18 @@ def _import_map(req):
         data, name = bsp_import._load_pk3(path, req.get("map"))
         return bsp_import.import_bsp(data, os.path.splitext(name)[0])
     return bsp_import.import_bsp(path, os.path.splitext(os.path.basename(path))[0])
+
+
+def _analyze(req):
+    """Decompile + learn from a chosen map, or the whole map corpus."""
+    path = req.get("path")
+    if path:
+        path = os.path.realpath(path)
+        if not any(path.startswith(os.path.realpath(r) + os.sep) for r in _MAP_ROOTS):
+            raise ValueError("path is outside the allowed map directories")
+        return bsp_learn.analyze_corpus([path])
+    roots = [r for r in _MAP_ROOTS if os.path.isdir(r)]
+    return bsp_learn.analyze_corpus(roots)
 
 
 def _compose_export(req):
@@ -240,6 +253,10 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == "/api/import_bsp":
                 with _BUILD_LOCK:
                     res = _import_map(req)
+                self._json(res)
+            elif self.path == "/api/analyze":
+                with _BUILD_LOCK:
+                    res = _analyze(req)
                 self._json(res)
             else:
                 self._err("not found", 404)

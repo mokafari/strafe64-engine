@@ -64,9 +64,17 @@ baked vertex colours — and renders it in the 3D view. Works on stock Q3,
 OpenArena, or strafegen output: a way to study shipped level design in the same
 viewer. Imported maps are view-only (export is disabled).
 
+The **📊 learn** button decompiles every available map and aggregates a design
+digest — platform footprints, wall heights, vertical layering (decks), map
+volume, item/spawn mix, jump-pad arcs — into percentile distributions
+(`bsp_learn.py`). The learned median dimensions then calibrate new freeform box
+brushes in Compose, closing the loop: decompile shipped maps → learn their
+proportions → author with them.
+
 ```sh
 python3 bsp_import.py path/to/map.bsp            # geometry digest
 python3 bsp_import.py pack.pk3 --map q3dm6 --json scene.json
+python3 bsp_learn.py /path/to/baseoa --json learned.json   # learn from a corpus
 MAPFORGE_MAPS=/path/to/baseoa python3 mapforge/server.py   # expose a map dir
 ```
 

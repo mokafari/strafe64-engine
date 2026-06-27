@@ -75,9 +75,13 @@
       <select id="mapSel"><option value="">— pick a .bsp / .pk3 —</option></select>
       <button class="sm" id="mapRefresh" title="rescan">⟳</button>
     </div>
-    <button class="sm" id="importBtn" style="width:100%;margin-top:6px">⬆ load &amp; decompile</button>
+    <div class="row" style="margin-top:6px">
+      <button class="sm" id="importBtn" style="flex:2">⬆ load &amp; decompile</button>
+      <button class="sm" id="analyzeBtn" style="flex:1" title="decompile every map and learn its design stats">📊 learn</button>
+    </div>
     <div class="hint">reads any IBSP v46 map (from generated/, or $MAPFORGE_MAPS)
       back into the 3D view — learn from shipped level design</div>
+    <div id="learned" class="muted" style="margin-top:6px"></div>
     </div><!-- /genControls -->
 
     <div id="composeControls" style="display:none">

@@ -37,6 +37,9 @@ const api = {
       .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }),
   parts: () => fetch('/api/parts').then(r => r.json()),
   maps: () => fetch('/api/maps').then(r => r.json()),
+  analyze: (body) => fetch('/api/analyze', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }),
   importBsp: (body) => fetch('/api/import_bsp', { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }),
@@ -537,6 +540,24 @@ async function loadMapList() {
   } catch (e) { /* server may lack the endpoint */ }
 }
 
+async function analyzeMaps() {
+  const path = $('mapSel').value;
+  $('busy').style.display = 'block';
+  try {
+    const res = await api.analyze(path ? { path } : {});
+    const c = res.corpus;
+    S.learned = c.suggest;       // calibrates new-brush defaults (learn -> build)
+    const d = (k) => c[k] ? `${c[k].median}` : '—';
+    $('learned').innerHTML = `<b style="color:var(--amber)">learned from ${c.maps} map(s)</b><br>`
+      + `platform ~${d('platform_min_side')}×${d('platform_max_side')}u · `
+      + `wall ~${d('wall_height')}u · decks ~${d('decks')}<br>`
+      + `map ~${d('map_width')}×${d('map_depth')}×${d('map_height')}u · `
+      + `item h ~${d('item_height')}u`;
+    toast(`learned from ${c.maps} map(s) — new boxes now sized to taste`);
+  } catch (e) { toast('analyze failed: ' + e.message, true); }
+  finally { $('busy').style.display = 'none'; }
+}
+
 async function importMap() {
   const path = $('mapSel').value;
   if (!path) { toast('pick a map first', true); return; }
@@ -657,6 +678,7 @@ function wire() {
   $('addBoxC').onclick = addBoxC;
   $('cExport').onclick = composeExport;
   $('importBtn').onclick = importMap;
+  $('analyzeBtn').onclick = analyzeMaps;
   $('mapRefresh').onclick = loadMapList;
   document.querySelectorAll('[data-layer]').forEach(btn => btn.onclick = () => {
     const l = btn.dataset.layer; S.layers[l] = !S.layers[l];
@@ -752,8 +774,11 @@ function addPart(key) {
 function addBoxC() {
   const b = composeBounds();
   const cx = (b[0] + b[3]) / 2, cy = (b[1] + b[4]) / 2, cz = b[2];
+  // size to learned real-world dimensions when available (learn -> build loop)
+  const hw = (S.learned?.platform_w || 256) / 2, hl = (S.learned?.platform_l || 256) / 2;
+  const h = S.learned?.wall_h || 64;
   const id = C.brushSeq++;
-  C.brushes.push({ id, aabb: [cx - 128, cy - 128, cz, cx + 128, cy + 128, cz + 64], role: 'structure' });
+  C.brushes.push({ id, aabb: [cx - hw, cy - hl, cz, cx + hw, cy + hl, cz + h], role: 'structure' });
   C.sel = { t: 'brush', id }; composeRefresh();
 }
 const selPart = () => C.sel && C.sel.t === 'part' ? C.placed.find(p => p.id === C.sel.id) : null;
