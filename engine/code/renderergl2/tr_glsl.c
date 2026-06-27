@@ -26,6 +26,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 extern const char *fallbackShader_bokeh_vp;
 extern const char *fallbackShader_bokeh_fp;
+extern const char *fallbackShader_depthoffield_vp;
+extern const char *fallbackShader_depthoffield_fp;
 extern const char *fallbackShader_calclevels4x_vp;
 extern const char *fallbackShader_calclevels4x_fp;
 extern const char *fallbackShader_depthblur_vp;
@@ -158,7 +160,8 @@ static uniformInfo_t uniformsInfo[] =
 	{ "u_AlphaTest", GLSL_INT },
 
 	{ "u_BoneMatrix", GLSL_MAT16_BONEMATRIX },
-	{ "u_Greyscale", GLSL_FLOAT }
+	{ "u_Greyscale", GLSL_FLOAT },
+	{ "u_DepthOfField", GLSL_VEC4 }
 };
 
 typedef enum
@@ -1527,6 +1530,22 @@ void GLSL_InitGPUShaders(void)
 		}
 	}
 
+	// STRAFE 64 cinematic depth of field (gather DoF; no derivatives needed)
+	attribs = ATTR_POSITION | ATTR_TEXCOORD;
+	extradefines[0] = '\0';
+
+	if (!GLSL_InitGPUShader(&tr.depthOfFieldShader, "depthOfField", attribs, qtrue, extradefines, qtrue, fallbackShader_depthoffield_vp, fallbackShader_depthoffield_fp))
+	{
+		ri.Error(ERR_FATAL, "Could not load depthOfField shader!");
+	}
+
+	GLSL_InitUniforms(&tr.depthOfFieldShader);
+	GLSL_SetUniformInt(&tr.depthOfFieldShader, UNIFORM_SCREENIMAGEMAP, TB_COLORMAP);
+	GLSL_SetUniformInt(&tr.depthOfFieldShader, UNIFORM_SCREENDEPTHMAP, TB_LIGHTMAP);
+	GLSL_FinishGPUShader(&tr.depthOfFieldShader);
+
+	numEtcShaders++;
+
 #if 0
 	attribs = ATTR_POSITION | ATTR_TEXCOORD;
 	extradefines[0] = '\0';
@@ -1594,6 +1613,8 @@ void GLSL_ShutdownGPUShaders(void)
 
 	for ( i = 0; i < 4; i++)
 		GLSL_DeleteGPUShader(&tr.depthBlurShader[i]);
+
+	GLSL_DeleteGPUShader(&tr.depthOfFieldShader);
 }
 
 

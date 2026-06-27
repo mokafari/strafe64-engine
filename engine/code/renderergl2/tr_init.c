@@ -158,6 +158,11 @@ cvar_t  *r_sunlightMode;
 cvar_t  *r_drawSunRays;
 cvar_t  *r_bloom;
 cvar_t  *r_bloomBlur;
+cvar_t  *r_dof;
+cvar_t  *r_dofAmount;
+cvar_t  *r_dofFocalDist;
+cvar_t  *r_dofFocalRange;
+cvar_t  *r_dofAutoFocus;
 cvar_t  *r_sunShadows;
 cvar_t  *r_shadowFilter;
 cvar_t  *r_shadowBlur;
@@ -1335,6 +1340,19 @@ void R_Register( void )
 	// (no vid_restart) — built on the existing FBO blur primitives.
 	r_bloom = ri.Cvar_Get( "r_bloom", "0.25", CVAR_ARCHIVE );
 	r_bloomBlur = ri.Cvar_Get( "r_bloomBlur", "1.0", CVAR_ARCHIVE );
+	// STRAFE 64: cinematic depth of field. r_dof toggles it (0 = off); r_dofAmount
+	// is the max blur radius in pixels; r_dofAutoFocus (default on) focuses on the
+	// screen-centre depth each frame (rack-focus onto whatever you're aiming at),
+	// otherwise r_dofFocalDist sets a fixed focal plane in world units. r_dofFocalRange
+	// is the depth span over which sharp ramps to fully blurred. amount/focus/range
+	// tune live; toggling r_dof itself needs a vid_restart (it allocates the depth
+	// texture at init, like r_ssao) and r_depthPrepass on (default 1). Drive
+	// r_dofAmount from bullet-time for a focus rack as the world slows.
+	r_dof = ri.Cvar_Get( "r_dof", "1", CVAR_ARCHIVE | CVAR_LATCH );	// on by default; allocates the depth texture at init, like r_ssao
+	r_dofAmount = ri.Cvar_Get( "r_dofAmount", "6.0", CVAR_ARCHIVE );
+	r_dofFocalDist = ri.Cvar_Get( "r_dofFocalDist", "512", CVAR_ARCHIVE );
+	r_dofFocalRange = ri.Cvar_Get( "r_dofFocalRange", "768", CVAR_ARCHIVE );
+	r_dofAutoFocus = ri.Cvar_Get( "r_dofAutoFocus", "1", CVAR_ARCHIVE );
 	r_sunlightMode = ri.Cvar_Get( "r_sunlightMode", "1", CVAR_ARCHIVE | CVAR_LATCH );
 
 	r_sunShadows = ri.Cvar_Get( "r_sunShadows", "1", CVAR_ARCHIVE | CVAR_LATCH );

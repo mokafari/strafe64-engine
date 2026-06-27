@@ -722,6 +722,8 @@ typedef enum
 
 	UNIFORM_GREYSCALE,
 
+	UNIFORM_DEPTHOFFIELD,	// STRAFE 64 DoF: focalDist, focalRange, maxBlurPx, autoFocus
+
 	UNIFORM_COUNT
 } uniform_t;
 
@@ -1628,6 +1630,7 @@ typedef struct {
 	shaderProgram_t shadowmaskShader;
 	shaderProgram_t ssaoShader;
 	shaderProgram_t depthBlurShader[4];
+	shaderProgram_t depthOfFieldShader;	// STRAFE 64 cinematic DoF
 	shaderProgram_t testcubeShader;
 	shaderProgram_t greyscaleShader;
 
@@ -1844,6 +1847,11 @@ extern  cvar_t  *r_sunlightMode;
 extern  cvar_t  *r_drawSunRays;
 extern  cvar_t  *r_bloom;
 extern  cvar_t  *r_bloomBlur;
+extern  cvar_t  *r_dof;			// STRAFE 64 cinematic depth of field
+extern  cvar_t  *r_dofAmount;	// max blur radius in pixels
+extern  cvar_t  *r_dofFocalDist;	// focal plane distance (world units) when autofocus off
+extern  cvar_t  *r_dofFocalRange;	// distance over which sharp->fully blurred
+extern  cvar_t  *r_dofAutoFocus;	// 1 = focus on screen-centre depth each frame
 extern  cvar_t  *r_sunShadows;
 extern  cvar_t  *r_shadowFilter;
 extern  cvar_t  *r_shadowBlur;

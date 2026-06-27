@@ -1647,6 +1647,10 @@ const void *RB_PostProcess(const void *data)
 	if (r_drawSunRays->integer)
 		RB_SunRays(srcFbo, srcBox, srcFbo, srcBox);
 
+	// STRAFE 64 cinematic DoF -- after bloom/sunrays so the glow defocuses too
+	if (r_dof->integer)
+		RB_DepthOfField(srcFbo, srcBox);
+
 	if (1)
 		RB_BokehBlur(srcFbo, srcBox, srcFbo, srcBox, backEnd.refdef.blurFactor);
 	else
