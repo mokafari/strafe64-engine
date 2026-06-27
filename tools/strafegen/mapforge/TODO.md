@@ -58,8 +58,9 @@ freeform boxes, entity placement, save/load, and export (.bsp/.map/.pk3) all wor
 ### P4 — workflow / UX
 13. Save/load is **local file only** — no server-side layout library or
     shareable links.
-14. No **pre-export validation** (disconnected sections, overlaps, unreachable
-    gaps); only `validate_spawns` runs, at export time.
+14. **Pre-export lint** now warns live in Compose (disconnected sections, no
+    spawn, no finish, open connector count). *Still missing:* overlap detection
+    and unreachable-gap checks (those need collision/physics analysis).
 15. No camera presets / frame-selection / measurement readout.
 16. No legend for **entity marker colours**; markers differ only by colour.
 17. Status label "N sections" is confusing when a layout is only freeform

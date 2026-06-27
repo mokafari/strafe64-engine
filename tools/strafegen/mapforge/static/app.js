@@ -1245,9 +1245,22 @@ function updateConnStatus() {
   const open = total - conn;
   const hasStart = C.placed.some(p => p.key === 'start');
   const hasFinish = C.placed.some(p => p.key === 'finish');
+  const hasSpawn = hasStart || C.entities.some(e => e.classname.startsWith('info_player'));
+  // disconnected sections: a placed part with connectors, none of them mated, when >1 part
+  let iso = 0;
+  if (C.placed.length > 1)
+    for (const inst of C.placed) {
+      const cs = partConns(inst);
+      if (cs.length && !cs.some(wc => isConnected(inst, wc))) iso++;
+    }
+  const warn = [];
+  if (!hasSpawn && (C.placed.length || C.brushes.length)) warn.push('no spawn — a fallback will be added');
+  if (!hasFinish && C.placed.length) warn.push('no finish — not a timed run');
+  if (iso) warn.push(`${iso} disconnected section(s) — drag to snap`);
   $('connStatus').innerHTML = `${conn / 2 | 0} joint(s) · ${open} open connector(s)<br>`
     + `<span class="pill" style="${hasStart ? 'color:var(--green)' : ''}">start ${hasStart ? '✓' : '—'}</span> `
-    + `<span class="pill" style="${hasFinish ? 'color:#96ffdc' : ''}">finish ${hasFinish ? '✓' : '—'}</span>`;
+    + `<span class="pill" style="${hasFinish ? 'color:#96ffdc' : ''}">finish ${hasFinish ? '✓' : '—'}</span>`
+    + (warn.length ? '<br>' + warn.map(w => `<span style="color:var(--amber)">⚠ ${w}</span>`).join('<br>') : '');
 }
 
 function drawCompose2d() {
