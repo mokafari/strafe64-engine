@@ -309,6 +309,28 @@ function findEff(eff, sel) {
   return [...eff.brushes, ...eff.entities].find(x => x.key === key);
 }
 
+function curBounds() {
+  if (S.mode === 'compose') return composeBounds();
+  return S.base ? S.base.bounds : [-512, -512, -256, 512, 512, 256];
+}
+function setCameraView(preset) {
+  const b = curBounds();
+  const cx = (b[0] + b[3]) / 2, cy = (b[1] + b[4]) / 2, cz = (b[2] + b[5]) / 2;
+  const r = Math.max(b[3] - b[0], b[4] - b[1], b[5] - b[2]) || 1024;
+  const pos = {
+    top: [cx + r * 0.01, cy, cz + r * 1.9],          // slight offset avoids gimbal at the pole
+    front: [cx, cy - r * 1.9, cz + r * 0.15],
+    iso: [cx + r * 0.9, cy - r * 1.3, cz + r * 0.9],
+  }[preset] || [cx + r * 0.9, cy - r * 1.3, cz + r * 0.9];
+  camera.position.set(pos[0], pos[1], pos[2]);
+  controls.target.set(cx, cy, cz); controls.update();
+}
+
+const ENT_LEGEND = [['spawn', '#8fff8f'], ['quad', '#cf57f0'], ['health', '#ff9b9b'],
+  ['armor', '#7fb0ff'], ['weapon', '#ffd27f'], ['teleporter dest', '#54dcf0']];
+const entLegendHTML = () => ENT_LEGEND.map(([n, c]) =>
+  `<div class="legend-row"><span class="swatch" style="background:${c}"></span>${n}</div>`).join('');
+
 function frameCamera() {
   const b = S.base.bounds;
   const cx = (b[0]+b[3])/2, cy = (b[1]+b[4])/2, cz = (b[2]+b[5])/2;
@@ -642,7 +664,11 @@ async function generate() {
 function status() {
   if (S.mode === 'compose') {
     const b = composeBounds().map(Math.round);
-    $('status').textContent = `${C.placed.length} sections · `
+    const bits = [];
+    if (C.placed.length) bits.push(`${C.placed.length} sections`);
+    if (C.brushes.length) bits.push(`${C.brushes.length} boxes`);
+    if (C.entities.length) bits.push(`${C.entities.length} entities`);
+    $('status').textContent = (bits.join(' · ') || 'empty') + ` · `
       + `${(b[3] - b[0])}×${(b[4] - b[1])}×${(b[5] - b[2])}u · drag to move, snaps to dots`;
     return;
   }
@@ -695,6 +721,8 @@ function buildUI() {
   $('addEntC').innerHTML = entOpts;
   $('legend').innerHTML = m.legend.map(l =>
     `<div class="legend-row"><span class="swatch" style="background:${l.color}"></span>${l.role}</div>`).join('');
+  $('entLegend').innerHTML = '<div class="muted" style="margin:4px 0 2px">entity markers</div>' + entLegendHTML();
+  $('entLegendC').innerHTML = entLegendHTML();
   syncKindUI();
 }
 
@@ -725,6 +753,9 @@ function wire() {
     $('addHint').textContent = 'click in the view to drop a 64×64×64 box'; };
   $('t3d').onclick = () => setView('3d');
   $('t2d').onclick = () => setView('2d');
+  $('camTop').onclick = () => { setView('3d'); setCameraView('top'); };
+  $('camFront').onclick = () => { setView('3d'); setCameraView('front'); };
+  $('camIso').onclick = () => { setView('3d'); setCameraView('iso'); };
   $('modeGen').onclick = () => switchMode('generate');
   $('modeCompose').onclick = () => switchMode('compose');
   $('clearCompose').onclick = () => { C.placed = []; C.brushes = []; C.entities = []; C.sel = null; composeRefresh(); };

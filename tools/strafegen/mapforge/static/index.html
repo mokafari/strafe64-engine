@@ -136,6 +136,10 @@
       <button class="toggle on" id="t3d">3D</button>
       <button class="toggle" id="t2d">2D plan</button>
       <span class="pill">|</span>
+      <button class="toggle" id="camTop" title="top view">top</button>
+      <button class="toggle" id="camFront" title="front view">front</button>
+      <button class="toggle" id="camIso" title="frame / iso view">fit</button>
+      <span class="pill">|</span>
       <button class="toggle on" data-layer="geometry">geometry</button>
       <button class="toggle on" data-layer="entities">entities</button>
       <button class="toggle on" data-layer="flows">flows</button>
@@ -178,6 +182,7 @@
 
     <h2>Legend</h2>
     <div id="legend"></div>
+    <div id="entLegend" style="margin-top:6px"></div>
     </div><!-- /genRight -->
 
     <div id="composeRight" style="display:none">
@@ -197,6 +202,8 @@
       <div class="hint" style="margin-top:8px">Connect a <b style="color:#8fff8f">start</b>
         and a <b style="color:#96ffdc">finish</b> for a timed run; the void + sky
         enclosure are added automatically on export.</div>
+      <h2>Markers</h2>
+      <div id="entLegendC"></div>
     </div>
   </div>
 </div>

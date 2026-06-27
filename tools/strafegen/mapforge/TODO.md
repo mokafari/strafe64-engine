@@ -61,9 +61,11 @@ freeform boxes, entity placement, save/load, and export (.bsp/.map/.pk3) all wor
 14. **Pre-export lint** now warns live in Compose (disconnected sections, no
     spawn, no finish, open connector count). *Still missing:* overlap detection
     and unreachable-gap checks (those need collision/physics analysis).
-15. No camera presets / frame-selection / measurement readout.
-16. No legend for **entity marker colours**; markers differ only by colour.
-17. Status label "N sections" is confusing when a layout is only freeform
-    boxes/entities.
+15. **Camera presets** (top / front / fit) added to the viewbar. *Still:* no
+    frame-selection or measurement readout.
+16. ~~No legend for entity marker colours.~~ **DONE** — a marker legend shows in
+    both panels.
+17. ~~Status label "N sections" confusing for freeform-only layouts.~~ **DONE** —
+    status now reads "N sections · M boxes · K entities".
 18. Fixed 3-column desktop layout; not responsive.
 19. No in-app help/tutorial.
