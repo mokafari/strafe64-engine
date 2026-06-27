@@ -27,9 +27,11 @@ freeform boxes, entity placement, save/load, and export (.bsp/.map/.pk3) all wor
    sun/ambient control, no `--bake` hook from the UI.
 
 ### P2 — editing depth
-4. **No undo/redo** (either mode).
+4. ~~**No undo/redo.**~~ **DONE (compose)** — auto-capture history, ↶/↷ buttons,
+   Ctrl+Z / Ctrl+Shift+Z, and Delete-key removes the selection. (Generate-mode
+   edits still have no undo.)
 5. **Free boxes/entities**: axis-aligned only, XY drag (Z is numeric-only); no
-   rotation, grid snap, multi-select, duplicate, or keyboard nudge/delete.
+   rotation, grid snap, multi-select, or duplicate.
 6. **Generate-mode geometry editing** is limited to axis boxes; ramps/prisms are
    read-only and you can't add ramps/cylinders/arbitrary prisms.
 7. ~~**Entity keys**: only `origin` is editable.~~ **DONE** — placed entities now

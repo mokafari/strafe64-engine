@@ -731,6 +731,15 @@ function wire() {
   $('addBoxC').onclick = addBoxC;
   $('placeEntC').onclick = () => { C.placingEnt = $('addEntC').value; toast(`click in the view to place a ${C.placingEnt}`); };
   $('saveLayout').onclick = saveLayout;
+  $('undoBtn').onclick = undo;
+  $('redoBtn').onclick = redo;
+  addEventListener('keydown', e => {
+    if (S.mode !== 'compose' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    const z = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z';
+    if (z && e.shiftKey) { e.preventDefault(); redo(); }
+    else if (z) { e.preventDefault(); undo(); }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && C.sel) { e.preventDefault(); deleteComposeSel(); }
+  });
   $('loadLayout').onclick = () => $('layoutFile').click();
   $('layoutFile').onchange = e => { if (e.target.files[0]) loadLayoutFile(e.target.files[0]); e.target.value = ''; };
   $('autoBtn').onclick = () => autoLayout(parseInt($('autoSeed').value) || 0);
@@ -875,6 +884,13 @@ function addBoxC() {
 const selPart = () => C.sel && C.sel.t === 'part' ? C.placed.find(p => p.id === C.sel.id) : null;
 const selBrush = () => C.sel && C.sel.t === 'brush' ? C.brushes.find(b => b.id === C.sel.id) : null;
 const selEnt = () => C.sel && C.sel.t === 'ent' ? C.entities.find(e => e.id === C.sel.id) : null;
+function deleteComposeSel() {
+  if (!C.sel) return;
+  if (C.sel.t === 'part') C.placed = C.placed.filter(p => p.id !== C.sel.id);
+  else if (C.sel.t === 'brush') C.brushes = C.brushes.filter(b => b.id !== C.sel.id);
+  else if (C.sel.t === 'ent') C.entities = C.entities.filter(e => e.id !== C.sel.id);
+  C.sel = null; composeRefresh();
+}
 
 function composeBounds() {
   let b = null;
@@ -1069,7 +1085,40 @@ function trySnap(inst) {
   return false;
 }
 
-function composeRefresh() { renderCompose3d(); drawCompose2d(); renderComposeInspector(); renderPlacedList(); status(); }
+function composeRefresh() {
+  renderCompose3d(); drawCompose2d(); renderComposeInspector(); renderPlacedList(); status();
+  if (!C.drag) pushHistory();          // capture after any settled mutation (not mid-drag)
+}
+
+// ---- undo / redo: auto-capture layout snapshots (source-agnostic) ----
+let _hist = [], _redo = [], _restoring = false;
+const _snap = () => JSON.stringify({ placed: C.placed, brushes: C.brushes, entities: C.entities });
+function recomputeSeqs() {
+  C.seq = C.placed.reduce((m, p) => Math.max(m, p.id + 1), 0);
+  C.brushSeq = C.brushes.reduce((m, b) => Math.max(m, b.id + 1), 0);
+  C.entSeq = C.entities.reduce((m, e) => Math.max(m, e.id + 1), 0);
+}
+function pushHistory() {
+  if (_restoring) return;
+  const s = _snap();
+  if (_hist.length && _hist[_hist.length - 1] === s) return;   // no layout change
+  _hist.push(s); if (_hist.length > 120) _hist.shift(); _redo = [];
+  updateUndoButtons();
+}
+function _restore(s) {
+  const L = JSON.parse(s); _restoring = true;
+  C.placed = L.placed; C.brushes = L.brushes; C.entities = L.entities;
+  C.sel = null; recomputeSeqs(); composeRefresh(); _restoring = false;
+  updateUndoButtons();
+}
+function undo() { if (_hist.length < 2) return; _redo.push(_hist.pop()); _restore(_hist[_hist.length - 1]); }
+function redo() { if (!_redo.length) return; const s = _redo.pop(); _hist.push(s); _restore(s); }
+function resetHistory() { _hist = []; _redo = []; pushHistory(); }
+function updateUndoButtons() {
+  const u = $('undoBtn'), r = $('redoBtn');
+  if (u) u.disabled = _hist.length < 2;
+  if (r) r.disabled = !_redo.length;
+}
 
 function saveLayout() {
   if (!C.placed.length && !C.brushes.length && !C.entities.length) { toast('nothing to save', true); return; }
@@ -1084,9 +1133,7 @@ function applyLayout(L) {
   C.placed = (L.placed || []).map(p => ({ ...p }));
   C.brushes = (L.brushes || []).map(b => ({ ...b }));
   C.entities = (L.entities || []).map(e => ({ ...e }));
-  C.seq = C.placed.reduce((m, p) => Math.max(m, p.id + 1), 0);
-  C.brushSeq = C.brushes.reduce((m, b) => Math.max(m, b.id + 1), 0);
-  C.entSeq = C.entities.reduce((m, e) => Math.max(m, e.id + 1), 0);
+  recomputeSeqs();
   C.sel = null;
   composeRefresh(); frameCompose();
   toast(`loaded ${C.placed.length} sections, ${C.brushes.length} brushes, ${C.entities.length} entities`);
@@ -1266,7 +1313,7 @@ async function switchMode(m) {
   if (m === 'compose') {
     await loadCatalog();
     if (!C.placed.length && !C.brushes.length && !C.entities.length) { addPart('start'); }   // seed empty layout with a start pad
-    composeRefresh(); frameCompose();
+    composeRefresh(); frameCompose(); resetHistory();
   } else { if (S.base) { render3d(); draw2d(); } else generate(); }
   status();
 }
