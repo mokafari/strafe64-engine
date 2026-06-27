@@ -82,6 +82,14 @@ float	pm_airDashSpeed = 150.0f;		// horizontal burst added on the air jump -> a 
 int		pm_doubleJumpWindowMs = 400;
 float	pm_doubleJumpBoost = 75.0f;		// added to JUMP_VELOCITY
 
+// jump cooldown: a held jump can't re-fire within this many real-time ms of the
+// last one. A real jump arcs you airborne for hundreds of ms, so this never
+// touches normal bunny-hopping; it only kills the multi-trigger you get on
+// ramps, where the slope can leave PM_GroundTrace calling you "walking" the very
+// next frame even though you just launched (the throw-off dot test cancels the
+// jump's vertical against your into-slope horizontal velocity).
+int		pm_jumpCooldownMs = 80;
+
 // terminal velocity: hard cap on downward speed so long void drops stay
 // controllable and fall damage stays bounded (0 = uncapped, vanilla Quake)
 float	pm_terminalVelocity = 1200.0f;
@@ -505,6 +513,16 @@ static qboolean PM_CheckJump( void ) {
 
 	// jump can be held: rehopping on the landing frame keeps the chain alive
 	// (the PMF_JUMP_HELD gate is gone on purpose)
+
+	// ...but enforce a short cooldown so a held jump can't re-fire several times
+	// in a few frames. STAT_JUMP_MS counts the ms remaining in the double-jump
+	// window since the last jump, so (window - remaining) is the elapsed time.
+	// This is what stops the ramp multi-trigger, where the throw-off test can
+	// leave you "walking" again the frame after you launched.
+	if ( pm_jumpCooldownMs > 0 && pm->ps->stats[STAT_JUMP_MS] > 0
+		&& pm_doubleJumpWindowMs - pm->ps->stats[STAT_JUMP_MS] < pm_jumpCooldownMs ) {
+		return qfalse;
+	}
 
 	speed2d = sqrt( pm->ps->velocity[0] * pm->ps->velocity[0]
 		+ pm->ps->velocity[1] * pm->ps->velocity[1] );

@@ -83,6 +83,7 @@ extern	float	pm_airJumpVelocity;
 extern	int		pm_airJumpMax;
 extern	int		pm_doubleJumpWindowMs;
 extern	float	pm_doubleJumpBoost;
+extern	int		pm_jumpCooldownMs;
 extern	float	pm_slideMinSpeed;
 extern	float	pm_slideFrictionScale;
 extern	float	pm_slideJumpBoost;
