@@ -1452,6 +1452,11 @@ static void RB_PresentToScreen(void)
 		{
 			RB_DrawGreyscale(src);
 		}
+		else if (r_postProcess->integer && r_grade->integer && src->colorImage[0])
+		{
+			// the colour-grade/FXAA pass doubles as the present blit (no scratch)
+			RB_ColorGrade((FBO_t *)src, NULL);
+		}
 		else
 		{
 			FBO_FastBlit(src, NULL, NULL, NULL, GL_COLOR_BUFFER_BIT, GL_NEAREST);
@@ -1461,7 +1466,10 @@ static void RB_PresentToScreen(void)
 
 	if (tr.renderFbo)
 	{
-		FBO_FastBlit(tr.renderFbo, NULL, NULL, NULL, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		if (r_postProcess->integer && r_grade->integer && tr.renderFbo->colorImage[0])
+			RB_ColorGrade(tr.renderFbo, NULL);
+		else
+			FBO_FastBlit(tr.renderFbo, NULL, NULL, NULL, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 	}
 }
 
@@ -1655,6 +1663,12 @@ const void *RB_PostProcess(const void *data)
 		RB_BokehBlur(srcFbo, srcBox, srcFbo, srcBox, backEnd.refdef.blurFactor);
 	else
 		RB_GaussianBlur(srcFbo, srcFbo, backEnd.refdef.blurFactor);
+
+	// STRAFE 64 photoreal-finish (FXAA + grade + vignette + grain) is applied as
+	// the present blit in RB_PresentToScreen -- folding it into the unavoidable
+	// renderFbo->screen copy drops a full-res scratch round-trip (two FBO
+	// transitions / tile flushes) every frame. Note: applied after the 2D HUD is
+	// composited, so the grade now also finishes the HUD, not just the 3D scene.
 
 	if (srcFbo != dstFbo)
 		FBO_FastBlit(srcFbo, srcBox, dstFbo, dstBox, GL_COLOR_BUFFER_BIT, GL_NEAREST);

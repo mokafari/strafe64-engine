@@ -28,6 +28,8 @@ extern const char *fallbackShader_bokeh_vp;
 extern const char *fallbackShader_bokeh_fp;
 extern const char *fallbackShader_depthoffield_vp;
 extern const char *fallbackShader_depthoffield_fp;
+extern const char *fallbackShader_colorgrade_vp;
+extern const char *fallbackShader_colorgrade_fp;
 extern const char *fallbackShader_calclevels4x_vp;
 extern const char *fallbackShader_calclevels4x_fp;
 extern const char *fallbackShader_depthblur_vp;
@@ -161,7 +163,9 @@ static uniformInfo_t uniformsInfo[] =
 
 	{ "u_BoneMatrix", GLSL_MAT16_BONEMATRIX },
 	{ "u_Greyscale", GLSL_FLOAT },
-	{ "u_DepthOfField", GLSL_VEC4 }
+	{ "u_DepthOfField", GLSL_VEC4 },
+	{ "u_ColorGrade", GLSL_VEC4 },
+	{ "u_ColorGradeFx", GLSL_VEC4 }
 };
 
 typedef enum
@@ -1437,6 +1441,8 @@ void GLSL_InitGPUShaders(void)
 
 		Q_strcat(extradefines, 1024, va("#define r_shadowMapSize %f\n", r_shadowMapSize->value));
 		Q_strcat(extradefines, 1024, va("#define r_shadowCascadeZFar %f\n", r_shadowCascadeZFar->value));
+		// STRAFE 64: widen the PCF kernel for a soft, filmic penumbra
+		Q_strcat(extradefines, 1024, va("#define r_shadowSoftness %f\n", r_shadowSoftness->value));
 
 		if (!GLSL_InitGPUShader(&tr.shadowmaskShader, "shadowmask", attribs, qtrue, extradefines, qtrue, fallbackShader_shadowmask_vp, fallbackShader_shadowmask_fp))
 		{
@@ -1546,6 +1552,21 @@ void GLSL_InitGPUShaders(void)
 
 	numEtcShaders++;
 
+	// STRAFE 64 photoreal-finish pass: FXAA + grade + vignette + grain
+	attribs = ATTR_POSITION | ATTR_TEXCOORD;
+	extradefines[0] = '\0';
+
+	if (!GLSL_InitGPUShader(&tr.colorGradeShader, "colorGrade", attribs, qtrue, extradefines, qtrue, fallbackShader_colorgrade_vp, fallbackShader_colorgrade_fp))
+	{
+		ri.Error(ERR_FATAL, "Could not load colorGrade shader!");
+	}
+
+	GLSL_InitUniforms(&tr.colorGradeShader);
+	GLSL_SetUniformInt(&tr.colorGradeShader, UNIFORM_SCREENIMAGEMAP, TB_COLORMAP);
+	GLSL_FinishGPUShader(&tr.colorGradeShader);
+
+	numEtcShaders++;
+
 #if 0
 	attribs = ATTR_POSITION | ATTR_TEXCOORD;
 	extradefines[0] = '\0';
@@ -1615,6 +1636,7 @@ void GLSL_ShutdownGPUShaders(void)
 		GLSL_DeleteGPUShader(&tr.depthBlurShader[i]);
 
 	GLSL_DeleteGPUShader(&tr.depthOfFieldShader);
+	GLSL_DeleteGPUShader(&tr.colorGradeShader);
 }
 
 

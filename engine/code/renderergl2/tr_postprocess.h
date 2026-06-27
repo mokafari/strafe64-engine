@@ -31,5 +31,6 @@ void RB_SunRays(FBO_t *srcFbo, ivec4_t srcBox, FBO_t *dstFbo, ivec4_t dstBox);
 void RB_GaussianBlur(FBO_t *srcFbo, FBO_t *dstFbo, float blur);
 void RB_Bloom(FBO_t *srcFbo, ivec4_t srcBox);
 void RB_DepthOfField(FBO_t *srcFbo, ivec4_t srcBox);
+void RB_ColorGrade(FBO_t *srcFbo, FBO_t *dstFbo);
 
 #endif
