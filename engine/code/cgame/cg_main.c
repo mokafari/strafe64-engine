@@ -141,6 +141,7 @@ vmCvar_t	cg_swordCarryPitch;
 vmCvar_t	cg_swordCarryYaw;
 vmCvar_t	cg_swordCarryRoll;
 vmCvar_t	cg_swordCarryBack;
+vmCvar_t	cg_swordCarryUp;
 vmCvar_t	cg_gun_y;
 vmCvar_t	cg_gun_z;
 vmCvar_t	cg_tracerChance;
@@ -342,7 +343,8 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_swordCarryPitch, "cg_swordCarryPitch", "-70", CVAR_ARCHIVE },	// idle katana carry pose
 	{ &cg_swordCarryYaw, "cg_swordCarryYaw", "0", CVAR_ARCHIVE },
 	{ &cg_swordCarryRoll, "cg_swordCarryRoll", "0", CVAR_ARCHIVE },
-	{ &cg_swordCarryBack, "cg_swordCarryBack", "4", CVAR_ARCHIVE },	// seat the hilt in the hand
+	{ &cg_swordCarryBack, "cg_swordCarryBack", "7", CVAR_ARCHIVE },	// seat the hilt in the hand
+	{ &cg_swordCarryUp, "cg_swordCarryUp", "3", CVAR_ARCHIVE },	// raise the hilt into the grip
 	{ &cg_centertime, "cg_centertime", "3", CVAR_CHEAT },
 	{ &cg_runpitch, "cg_runpitch", "0.002", CVAR_ARCHIVE},
 	{ &cg_runroll, "cg_runroll", "0.005", CVAR_ARCHIVE },

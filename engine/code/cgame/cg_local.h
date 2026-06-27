@@ -1267,6 +1267,7 @@ extern	vmCvar_t		cg_swordCarryPitch;	// third-person idle katana carry pose (mod
 extern	vmCvar_t		cg_swordCarryYaw;
 extern	vmCvar_t		cg_swordCarryRoll;
 extern	vmCvar_t		cg_swordCarryBack;	// pull the hilt back toward the hand (units along blade)
+extern	vmCvar_t		cg_swordCarryUp;	// raise the hilt into the grip (units, world up)
 extern	vmCvar_t		cg_drawGun;
 extern	vmCvar_t		cg_viewsize;
 extern	vmCvar_t		cg_tracerChance;

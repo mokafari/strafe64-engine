@@ -1349,9 +1349,10 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 				AnglesToAxis( carryAng, rot );
 				MatrixMultiply( rot, gun.axis, posed );
 				AxisCopy( posed, gun.axis );
-				// the model origin sits a touch ahead of the grip; pull it back along
-				// the (rotated) blade so the hilt seats into the hand.
+				// the model origin sits a touch ahead of / below the grip; pull it back
+				// along the (rotated) blade and raise it so the hilt seats into the hand.
 				VectorMA( gun.origin, -cg_swordCarryBack.value, gun.axis[0], gun.origin );
+				gun.origin[2] += cg_swordCarryUp.value;
 			}
 		}
 	}
