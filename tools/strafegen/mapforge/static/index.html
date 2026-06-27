@@ -21,6 +21,12 @@
   <div class="panel left">
     <div class="brand">MAPFORGE<small>STRAFE 64 procedural map forge</small></div>
 
+    <div class="row" style="margin:10px 0 4px">
+      <button class="toggle on" id="modeGen" style="flex:1">Generate</button>
+      <button class="toggle" id="modeCompose" style="flex:1">Compose</button>
+    </div>
+
+    <div id="genControls">
     <h2>Generator</h2>
     <label>Kind</label>
     <select id="kind"></select>
@@ -63,6 +69,18 @@
     <hr>
     <button class="primary" id="generate" style="width:100%">⚙ GENERATE</button>
     <div class="hint" id="genHint">builds in-memory · no engine needed</div>
+    </div><!-- /genControls -->
+
+    <div id="composeControls" style="display:none">
+      <h2>Section library</h2>
+      <div id="partLib" class="muted">loading…</div>
+      <div class="hint">click a section to add &amp; auto-chain · drag in the view to
+        move — it snaps its entry/exit to the connection dots of other sections</div>
+      <hr>
+      <h2>Layout</h2>
+      <div id="placedList" class="muted">no sections placed yet</div>
+      <button class="sm danger" id="clearCompose" style="width:100%;margin-top:8px">clear layout</button>
+    </div>
   </div>
 
   <!-- CENTER: viewport -->
@@ -86,6 +104,7 @@
 
   <!-- RIGHT: inspector + export -->
   <div class="panel right">
+    <div id="genRight">
     <h2>Inspector</h2>
     <div id="inspector"><div class="muted">Click a brush or entity in the view to
       select it. Hold and drag to orbit.</div></div>
@@ -112,6 +131,26 @@
 
     <h2>Legend</h2>
     <div id="legend"></div>
+    </div><!-- /genRight -->
+
+    <div id="composeRight" style="display:none">
+      <h2>Section</h2>
+      <div id="composeInspector"><div class="muted">Click a section to select.
+        Drag it to move — it snaps its entry/exit to nearby connection dots.</div></div>
+      <h2>Connections</h2>
+      <div id="connStatus" class="muted">—</div>
+      <h2>Export map</h2>
+      <label>Name</label>
+      <input type="text" id="cName" placeholder="strafe64_forged">
+      <div class="chk"><input type="checkbox" id="cBsp" checked> .bsp (playable)</div>
+      <div class="chk"><input type="checkbox" id="cMap"> .map (Radiant source)</div>
+      <div class="chk"><input type="checkbox" id="cPk3"> .pk3 (+ shaders, bots)</div>
+      <button class="primary" id="cExport" style="width:100%;margin-top:6px">⬇ EXPORT MAP</button>
+      <div id="cResult" class="muted" style="margin-top:8px"></div>
+      <div class="hint" style="margin-top:8px">Connect a <b style="color:#8fff8f">start</b>
+        and a <b style="color:#96ffdc">finish</b> for a timed run; the void + sky
+        enclosure are added automatically on export.</div>
+    </div>
   </div>
 </div>
 <div class="toast" id="toast"></div>

@@ -48,6 +48,41 @@ def _course_from(req):
     return scene.apply_edits(course, edits)
 
 
+def _compose_export(req):
+    """Bake placed section parts into a sealed map and write the formats."""
+    placed = req.get("placed") or []
+    opts = req.get("opts") or {}
+    formats = set(req.get("formats") or ["bsp"])
+    name = (req.get("name") or "").strip() or "strafe64_forged"
+    name = "".join(c for c in name if c.isalnum() or c in "_-")
+    os.makedirs(GENERATED, exist_ok=True)
+
+    sg.validate_spawns(scene.compose(placed, opts))    # fail fast on a bad layout
+    bsp_path = os.path.join(GENERATED, f"{name}.bsp")
+    stats = sg.BspWriter(scene.compose(placed, opts)).write(bsp_path)  # fresh course
+    sg.check_bsp(bsp_path)
+    out = {"name": name, "bsp": os.path.relpath(bsp_path, STRAFEGEN), "stats": stats,
+           "outputs": [os.path.relpath(bsp_path, STRAFEGEN)]}
+    aas_path = None
+    if "pk3" in formats:
+        aas_path = sg.compile_aas(bsp_path)
+        if aas_path:
+            out["outputs"].append(os.path.relpath(aas_path, STRAFEGEN))
+    if "map" in formats:
+        map_path = os.path.join(GENERATED, f"{name}.map")
+        sg.write_map(scene.compose(placed, opts), map_path)
+        out["map"] = os.path.relpath(map_path, STRAFEGEN)
+        out["outputs"].append(out["map"])
+    if "pk3" in formats:
+        import strafegen_config as cfg
+        pk3 = sg.write_pk3(bsp_path, name, GENERATED, aas_path, gfx_on=cfg.GFX)
+        out["outputs"].append(os.path.relpath(pk3, STRAFEGEN))
+        out["outputs"].append(os.path.relpath(sg.write_shared_assets(GENERATED, cfg.GFX),
+                                              STRAFEGEN))
+        out["bots"] = bool(aas_path)
+    return out
+
+
 def _export(req):
     """Build + edit + validate + write the requested formats into generated/."""
     kind = req.get("kind", "course")
@@ -136,6 +171,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/meta":
             self._json(scene.meta())
             return
+        if self.path == "/api/parts":
+            with _BUILD_LOCK:
+                self._json(scene.parts_catalog())
+            return
         self._serve_static(self.path)
 
     def do_POST(self):
@@ -152,6 +191,10 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == "/api/export":
                 with _BUILD_LOCK:
                     res = _export(req)
+                self._json(res)
+            elif self.path == "/api/compose_export":
+                with _BUILD_LOCK:
+                    res = _compose_export(req)
                 self._json(res)
             else:
                 self._err("not found", 404)

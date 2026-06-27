@@ -331,9 +331,9 @@ def apply_edits(course, edits):
 
 
 # ----------------------------- serialization ------------------------------------
-def _serialize_brush(i, b, bounds):
+def _serialize_brush(i, b, bounds, detect_enclosure=True):
     role, fill, _zo = classify(b)
-    if _is_sky(b) or _is_enclosure(aabb(b), bounds):
+    if detect_enclosure and (_is_sky(b) or _is_enclosure(aabb(b), bounds)):
         role, fill = "sky/enclosure", "#2a2a3a"
     faces = [{"poly": [[float(x), float(y), float(z)] for (x, y, z) in f.poly],
               "normal": [float(c) for c in f.normal],
@@ -436,3 +436,171 @@ def meta():
             "difficulties": [0, 1, 2], "themes": ["default", "concrete"],
             "legend": role_legend(), "entityPalette": ENTITY_PALETTE,
             "addRoles": list(ROLE_BUILD.keys())}
+
+
+# ============================================================================
+# COMPOSE — section kit-bash: each section is a standalone "part" with entry /
+# exit connectors; the browser places + snaps parts, the server bakes them into
+# one sealed map. A part is a Course section built at origin facing +Y; its
+# connectors are the cursor before (entry) and after (exit) the section runs.
+# ============================================================================
+SECTION_PARTS = [
+    ("start",   "sec_start",   "Start pad",        "start"),
+    ("gaps",    "sec_gaps",    "Strafe gaps",      "opener"),
+    ("bhop",    "sec_bhop",    "Bhop lane",        "opener"),
+    ("fork",    "sec_fork",    "Fork (branch)",    "flow"),
+    ("slalom",  "sec_slalom",  "Slalom",           "flow"),
+    ("slide",   "sec_slide",   "Slide ramp",       "flow"),
+    ("walls",   "sec_walls",   "Walljump hall",    "flow"),
+    ("hurdles", "sec_hurdles", "Hurdles",          "spice"),
+    ("movers",  "sec_movers",  "Moving platforms", "spice"),
+    ("hazard",  "sec_hazard",  "Hazard pits",      "spice"),
+    ("tower",   "sec_tower",   "Double-jump tower", "climb"),
+    ("finish",  "sec_finish",  "Finish gate",      "finish"),
+]
+_PART_SPEC = {k: (m, lbl, grp) for (k, m, lbl, grp) in SECTION_PARTS}
+_PART_CACHE = {}
+
+
+def _build_part(key):
+    """Build one section standalone at the origin (entry at 0,0,0 facing +Y) and
+    capture only the geometry/entities it emits + the exit connector (the cursor
+    after it runs). Cached — sections are deterministic at a fixed seed."""
+    if key in _PART_CACHE:
+        return _PART_CACHE[key]
+    method = _PART_SPEC[key][0]
+    c = sg.Course(1337, 1, 1)
+    c.pos = [0.0, 0.0, 0.0]
+    c.dir = (0, 1)
+    s0, e0, t0, m0 = (len(c.solids), len(c.entities), len(c.triggers), len(c.movers))
+    getattr(c, method)()
+    part = {"key": key,
+            "solids": c.solids[s0:], "entities": c.entities[e0:],
+            "triggers": c.triggers[t0:], "movers": c.movers[m0:],
+            "entry": ((0.0, 0.0, 0.0), (0, 1)),
+            "exit": (tuple(c.pos), tuple(c.dir))}
+    _PART_CACHE[key] = part
+    return part
+
+
+def serialize_part(key):
+    P = _build_part(key)
+    method, label, group = _PART_SPEC[key]
+    axs = [aabb(b) for b in P["solids"]] or [[0, 0, 0, 1, 1, 1]]
+    bounds = [min(a[0] for a in axs), min(a[1] for a in axs), min(a[2] for a in axs),
+              max(a[3] for a in axs), max(a[4] for a in axs), max(a[5] for a in axs)]
+    brushes = [_serialize_brush(i, b, bounds, detect_enclosure=False)
+               for i, b in enumerate(P["solids"])]
+    entities = [_serialize_entity(i, e) for i, e in enumerate(P["entities"])]
+    conns = [{"id": "in",  "pos": [0.0, 0.0, 0.0], "dir": list(P["entry"][1])},
+             {"id": "out", "pos": [float(c) for c in P["exit"][0]],
+              "dir": list(P["exit"][1])}]
+    return {"key": key, "label": label, "group": group, "bounds": bounds,
+            "brushes": brushes, "entities": entities, "connectors": conns}
+
+
+def parts_catalog():
+    return {"parts": [serialize_part(k) for (k, *_rest) in SECTION_PARTS]}
+
+
+def _rotxy(x, y, yaw):
+    yaw %= 360
+    if yaw == 0:
+        return x, y
+    if yaw == 90:
+        return -y, x
+    if yaw == 180:
+        return -x, -y
+    if yaw == 270:
+        return y, -x
+    import math
+    a = math.radians(yaw)
+    ca, sa = math.cos(a), math.sin(a)
+    return x * ca - y * sa, x * sa + y * ca
+
+
+def _xform_brush(b, yaw, tx):
+    faces = []
+    for f in b.faces:
+        poly = []
+        for (x, y, z) in f.poly:
+            rx, ry = _rotxy(x, y, yaw)
+            poly.append((rx + tx[0], ry + tx[1], z + tx[2]))
+        faces.append(geom.Face(poly, f.tex, tuple(f.palette), draw=f.draw))
+    return geom.Brush(faces, b.contents)
+
+
+def _xform_entity(e, yaw, tx):
+    d = dict(e)
+    o = _parse_vec(e.get("origin")) if e.get("origin") else None
+    if o:
+        rx, ry = _rotxy(o[0], o[1], yaw)
+        d["origin"] = _vec([rx + tx[0], ry + tx[1], o[2] + tx[2]])
+    if "angle" in d:
+        try:
+            d["angle"] = str(int((float(d["angle"]) + yaw) % 360))
+        except ValueError:
+            pass
+    return d
+
+
+def compose(placed, opts=None):
+    """Bake placed+transformed section parts into one sealed, playable course.
+
+    placed: [{key, yaw, translate:[x,y,z]}].  Returns a course-like object
+    (solids/entities/triggers/movers/seed) ready for BspWriter / write_map."""
+    import types
+    opts = opts or {}
+    solids, entities, triggers, movers = [], [], [], []
+    for pl in placed:
+        P = _build_part(pl["key"])
+        yaw = float(pl.get("yaw", 0))
+        tx = pl.get("translate", [0, 0, 0])
+        solids += [_xform_brush(b, yaw, tx) for b in P["solids"]]
+        entities += [_xform_entity(e, yaw, tx) for e in P["entities"]]
+        triggers += [(_xform_brush(b, yaw, tx), dict(info)) for b, info in P["triggers"]]
+        movers += [(_xform_brush(b, yaw, tx), dict(info)) for b, info in P["movers"]]
+    if not solids:
+        raise ValueError("no sections placed — add at least one")
+    # guarantee a spawn (+ rescue dest) so the map loads even without a start part
+    if not any(e.get("classname", "").startswith("info_player_deathmatch")
+               for e in entities):
+        b0 = solids[0]
+        cx, cy = (b0.mins[0] + b0.maxs[0]) / 2, (b0.mins[1] + b0.maxs[1]) / 2
+        cz = b0.maxs[2] + 40
+        entities.append({"classname": "info_player_deathmatch",
+                         "origin": _vec([cx, cy, cz]), "angle": "90"})
+        if not any(e.get("targetname") == "start_dest" for e in entities):
+            entities.append({"classname": "misc_teleporter_dest",
+                             "targetname": "start_dest",
+                             "origin": _vec([cx, cy, cz]), "angle": "90"})
+    course = types.SimpleNamespace(solids=solids, entities=entities,
+                                   triggers=triggers, movers=movers,
+                                   seed=int(opts.get("seed", 64)))
+    _seal(course, void=bool(opts.get("void", True)))
+    return course
+
+
+def _seal(course, void=True):
+    """Wrap a sky enclosure + (optional) void-rescue around the composed geometry
+    and prepend a worldspawn — mirrors Course.add_void_and_sky."""
+    xs = [c for b in course.solids for c in (b.mins[0], b.maxs[0])]
+    ys = [c for b in course.solids for c in (b.mins[1], b.maxs[1])]
+    zs = [c for b in course.solids for c in (b.mins[2], b.maxs[2])]
+    m = 768.0
+    x0, x1 = min(xs) - m, max(xs) + m
+    y0, y1 = min(ys) - m, max(ys) + m
+    z0, z1 = min(zs) - 896.0, max(zs) + 1024.0
+    has_dest = any(e.get("targetname") == "start_dest" for e in course.entities)
+    if void and has_dest:
+        vb = geom.make_box((x0 + 8, y0 + 8, z0 + 256), (x1 - 8, y1 - 8, z0 + 320),
+                           tex=sg.TEX_TRIGGER, contents=sg.CONTENTS_TRIGGER, draw=set())
+        course.triggers.append((vb, {"classname": "trigger_teleport",
+                                     "spawnflags": "2", "target": "start_dest"}))
+    course.solids += sg.make_skybox(x0, y0, z0, x1, y1, z1)
+    ws = {"classname": "worldspawn", "message": "STRAFE 64 — forged in MapForge"}
+    if void:
+        ws["voidbase"] = f"{z0 + 64:g}"
+        ws["voidrise"] = "40"
+        ws["voiddelay"] = "30"
+    course.entities.insert(0, ws)

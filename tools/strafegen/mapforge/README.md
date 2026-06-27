@@ -15,7 +15,37 @@ python3 mapforge/server.py --port 8765 --open
 No pip dependencies (stdlib `http.server`). three.js (r160) is **vendored**
 under `static/vendor/` so the tool runs fully offline — no CDN.
 
-## What you can do
+Two modes, switched at the top of the left panel:
+
+- **Generate** — procedurally generate a whole map and edit its brushes/entities
+  (below).
+- **Compose** — kit-bash a map from section **parts**, CAD-style: drag sections
+  in the viewport and snap their entry/exit **connection dots** together (below).
+
+## Compose mode (section kit-bash)
+
+Build a course by hand from reusable section parts — start pad, strafe gaps,
+bhop lane, fork, slalom, slide ramp, walljump hall, hurdles, movers, hazard
+pits, double-jump tower, finish gate.
+
+- **Add** a section from the library — it auto-chains onto the last open exit.
+- **Drag** a section in the 3D view to move it; as a connection dot nears a
+  compatible free dot on another section (red **entry** ↔ green **exit**), it
+  **snaps** so the two mate seamlessly (position + orientation solved for you,
+  Fusion-style). Rotate in 90° steps and raise/lower in Z from the inspector.
+- Each join is a real seam: snapped sections butt together into a continuous,
+  playable run. The connection readout tracks open connectors and whether a
+  start + finish are present.
+- **Export** bakes the placed parts into one sealed map — geometry transformed
+  and merged, a sky enclosure + rising-void rescue added automatically, race
+  triggers carried from the start/finish parts — then writes `.bsp` / `.map` /
+  `.pk3` (validated with `check_bsp`).
+
+Realtime: the browser holds the only state and transforms/snaps parts locally
+(the parts catalog is fetched once); the server only re-composes authoritatively
+on export. Snapping/transform math is mirrored in `app.js` and `scene.py`.
+
+## What you can do (Generate mode)
 
 - **Generate** any kind — course, combat course, velodrome arena, killbox,
   surf line/turn, lattice arena, combat pit, and every bot-dojo recipe — with

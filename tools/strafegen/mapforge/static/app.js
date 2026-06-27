@@ -35,6 +35,10 @@ const api = {
   export: (body) => fetch('/api/export', { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }),
+  parts: () => fetch('/api/parts').then(r => r.json()),
+  composeExport: (body) => fetch('/api/compose_export', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }),
 };
 
 const $ = id => document.getElementById(id);
@@ -204,6 +208,8 @@ function boxFaces(aabb, color) {
 }
 
 function render3d() {
+  if (S.mode === 'compose') return renderCompose3d();
+  if (!S.base) return;
   clearGroup(worldGroup); pickables.length = 0;
   const eff = effective();
 
@@ -303,8 +309,9 @@ function frameCamera() {
 
 // ----------------------------------------------------------------- picking
 let downXY = null;
-$('gl').addEventListener('pointerdown', e => downXY = [e.clientX, e.clientY]);
+$('gl').addEventListener('pointerdown', e => { if (S.mode !== 'generate') return; downXY = [e.clientX, e.clientY]; });
 $('gl').addEventListener('pointerup', e => {
+  if (S.mode !== 'generate') return;
   if (!downXY) return;
   const moved = Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]);
   downXY = null;
@@ -422,6 +429,7 @@ function refresh() { render3d(); draw2d(); renderInspector(); }
 
 // ----------------------------------------------------------------- 2D plan + elevation
 function draw2d() {
+  if (S.mode === 'compose') return drawCompose2d();
   if (!S.base) return;
   const cv = $('view2d'); const v = $('view');
   cv.width = v.clientWidth; cv.height = v.clientHeight;
@@ -488,6 +496,7 @@ function isSel(x) {
 }
 
 $('view2d').addEventListener('click', ev => {
+  if (S.mode !== 'generate') return;
   const cv = $('view2d'); const t = cv._t; if (!t) return;
   const rect = cv.getBoundingClientRect();
   const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
@@ -527,6 +536,12 @@ async function generate() {
 }
 
 function status() {
+  if (S.mode === 'compose') {
+    const b = composeBounds().map(Math.round);
+    $('status').textContent = `${C.placed.length} sections · `
+      + `${(b[3] - b[0])}×${(b[4] - b[1])}×${(b[5] - b[2])}u · drag to move, snaps to dots`;
+    return;
+  }
   if (!S.base) return;
   const c = S.base.counts; const b = S.base.bounds.map(Math.round);
   $('status').textContent = `${c.brushes} brushes · ${c.entities} entities · ${c.spawns} spawns `
@@ -597,6 +612,10 @@ function wire() {
     $('addHint').textContent = 'click in the view to drop a 64×64×64 box'; };
   $('t3d').onclick = () => setView('3d');
   $('t2d').onclick = () => setView('2d');
+  $('modeGen').onclick = () => switchMode('generate');
+  $('modeCompose').onclick = () => switchMode('compose');
+  $('clearCompose').onclick = () => { C.placed = []; C.sel = null; composeRefresh(); };
+  $('cExport').onclick = composeExport;
   document.querySelectorAll('[data-layer]').forEach(btn => btn.onclick = () => {
     const l = btn.dataset.layer; S.layers[l] = !S.layers[l];
     btn.classList.toggle('on', S.layers[l]); refresh();
@@ -609,6 +628,320 @@ function setView(v) {
   $('gl').style.display = v === '3d' ? '' : 'none';
   $('view2d').style.display = v === '2d' ? 'block' : 'none';
   if (v === '2d') draw2d(); else resize();
+}
+
+// ================================================================= COMPOSE
+// Kit-bash mode: place section "parts" and snap their entry/exit connectors.
+const C = { catalog: null, byKey: {}, placed: [], seq: 0, sel: null, drag: null };
+const SNAP = 160;   // world-unit snap radius for connectors
+
+const yawOf = d => d[0] === 1 ? 0 : d[1] === 1 ? 90 : d[0] === -1 ? 180 : 270;
+function rotxy(x, y, yaw) {
+  yaw = ((yaw % 360) + 360) % 360;
+  if (yaw === 0) return [x, y];
+  if (yaw === 90) return [-y, x];
+  if (yaw === 180) return [-x, -y];
+  if (yaw === 270) return [y, -x];
+  const a = yaw * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+  return [x * c - y * s, x * s + y * c];
+}
+const rotDir = (d, yaw) => { const [x, y] = rotxy(d[0], d[1], yaw); return [Math.round(x), Math.round(y)]; };
+function worldConn(inst, c) {
+  const [rx, ry] = rotxy(c.pos[0], c.pos[1], inst.yaw);
+  return { pos: [rx + inst.translate[0], ry + inst.translate[1], c.pos[2] + inst.translate[2]],
+           dir: rotDir(c.dir, inst.yaw), id: c.id };
+}
+function mate(localConn, target) {       // place so localConn mates target (world)
+  const yaw = ((yawOf(target.dir) - yawOf(localConn.dir)) % 360 + 360) % 360;
+  const [rx, ry] = rotxy(localConn.pos[0], localConn.pos[1], yaw);
+  return { yaw, translate: [target.pos[0] - rx, target.pos[1] - ry, target.pos[2] - localConn.pos[2]] };
+}
+const dist3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+function partConns(inst) { return C.byKey[inst.key].connectors.map(c => worldConn(inst, c)); }
+// a connector is "connected" if a compatible (in<->out) connector of another
+// instance sits on top of it
+function isConnected(inst, wc) {
+  return C.placed.some(o => o.id !== inst.id &&
+    partConns(o).some(oc => oc.id !== wc.id && dist3(oc.pos, wc.pos) < 4));
+}
+function freeOutSlots(exceptId) {     // world 'out' connectors not yet connected
+  const out = [];
+  for (const o of C.placed) {
+    if (o.id === exceptId) continue;
+    for (const wc of partConns(o)) if (wc.id === 'out' && !isConnected(o, wc)) out.push(wc);
+  }
+  return out;
+}
+
+async function loadCatalog() {
+  if (C.catalog) return;
+  const r = await api.parts();
+  C.catalog = r.parts; r.parts.forEach(p => C.byKey[p.key] = p);
+  buildPartLib();
+}
+function buildPartLib() {
+  const groups = {};
+  C.catalog.forEach(p => (groups[p.group] = groups[p.group] || []).push(p));
+  const order = ['start', 'opener', 'flow', 'spice', 'climb', 'finish'];
+  $('partLib').innerHTML = order.filter(g => groups[g]).map(g =>
+    `<div style="margin:6px 0 2px;color:var(--dim);text-transform:uppercase;font-size:10px">${g}</div>`
+    + groups[g].map(p => `<button class="sm" data-part="${p.key}" style="width:100%;text-align:left;margin:2px 0">${p.label}</button>`).join('')
+  ).join('');
+  $('partLib').querySelectorAll('[data-part]').forEach(b => b.onclick = () => addPart(b.dataset.part));
+}
+
+function addPart(key) {
+  const inst = { id: C.seq++, key, yaw: 0, translate: [0, 0, 0] };
+  // auto-chain: mate this part's 'in' to the most recent free 'out'
+  const slots = freeOutSlots(inst.id);
+  if (slots.length) {
+    const target = slots[slots.length - 1];
+    const localIn = C.byKey[key].connectors.find(c => c.id === 'in');
+    const mt = mate(localIn, target); inst.yaw = mt.yaw; inst.translate = mt.translate;
+  } else if (C.placed.length) {
+    inst.translate = [0, 0, 0];   // first/extra free piece at origin
+  }
+  C.placed.push(inst); C.sel = inst.id;
+  composeRefresh(); frameCompose();
+}
+
+function composeBounds() {
+  let b = null;
+  for (const inst of C.placed) {
+    const part = C.byKey[inst.key];
+    for (const br of part.brushes) {
+      const [x0, y0, z0, x1, y1, z1] = br.aabb;
+      for (const corner of [[x0, y0, z0], [x1, y1, z1], [x0, y1, z0], [x1, y0, z1]]) {
+        const [wx, wy] = rotxy(corner[0], corner[1], inst.yaw);
+        const p = [wx + inst.translate[0], wy + inst.translate[1], corner[2] + inst.translate[2]];
+        if (!b) b = [p[0], p[1], p[2], p[0], p[1], p[2]];
+        b = [Math.min(b[0], p[0]), Math.min(b[1], p[1]), Math.min(b[2], p[2]),
+             Math.max(b[3], p[0]), Math.max(b[4], p[1]), Math.max(b[5], p[2])];
+      }
+    }
+  }
+  return b || [-512, -512, -256, 512, 512, 256];
+}
+
+let composePickables = [];
+function renderCompose3d() {
+  clearGroup(worldGroup); composePickables = [];
+  for (const inst of C.placed) {
+    const part = C.byKey[inst.key];
+    const grp = new THREE.Group();
+    grp.position.set(inst.translate[0], inst.translate[1], inst.translate[2]);
+    grp.rotation.z = inst.yaw * Math.PI / 180;
+    const sel = inst.id === C.sel;
+    for (const br of part.brushes) {
+      const geo = geomFromFaces(br.faces);
+      const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+      const mesh = new THREE.Mesh(geo, mat); mesh.userData = { instId: inst.id };
+      grp.add(mesh); composePickables.push(mesh);
+      if (S.layers.edges) grp.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25),
+        new THREE.LineBasicMaterial({ color: sel ? 0xffb347 : 0x000000, transparent: true, opacity: sel ? 0.9 : 0.3 })));
+    }
+    if (S.layers.entities) for (const e of part.entities) {
+      if (!e.origin) continue;
+      const m = new THREE.Mesh(new THREE.OctahedronGeometry(16),
+        new THREE.MeshBasicMaterial({ color: entColor(e.classname) }));
+      m.position.set(e.origin[0], e.origin[1], e.origin[2] + 16); grp.add(m);
+    }
+    // connection dots (entry red, exit green; dim when already connected)
+    for (const c of part.connectors) {
+      const wc = worldConn(inst, c);
+      const conn = isConnected(inst, wc);
+      const col = c.id === 'in' ? 0xff6b6b : 0x8fff8f;
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(conn ? 14 : 22, 12, 12),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: conn ? 0.35 : 1 }));
+      dot.position.set(c.pos[0], c.pos[1], c.pos[2] + 24);
+      dot.userData = { instId: inst.id }; grp.add(dot); composePickables.push(dot);
+      const dir = new THREE.ArrowHelper(new THREE.Vector3(c.dir[0], c.dir[1], 0).normalize(),
+        new THREE.Vector3(c.pos[0], c.pos[1], c.pos[2] + 24), 90, col, 30, 18);
+      grp.add(dir);
+    }
+    worldGroup.add(grp);
+  }
+  // selection bbox
+  if (_selBox) { worldGroup.remove(_selBox); _selBox = null; }
+  const b = composeBounds();
+  worldGroup.add(new THREE.Box3Helper(new THREE.Box3(
+    new THREE.Vector3(b[0], b[1], b[2]), new THREE.Vector3(b[3], b[4], b[5])), 0x333344));
+  ensureGrid(b);
+}
+
+function frameCompose() {
+  const b = composeBounds();
+  const cx = (b[0] + b[3]) / 2, cy = (b[1] + b[4]) / 2, cz = (b[2] + b[5]) / 2;
+  const r = Math.max(b[3] - b[0], b[4] - b[1], b[5] - b[2]) || 1024;
+  camera.position.set(cx + r * 0.8, cy - r * 1.2, cz + r * 0.9);
+  controls.target.set(cx, cy, cz); controls.update();
+}
+
+// ---- compose drag + snap ----
+function groundPoint(e, z) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -z);
+  const pt = new THREE.Vector3();
+  return raycaster.ray.intersectPlane(plane, pt) ? pt : null;
+}
+$('gl').addEventListener('pointerdown', e => {
+  if (S.mode !== 'compose') return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObjects(composePickables, false)[0];
+  if (!hit) return;
+  const inst = C.placed.find(p => p.id === hit.object.userData.instId);
+  C.sel = inst.id;
+  const gp = groundPoint(e, inst.translate[2]);
+  C.drag = { inst, start: gp ? [gp.x, gp.y] : null, t0: [...inst.translate] };
+  controls.enabled = false;
+  composeRefresh();
+});
+$('gl').addEventListener('pointermove', e => {
+  if (S.mode !== 'compose' || !C.drag || !C.drag.start) return;
+  const gp = groundPoint(e, C.drag.t0[2]); if (!gp) return;
+  const inst = C.drag.inst;
+  inst.translate = [C.drag.t0[0] + (gp.x - C.drag.start[0]),
+                    C.drag.t0[1] + (gp.y - C.drag.start[1]), C.drag.t0[2]];
+  inst.snapped = trySnap(inst);
+  composeRefresh();
+});
+addEventListener('pointerup', () => {
+  if (C.drag) { C.drag = null; controls.enabled = true; composeRefresh(); }
+});
+
+function trySnap(inst) {
+  const mine = partConns(inst);
+  const targets = [];
+  for (const o of C.placed) {
+    if (o.id === inst.id) continue;
+    for (const wc of partConns(o)) if (!isConnected(o, wc)) targets.push(wc);
+  }
+  let best = null, bd = SNAP;
+  for (const m of mine) for (const t of targets) {
+    if (m.id === t.id) continue;                 // in<->out only
+    const d = dist3(m.pos, t.pos);
+    if (d < bd) { bd = d; best = { local: C.byKey[inst.key].connectors.find(c => c.id === m.id), target: t }; }
+  }
+  if (best) { const mt = mate(best.local, best.target); inst.yaw = mt.yaw; inst.translate = mt.translate; return true; }
+  return false;
+}
+
+function composeRefresh() { renderCompose3d(); drawCompose2d(); renderComposeInspector(); renderPlacedList(); status(); }
+
+function renderComposeInspector() {
+  const el = $('composeInspector');
+  const inst = C.placed.find(p => p.id === C.sel);
+  if (!inst) { el.innerHTML = '<div class="muted">Click a section to select; drag to move (snaps to dots).</div>'; updateConnStatus(); return; }
+  const part = C.byKey[inst.key];
+  el.innerHTML =
+    `<div class="kv"><span>section</span><b>${part.label}</b></div>`
+    + `<div class="kv"><span>yaw</span><b>${inst.yaw}°</b></div>`
+    + `<div class="row" style="margin-top:6px">`
+    + `<button class="sm" id="rotL">⟲ -90°</button><button class="sm" id="rotR">⟳ +90°</button></div>`
+    + `<div class="row" style="margin-top:4px">`
+    + `<button class="sm" id="zDn">z −64</button><button class="sm" id="zUp">z +64</button></div>`
+    + `<button class="sm danger" id="delPart" style="width:100%;margin-top:8px">delete section</button>`;
+  $('rotL').onclick = () => { inst.yaw = (inst.yaw + 270) % 360; composeRefresh(); };
+  $('rotR').onclick = () => { inst.yaw = (inst.yaw + 90) % 360; composeRefresh(); };
+  $('zUp').onclick = () => { inst.translate[2] += 64; composeRefresh(); };
+  $('zDn').onclick = () => { inst.translate[2] -= 64; composeRefresh(); };
+  $('delPart').onclick = () => { C.placed = C.placed.filter(p => p.id !== inst.id); C.sel = null; composeRefresh(); };
+  updateConnStatus();
+}
+function renderPlacedList() {
+  const el = $('placedList');
+  if (!C.placed.length) { el.innerHTML = '<div class="muted">no sections placed yet</div>'; return; }
+  el.innerHTML = C.placed.map(p => {
+    const lab = C.byKey[p.key].label;
+    return `<div class="legend-row" style="${p.id === C.sel ? 'color:var(--amber)' : ''}" data-inst="${p.id}">`
+      + `<span class="pill">${p.yaw}°</span>${lab}</div>`;
+  }).join('');
+  el.querySelectorAll('[data-inst]').forEach(d => d.onclick = () => { C.sel = +d.dataset.inst; composeRefresh(); frameCompose(); });
+}
+function updateConnStatus() {
+  let total = 0, conn = 0;
+  for (const inst of C.placed) for (const wc of partConns(inst)) { total++; if (isConnected(inst, wc)) conn++; }
+  const open = total - conn;
+  const hasStart = C.placed.some(p => p.key === 'start');
+  const hasFinish = C.placed.some(p => p.key === 'finish');
+  $('connStatus').innerHTML = `${conn / 2 | 0} joint(s) · ${open} open connector(s)<br>`
+    + `<span class="pill" style="${hasStart ? 'color:var(--green)' : ''}">start ${hasStart ? '✓' : '—'}</span> `
+    + `<span class="pill" style="${hasFinish ? 'color:#96ffdc' : ''}">finish ${hasFinish ? '✓' : '—'}</span>`;
+}
+
+function drawCompose2d() {
+  const cv = $('view2d'); const v = $('view');
+  cv.width = v.clientWidth; cv.height = v.clientHeight;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#07070b'; ctx.fillRect(0, 0, cv.width, cv.height);
+  if (!C.placed.length) { ctx.fillStyle = '#8a8a99'; ctx.font = '12px monospace';
+    ctx.fillText('Compose: add sections from the library (top-down view).', 30, 30); return; }
+  const b = composeBounds(); const pad = 40;
+  const s = Math.min((cv.width - pad * 2) / (b[3] - b[0] || 1), (cv.height - pad * 2) / (b[4] - b[1] || 1));
+  const px = x => pad + (x - b[0]) * s, py = y => cv.height - pad - (y - b[1]) * s;
+  for (const inst of C.placed) {
+    const part = C.byKey[inst.key];
+    for (const br of part.brushes) {
+      const [x0, y0, , x1, y1] = br.aabb;
+      const pts = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => {
+        const [wx, wy] = rotxy(x, y, inst.yaw); return [px(wx + inst.translate[0]), py(wy + inst.translate[1])];
+      });
+      ctx.globalAlpha = 0.8; ctx.fillStyle = br.color;
+      ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); pts.slice(1).forEach(p => ctx.lineTo(p[0], p[1])); ctx.closePath(); ctx.fill();
+      if (inst.id === C.sel) { ctx.globalAlpha = 1; ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 1.5; ctx.stroke(); }
+    }
+    ctx.globalAlpha = 1;
+    for (const c of part.connectors) {
+      const wc = worldConn(inst, c);
+      ctx.fillStyle = c.id === 'in' ? '#ff6b6b' : '#8fff8f';
+      ctx.beginPath(); ctx.arc(px(wc.pos[0]), py(wc.pos[1]), isConnected(inst, wc) ? 3 : 6, 0, 7); ctx.fill();
+    }
+  }
+}
+
+async function composeExport() {
+  if (!C.placed.length) { toast('add some sections first', true); return; }
+  const formats = [];
+  if ($('cBsp').checked) formats.push('bsp');
+  if ($('cMap').checked) formats.push('map');
+  if ($('cPk3').checked) formats.push('pk3');
+  if (!formats.length) { toast('pick a format', true); return; }
+  $('busy').style.display = 'block';
+  try {
+    const placed = C.placed.map(p => ({ key: p.key, yaw: p.yaw, translate: p.translate }));
+    const res = await api.composeExport({ placed, opts: { void: true }, formats, name: $('cName').value });
+    const st = res.stats;
+    $('cResult').innerHTML = `<b style="color:var(--green)">✓ ${res.name}</b><br>`
+      + res.outputs.map(o => `<span class="pill">${o}</span>`).join(' ')
+      + `<br><span class="muted">${st.brushes} brushes · ${Math.round(st.bytes / 1024)} KB${res.bots ? ' · bots ✓' : ''}</span>`;
+    toast(`exported ${res.name}`);
+  } catch (e) {
+    $('cResult').innerHTML = `<span style="color:var(--red)">✗ ${e.message}</span>`;
+    toast('export failed: ' + e.message, true);
+  } finally { $('busy').style.display = 'none'; }
+}
+
+async function switchMode(m) {
+  S.mode = m;
+  $('modeGen').classList.toggle('on', m === 'generate');
+  $('modeCompose').classList.toggle('on', m === 'compose');
+  $('genControls').style.display = m === 'generate' ? '' : 'none';
+  $('composeControls').style.display = m === 'compose' ? '' : 'none';
+  $('genRight').style.display = m === 'generate' ? '' : 'none';
+  $('composeRight').style.display = m === 'compose' ? '' : 'none';
+  if (m === 'compose') {
+    await loadCatalog();
+    if (!C.placed.length) { addPart('start'); }   // seed with a start pad
+    composeRefresh(); frameCompose();
+  } else { if (S.base) { render3d(); draw2d(); } else generate(); }
+  status();
 }
 
 // ----------------------------------------------------------------- boot
