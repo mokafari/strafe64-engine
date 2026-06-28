@@ -21,3 +21,5 @@ web-demo/
 .claude/
 *.log
 .DS_Store
+# stray `script` command terminal captures
+typescript
