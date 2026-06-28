@@ -1123,7 +1123,11 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.network.style				= UI_RIGHT;
 	s_graphicsoptions.network.color				= color_red;
 
-	y = 240 - 7 * (BIGCHAR_HEIGHT + 2);
+	// Centered for the row count: STRAFE 64 adds two rows (Depth of Field +
+	// Bodycam Camera) below the stock set, so the block is anchored one row
+	// higher than stock to keep it vertically balanced and clear of the
+	// Back/Apply buttons at y=480-64.
+	y = 240 - 8 * (BIGCHAR_HEIGHT + 2);
 	s_graphicsoptions.list.generic.type     = MTYPE_SPINCONTROL;
 	s_graphicsoptions.list.generic.name     = "Graphics Settings:";
 	s_graphicsoptions.list.generic.flags    = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
