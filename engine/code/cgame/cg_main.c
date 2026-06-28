@@ -1328,6 +1328,7 @@ void CG_StartMusic( void ) {
 	char	*s;
 	char	parm1[MAX_QPATH], parm2[MAX_QPATH];
 	char	shuf[16];
+	char	plist[MAX_QPATH];
 
 	// Randomized drum & bass. The generated maps point CS_MUSIC at tracker
 	// modules (.xm) that aren't shipped, so honoring it just gives silence.
@@ -1339,13 +1340,32 @@ void CG_StartMusic( void ) {
 		"music/liquid_alix-perez_forsaken.mp3",
 		"music/liquid_calibre_even-if.mp3",
 		"music/liquid_calibre_rose.mp3",
+		"music/liquid_calibre_lit.mp3",
 		"music/liquid_lenzman_paper-faces.mp3",
 		"music/liquid_logistics_hayling.mp3",
+		"music/liquid_logistics_wanderlust.mp3",
 		"music/liquid_lsb_walking-blues.mp3",
 		"music/liquid_pola-bryson_moments-notice.mp3",
 		"music/liquid_spectrasoul_away-with-me.mp3",
 		"music/liquid_technimatic_true-believer.mp3",
+		"music/liquid_etherwood_tangara.mp3",
+		"music/liquid_high-contrast_if-we-ever.mp3",
+		"music/liquid_whiney_teddys-gate.mp3",
+		"music/bass_ivy-lab_orange.mp3",
 	};
+
+	// A mode can pin a curated playlist (any baseoa/music/*.m3u) via
+	// `seta cg_musicPlaylist music/<name>.m3u`. When set we hand off to the
+	// engine playlist system, which shuffles (s_musicShuffle) and loops
+	// (s_musicPlaylistLoop) the whole queue instead of one looped track. This
+	// runs after CG_Init's own music start, so it cleanly takes over without
+	// the single-track flicker a cfg-issued `playlist` would cause.
+	trap_Cvar_VariableStringBuffer( "cg_musicPlaylist", plist, sizeof( plist ) );
+	if ( plist[0] ) {
+		CG_Printf( "^5music:^7 playlist %s\n", plist );
+		trap_SendConsoleCommand( va( "playlist %s\n", plist ) );
+		return;
+	}
 
 	trap_Cvar_VariableStringBuffer( "cg_musicShuffle", shuf, sizeof( shuf ) );
 
