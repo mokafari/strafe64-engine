@@ -29,7 +29,7 @@ option(USE_CODEC_MOD "Tracker module music (libopenmpt)" ON)
 option(USE_CODEC_MP3 "MP3 music (libmpg123)" ON)
 option(USE_VOIP "Voice chat" ON)
 option(USE_MUMBLE "Mumble support" ON)
-option(USE_FREETYPE "Freetype font rendering" OFF)
+option(USE_FREETYPE "Freetype font rendering" ON)
 
 option(USE_INTERNAL_LIBS "Use internally packaged libraries" ON)
 option(USE_INTERNAL_SDL "Use internal SDL binary (if available)" ${USE_INTERNAL_LIBS})
