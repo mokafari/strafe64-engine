@@ -317,9 +317,10 @@ struct gclient_s {
 	int			swordSwingParm;		// packed start|end quadrant of the current swing (from the fire event)
 	// --- STRAFE 64 sword neutral game / duel state (server-side, not networked) ---
 	int			guardRaiseTime;		// level.time BUTTON_BLOCK was raised; guard only protects after g_swordGuardRaise ms
+	int			guardReleaseTime;	// level.time BUTTON_BLOCK was released; a swing soon after is a guard-break heavy (P~S)
 	qboolean	wasBlocking;		// last frame's guard state, for rising-edge detection
 	int			riposteTime;		// level.time until which a clean-parry counter buff is live on this client
-	int			swordWindupUntil;	// level.time until which the last swing is in startup (counter-hit window on the victim)
+	int			swordWindupUntil;	// level.time until which this swing is in its commit window (counter-hit target)
 	int			dashTime;			// level.time the dash is off cooldown (BUTTON_DASH)
 	int			dashSurge;			// level.time until which a dash wakes the clock (snappy real-time lunge)
 	int			kickTime;			// level.time the melee kick is off cooldown (BUTTON_KICK)
@@ -817,6 +818,9 @@ extern	vmCvar_t	g_swordWhiffScale;	// 0..1 recovery a connecting hit refunds (mi
 extern	vmCvar_t	g_swordMinRange;	// cut whiffs closer than this (anti-ram); 0 = off
 extern	vmCvar_t	g_swordGuardRaise;	// ms the guard must be up before it parries (0 = instant)
 extern	vmCvar_t	g_swordRiposte;		// ms the clean-parry counter-buff window lasts on the defender
+extern	vmCvar_t	g_swordCounterHit;	// 1 = hitting a mid-swing enemy is a counter-hit (+dmg + pop)
+extern	vmCvar_t	g_swordJuggle;		// 1 = up-cut launches / down-cut spikes caught bodies (juggle enders)
+extern	vmCvar_t	g_swordGuardBreak;	// 1 = a slash right after dropping guard breaks a blocker's guard (P~S)
 extern	vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field)
 extern	vmCvar_t	g_corpseTime;		// STRAFE 64: seconds a dead body lingers before removal
 extern	vmCvar_t	g_strafeAccel;		// live air-strafe tuning cvars

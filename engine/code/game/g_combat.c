@@ -1048,6 +1048,18 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 					}
 				}
 
+				// GUARD-BREAK heavy (P~S — hold guard, then slash): a cut thrown
+				// right after dropping your OWN guard punches THROUGH the defender's
+				// block, the answer to a turtle. It overrides the quadrant parry so
+				// most of the cut lands (no clean stop, no riposte for the blocker).
+				if ( g_swordGuardBreak.integer && mod == MOD_SWORD && attacker->client
+						&& attacker->client->guardReleaseTime > 0
+						&& level.time - attacker->client->guardReleaseTime <= 250 ) {
+					if ( blockFrac < 0.75f ) {
+						blockFrac = 0.75f;
+					}
+				}
+
 				damage = (int)( damage * blockFrac );
 				// clean parry rings (clank), a glancing block thuds (clunk)
 				G_AddEvent( targ, EV_SWORD_HIT,

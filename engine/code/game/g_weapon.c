@@ -233,6 +233,10 @@ void Weapon_Sword( gentity_t *ent ) {
 	step = ent->client->swordComboStep % 3;
 	finisher = ( step == 2 );
 
+	// this swing's COMMIT window: an enemy who cuts us while we're still inside it
+	// lands a COUNTER-HIT (Tekken — catching a committed attacker rewards the read).
+	ent->client->swordWindupUntil = level.time + 200;
+
 	combomul = 1.0f + 0.15f * step;			// +0,15,30% across the 3-hit chain
 	arc = SWORD_ARC;
 	ntraces = SWORD_NUM_TRACES;
@@ -373,9 +377,20 @@ void Weapon_Sword( gentity_t *ent ) {
 			tent->s.weapon = ent->s.weapon;
 		}
 
-		// drive the knockback along the cut so victims are flung off the blade
-		G_Damage( traceEnt, ent, ent, dir, tr.endpos,
-			damage, 0, MOD_SWORD );
+		// COUNTER-HIT: catching an enemy still committed to their own swing bites
+		// harder and pops them — the neutral-game payoff for winning the read.
+		{
+			int	dmg = damage;
+
+			if ( g_swordCounterHit.integer && traceEnt->client
+					&& traceEnt->client->swordWindupUntil > level.time ) {
+				dmg = (int)( dmg * 1.5f );
+				traceEnt->client->ps.velocity[2] += 220.0f;		// small pop off a counter
+			}
+			// drive the knockback along the cut so victims are flung off the blade
+			G_Damage( traceEnt, ent, ent, dir, tr.endpos,
+				dmg, 0, MOD_SWORD );
+		}
 
 		// a clean kill on an enemy you flew through is a momentum waypoint —
 		// player or slice gate, either feeds the chain below
@@ -445,6 +460,35 @@ void Weapon_Sword( gentity_t *ent ) {
 			}
 			VectorMA( vic->client->ps.velocity, kick, launch, vic->client->ps.velocity );
 			vic->client->ps.velocity[2] += kick * 0.45f;	// loft them off their feet
+		}
+	}
+
+	// --- DIRECTIONAL ENDER + JUGGLE (Tekken layer): the swing's END quadrant picks
+	// how caught bodies travel vertically — an UP-cut LAUNCHES them airborne (and
+	// re-lofts a victim who's already up, so slashes keep a juggle alive; in
+	// bullet-time the air-time is readable and stylish), a DOWN-cut SPIKES them into
+	// the floor. Side cuts keep the horizontal carry the cleave already gave. ---
+	if ( g_swordJuggle.integer && numHit > 0 ) {
+		qboolean	upCut   = ( endQuad == SQ_T || endQuad == SQ_TL || endQuad == SQ_TR );
+		qboolean	downCut = ( endQuad == SQ_B || endQuad == SQ_BL || endQuad == SQ_BR );
+
+		if ( upCut || downCut ) {
+			for ( i = 0 ; i < numHit ; i++ ) {
+				gentity_t *vic = &g_entities[ hit[i] ];
+				if ( !vic->client ) {
+					continue;
+				}
+				if ( upCut ) {
+					// float juggle: re-loft an airborne victim less so they hang, not rocket
+					float pop = ( vic->client->ps.groundEntityNum == ENTITYNUM_NONE )
+						? 200.0f : 300.0f;
+					if ( vic->client->ps.velocity[2] < pop ) {
+						vic->client->ps.velocity[2] = pop;
+					}
+				} else {
+					vic->client->ps.velocity[2] -= 250.0f;		// spike down
+				}
+			}
 		}
 	}
 

@@ -93,6 +93,9 @@ vmCvar_t	g_swordWhiffScale;	// 0..1 recovery a connecting hit refunds (miss = ex
 vmCvar_t	g_swordMinRange;	// cut whiffs closer than this (anti-ram)
 vmCvar_t	g_swordGuardRaise;	// ms the guard must be up before it parries
 vmCvar_t	g_swordRiposte;		// ms the clean-parry counter-buff window lasts
+vmCvar_t	g_swordCounterHit;	// 1 = counter-hit a mid-swing enemy (+dmg + pop)
+vmCvar_t	g_swordJuggle;		// 1 = up-cut launches / down-cut spikes (juggle enders)
+vmCvar_t	g_swordGuardBreak;	// 1 = slash after dropping guard breaks a blocker (P~S)
 vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field)
 vmCvar_t	g_corpseTime;		// STRAFE 64: seconds a dead body lingers before it's removed
 vmCvar_t	g_strafeAccel;		// live air-strafe tuning -> pm_strafeAccelerate
@@ -234,6 +237,9 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_swordMinRange, "g_swordMinRange", "28", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_swordGuardRaise, "g_swordGuardRaise", "90", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_swordRiposte, "g_swordRiposte", "250", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordCounterHit, "g_swordCounterHit", "1", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordJuggle, "g_swordJuggle", "1", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordGuardBreak, "g_swordGuardBreak", "1", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_botSwordOnly, "g_botSwordOnly", "0", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_corpseTime, "g_corpseTime", "15", CVAR_ARCHIVE, 0, qfalse  },	// STRAFE 64: corpse lifetime (s)
 	{ &g_strafeAccel, "pm_strafeAccelerate", "70", CVAR_ARCHIVE, 0, qfalse  },

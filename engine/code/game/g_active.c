@@ -950,6 +950,110 @@ static void G_ClientDash( gentity_t *ent, usercmd_t *ucmd ) {
 	G_AddPredictableEvent( ent, EV_DASH, 0 );
 }
 
+/*
+==============
+G_ClientKick
+
+STRAFE 64: a melee KICK (BUTTON_KICK, bind F) — the flow game's shove. A short
+forward boot whose knockback scales with YOUR speed: walk up and it staggers,
+fly in past g_kickNinjaSpeed and it becomes a ninja LAUNCH that hands your
+momentum to the victim. Airborne it's a kung-fu flying kick — more damage, a
+small divekick surge along your aim, and the cgame spins the body through a
+tornado kick. Server-side like the dash (it must see victims); the velocities
+land in the playerStates the clients predict.
+==============
+*/
+#define KICK_COOLDOWN	600		// ms between kicks
+#define KICK_RANGE		80.0f	// reach of the boot from the eyes
+#define KICK_AIR_DMG	1.5f	// the kung-fu flying kick hits harder
+
+static void G_ClientKick( gentity_t *ent, usercmd_t *ucmd ) {
+	gclient_t	*client = ent->client;
+	vec3_t		fwd, muzzle, end;
+	vec3_t		mins = { -14, -14, -14 }, maxs = { 14, 14, 14 };
+	trace_t		tr;
+	gentity_t	*traceEnt;
+	float		speed, knock, range;
+	qboolean	airborne, ninja;
+	int			parm, dmg;
+
+	// fresh press only (client->buttons is still last frame's here), on
+	// cooldown, alive and in normal play
+	if ( !( ucmd->buttons & BUTTON_KICK ) || ( client->buttons & BUTTON_KICK ) ) {
+		return;
+	}
+	if ( client->ps.pm_type != PM_NORMAL || level.time < client->kickTime ) {
+		return;
+	}
+	client->kickTime = level.time + KICK_COOLDOWN;
+	// like the dash: wake the clock briefly so the kick snaps in real time
+	// instead of crawling through deep slow-mo
+	client->dashSurge = level.time + 250;
+
+	airborne = ( client->ps.groundEntityNum == ENTITYNUM_NONE );
+	speed = VectorLength( client->ps.velocity );
+	ninja = ( g_kickNinjaSpeed.value > 0.0f && speed >= g_kickNinjaSpeed.value );
+	parm = airborne ? 1 : 0;
+
+	AngleVectors( client->ps.viewangles, fwd, NULL, NULL );
+
+	// airborne kung-fu: the kick doubles as a small divekick surge along your
+	// aim, so a flying kick carries you INTO the target instead of stalling
+	if ( airborne ) {
+		VectorMA( client->ps.velocity, 160.0f, fwd, client->ps.velocity );
+	}
+
+	// the boot: a fat forward trace from the eyes — reach grows a little with
+	// speed so a full-tilt ninja kick still connects out of the blur
+	range = KICK_RANGE + speed * 0.04f;
+	if ( range > 140.0f ) {
+		range = 140.0f;
+	}
+	VectorCopy( client->ps.origin, muzzle );
+	muzzle[2] += client->ps.viewheight;
+	VectorMA( muzzle, range, fwd, end );
+	trap_Trace( &tr, muzzle, mins, maxs, end, ent->s.number, MASK_SHOT );
+
+	traceEnt = &g_entities[ tr.entityNum ];
+	if ( tr.entityNum != ENTITYNUM_NONE && tr.entityNum != ENTITYNUM_WORLD
+			&& traceEnt->takedamage ) {
+		parm |= 2;
+		if ( ninja ) {
+			parm |= 4;
+		}
+		dmg = g_kickDamage.integer;
+		if ( airborne ) {
+			dmg = (int)( dmg * KICK_AIR_DMG );
+		}
+		G_Damage( traceEnt, ent, ent, fwd, tr.endpos, dmg, 0, MOD_KICK );
+
+		// the point of the kick: hand the victim your momentum. Baseline shove
+		// always, plus a speed-scaled transfer past the ninja threshold, with
+		// real lift so a fast kick LAUNCHES them off the line instead of
+		// skidding them along the floor
+		if ( traceEnt->client ) {
+			knock = g_kickKnockback.value;
+			if ( ninja ) {
+				knock += speed * g_kickNinjaScale.value;
+			}
+			VectorMA( traceEnt->client->ps.velocity, knock, fwd, traceEnt->client->ps.velocity );
+			traceEnt->client->ps.velocity[2] += knock * ( ninja ? 0.45f : 0.25f );
+			// knockback stun so their own ground accel can't instantly eat the launch
+			traceEnt->client->ps.pm_flags |= PMF_TIME_KNOCKBACK;
+			traceEnt->client->ps.pm_time = ninja ? 200 : 120;
+		}
+	}
+
+	// commit the body: leaping-kick legs + a strike torso, timed to match the
+	// cgame kick pose (CG_KickPose) layered on top of these frames
+	client->ps.legsTimer = 350;
+	client->ps.legsAnim = ( ( client->ps.legsAnim & ANIM_TOGGLEBIT ) ^ ANIM_TOGGLEBIT ) | LEGS_JUMP;
+	client->ps.torsoTimer = 350;
+	client->ps.torsoAnim = ( ( client->ps.torsoAnim & ANIM_TOGGLEBIT ) ^ ANIM_TOGGLEBIT ) | TORSO_ATTACK2;
+
+	G_AddPredictableEvent( ent, EV_KICK, parm );
+}
+
 static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 	static float	cur = -1.0f;		// last applied timescale (one human assumed)
 	static qboolean	active = qfalse;	// did we take over the timescale cvar?
@@ -1341,6 +1445,9 @@ void ClientThink_real( gentity_t *ent ) {
 		}
 		ent->client->wasBlocking = qtrue;
 	} else {
+		if ( ent->client->wasBlocking ) {
+			ent->client->guardReleaseTime = level.time;	// a swing right after = guard-break heavy (P~S)
+		}
 		ent->client->wasBlocking = qfalse;
 		ent->client->guardRaiseTime = 0;
 	}
@@ -1351,6 +1458,9 @@ void ClientThink_real( gentity_t *ent ) {
 	// SHIFT dash that revectors toward enemies (after pmove so it sets the
 	// resulting velocity; lands in the predicted playerState)
 	G_ClientDash( ent, ucmd );
+
+	// F melee kick — speed-scaled knockback boot / airborne kung-fu kick
+	G_ClientKick( ent, ucmd );
 
 	// save results of pmove
 	if ( ent->client->ps.eventSequence != oldEventSequence ) {
