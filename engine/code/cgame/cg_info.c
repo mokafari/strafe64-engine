@@ -154,6 +154,13 @@ void CG_DrawInformation( void ) {
 	qhandle_t	levelshot;
 	qhandle_t	detail;
 	char		buf[1024];
+	char		map[64];
+	vec4_t		band   = { 0.01f, 0.02f, 0.03f, 0.78f };
+	vec4_t		amber  = { 1.00f, 0.60f, 0.06f, 1.00f };
+	vec4_t		cyan   = { 0.32f, 0.86f, 1.00f, 1.00f };
+	vec4_t		dim    = { 0.55f, 0.42f, 0.20f, 1.00f };
+	vec4_t		red    = { 1.00f, 0.12f, 0.16f, 1.00f };
+	float		w;
 
 	info = CG_ConfigString( CS_SERVERINFO );
 	sysInfo = CG_ConfigString( CS_SYSTEMINFO );
@@ -170,127 +177,108 @@ void CG_DrawInformation( void ) {
 	detail = trap_R_RegisterShader( "levelShotDetail" );
 	trap_R_DrawStretchPic( 0, 0, cgs.glconfig.vidWidth, cgs.glconfig.vidHeight, 0, 0, 2.5, 2, detail );
 
+	// NERV frame: dark bands top and bottom so the readouts float clean
+	CG_FillRect( 0, 0, SCREEN_WIDTH, 118, band );
+	CG_FillRect( 0, 118, SCREEN_WIDTH, 2, amber );
+	CG_FillRect( 0, 360, SCREEN_WIDTH, 2, amber );
+	CG_FillRect( 0, 362, SCREEN_WIDTH, 118, band );
+
 	// draw the icons of things as they are loaded
 	CG_DrawLoadingIcons();
+
+	// top band: wordmark + map designation
+	w = CG_MatrixStringWidth( "STRAFE 64", 1.0f );
+	CG_DrawMatrixString( 320 - w / 2, 14, "STRAFE 64", 1.0f, dim );
+
+	Q_strncpyz( map, Info_ValueForKey( info, "mapname" ), sizeof( map ) );
+	Q_strupr( map );
+	w = CG_MatrixStringWidth( map, 2.2f );
+	CG_DrawMatrixString( 320 - w / 2, 34, map, 2.2f, amber );
 
 	// the first 150 rows are reserved for the client connection
 	// screen to write into
 	if ( cg.infoScreenText[0] ) {
-		UI_DrawProportionalString( 320, 128-32, va("Loading... %s", cg.infoScreenText),
-			UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
+		s = va( "LOADING / %s", cg.infoScreenText );
 	} else {
-		UI_DrawProportionalString( 320, 128-32, "Awaiting snapshot...",
-			UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
+		s = "AWAITING SNAPSHOT";
 	}
+	w = CG_MatrixStringWidth( s, 1.1f );
+	CG_DrawMatrixString( 320 - w / 2, 92, s, 1.1f, cyan );
 
-	// draw info string information
-
-	y = 180-32;
+	// bottom band: mission parameters
+	y = 372;
 
 	// don't print server lines if playing a local game
 	trap_Cvar_VariableStringBuffer( "sv_running", buf, sizeof( buf ) );
 	if ( !atoi( buf ) ) {
 		// server hostname
-		Q_strncpyz(buf, Info_ValueForKey( info, "sv_hostname" ), 1024);
-		Q_CleanStr(buf);
-		UI_DrawProportionalString( 320, y, buf,
-			UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
-		y += PROP_HEIGHT;
-
-		// pure server
-		s = Info_ValueForKey( sysInfo, "sv_pure" );
-		if ( s[0] == '1' ) {
-			UI_DrawProportionalString( 320, y, "Pure Server",
-				UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
-			y += PROP_HEIGHT;
-		}
+		Q_strncpyz( buf, Info_ValueForKey( info, "sv_hostname" ), sizeof( buf ) );
+		Q_CleanStr( buf );
+		w = CG_MatrixStringWidth( buf, 1.1f );
+		CG_DrawMatrixString( 320 - w / 2, y, buf, 1.1f, cyan );
+		y += 16;
 
 		// server-specific message of the day
 		s = CG_ConfigString( CS_MOTD );
 		if ( s[0] ) {
-			UI_DrawProportionalString( 320, y, s,
-				UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
-			y += PROP_HEIGHT;
+			w = CG_MatrixStringWidth( s, 1.0f );
+			CG_DrawMatrixString( 320 - w / 2, y, s, 1.0f, dim );
+			y += 16;
 		}
-
-		// some extra space after hostname and motd
-		y += 10;
 	}
 
 	// map-specific message (long map name)
 	s = CG_ConfigString( CS_MESSAGE );
 	if ( s[0] ) {
-		UI_DrawProportionalString( 320, y, s,
-			UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
-		y += PROP_HEIGHT;
+		w = CG_MatrixStringWidth( s, 1.0f );
+		CG_DrawMatrixString( 320 - w / 2, y, s, 1.0f, dim );
+		y += 16;
 	}
 
-	// cheats warning
-	s = Info_ValueForKey( sysInfo, "sv_cheats" );
-	if ( s[0] == '1' ) {
-		UI_DrawProportionalString( 320, y, "CHEATS ARE ENABLED",
-			UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
-		y += PROP_HEIGHT;
-	}
-
-	// game type
+	// gametype + limits on one mission-parameter line
 	switch ( cgs.gametype ) {
-	case GT_FFA:
-		s = "Free For All";
-		break;
-	case GT_SINGLE_PLAYER:
-		s = "Single Player";
-		break;
-	case GT_TOURNAMENT:
-		s = "Tournament";
-		break;
-	case GT_TEAM:
-		s = "Team Deathmatch";
-		break;
-	case GT_CTF:
-		s = "Capture The Flag";
-		break;
+	case GT_FFA:			s = "FREE FOR ALL";		break;
+	case GT_SINGLE_PLAYER:	s = "SINGLE PLAYER";	break;
+	case GT_TOURNAMENT:		s = "DUEL";				break;
+	case GT_TEAM:			s = "TEAM DEATHMATCH";	break;
+	case GT_CTF:			s = "CAPTURE THE FLAG";	break;
 #ifdef MISSIONPACK
-	case GT_1FCTF:
-		s = "One Flag CTF";
-		break;
-	case GT_OBELISK:
-		s = "Overload";
-		break;
-	case GT_HARVESTER:
-		s = "Harvester";
-		break;
+	case GT_1FCTF:			s = "ONE FLAG CTF";		break;
+	case GT_OBELISK:		s = "OVERLOAD";			break;
+	case GT_HARVESTER:		s = "HARVESTER";		break;
 #endif
-	default:
-		s = "Unknown Gametype";
-		break;
+	default:				s = "UNKNOWN";			break;
 	}
-	UI_DrawProportionalString( 320, y, s,
-		UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
-	y += PROP_HEIGHT;
-		
+	Q_strncpyz( buf, s, sizeof( buf ) );
+
 	value = atoi( Info_ValueForKey( info, "timelimit" ) );
 	if ( value ) {
-		UI_DrawProportionalString( 320, y, va( "timelimit %i", value ),
-			UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
-		y += PROP_HEIGHT;
+		Com_sprintf( buf + strlen( buf ), sizeof( buf ) - strlen( buf ),
+					 "  /  %i MIN", value );
 	}
-
-	if (cgs.gametype < GT_CTF ) {
+	if ( cgs.gametype < GT_CTF ) {
 		value = atoi( Info_ValueForKey( info, "fraglimit" ) );
 		if ( value ) {
-			UI_DrawProportionalString( 320, y, va( "fraglimit %i", value ),
-				UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
-			y += PROP_HEIGHT;
+			Com_sprintf( buf + strlen( buf ), sizeof( buf ) - strlen( buf ),
+						 "  /  FRAG LIMIT %i", value );
 		}
-	}
-
-	if (cgs.gametype >= GT_CTF) {
+	} else {
 		value = atoi( Info_ValueForKey( info, "capturelimit" ) );
 		if ( value ) {
-			UI_DrawProportionalString( 320, y, va( "capturelimit %i", value ),
-				UI_CENTER|UI_SMALLFONT|UI_DROPSHADOW, colorWhite );
+			Com_sprintf( buf + strlen( buf ), sizeof( buf ) - strlen( buf ),
+						 "  /  CAPTURE LIMIT %i", value );
 		}
 	}
+	w = CG_MatrixStringWidth( buf, 1.1f );
+	CG_DrawMatrixString( 320 - w / 2, y, buf, 1.1f, amber );
+	y += 18;
+
+	// warnings
+	s = Info_ValueForKey( sysInfo, "sv_cheats" );
+	if ( s[0] == '1' ) {
+		w = CG_MatrixStringWidth( "CHEATS ARE ENABLED", 1.0f );
+		CG_DrawMatrixString( 320 - w / 2, y, "CHEATS ARE ENABLED", 1.0f, red );
+	}
 }
+
 
