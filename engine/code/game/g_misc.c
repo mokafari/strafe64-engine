@@ -123,6 +123,50 @@ void TeleportPlayer( gentity_t *player, vec3_t origin, vec3_t angles ) {
 	}
 }
 
+/*
+==================
+TeleportPlayerRescue
+
+STRAFE 64: fall-rescue / checkpoint respawn. The classic TeleportPlayer above
+"spits the player out" at 400u/s with a 160ms knockback lock — fine for an
+arena teleporter, but for a rescued faller it flung them forward off the next
+ledge with NO control: the "respawn mid-air and die" loop on courses. This sets
+the player down on the pad instead — all momentum (including the fall) killed,
+facing the run direction — so they simply stand and resume.
+==================
+*/
+void TeleportPlayerRescue( gentity_t *player, vec3_t origin, vec3_t angles ) {
+	gentity_t	*tent;
+
+	if ( player->client->sess.sessionTeam != TEAM_SPECTATOR ) {
+		tent = G_TempEntity( player->client->ps.origin, EV_PLAYER_TELEPORT_OUT );
+		tent->s.clientNum = player->s.clientNum;
+		tent = G_TempEntity( origin, EV_PLAYER_TELEPORT_IN );
+		tent->s.clientNum = player->s.clientNum;
+	}
+
+	trap_UnlinkEntity( player );
+
+	VectorCopy( origin, player->client->ps.origin );
+	player->client->ps.origin[2] += 1;
+
+	// set down, don't fling: zero all momentum (incl. the fall) and face the run
+	VectorClear( player->client->ps.velocity );
+	SetClientViewAngle( player, angles );
+
+	player->client->ps.eFlags ^= EF_TELEPORT_BIT;	// client: don't lerp the jump
+
+	if ( player->client->sess.sessionTeam != TEAM_SPECTATOR ) {
+		G_KillBox( player );
+	}
+
+	BG_PlayerStateToEntityState( &player->client->ps, &player->s, qtrue );
+	VectorCopy( player->client->ps.origin, player->r.currentOrigin );
+	if ( player->client->sess.sessionTeam != TEAM_SPECTATOR ) {
+		trap_LinkEntity( player );
+	}
+}
+
 
 /*QUAKED misc_teleporter_dest (1 0 0) (-32 -32 -24) (32 32 -16)
 Point teleporters at these.
@@ -139,18 +183,9 @@ void SP_misc_teleporter_dest( gentity_t *ent ) {
 "model"		arbitrary .md3 file to display
 */
 void SP_misc_model( gentity_t *ent ) {
-
-#if 0
-	ent->s.modelindex = G_ModelIndex( ent->model );
-	VectorSet (ent->mins, -16, -16, -16);
-	VectorSet (ent->maxs, 16, 16, 16);
-	trap_LinkEntity (ent);
-
-	G_SetOrigin( ent, ent->s.origin );
-	VectorCopy( ent->s.angles, ent->s.apos.trBase );
-#else
+	// misc_model props are baked into the BSP by the map compiler, so the
+	// server-side entity has nothing to do but free itself.
 	G_FreeEntity( ent );
-#endif
 }
 
 //===========================================================

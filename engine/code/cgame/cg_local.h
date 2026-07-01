@@ -158,6 +158,12 @@ typedef struct {
 	// frame: 0 = free, magnitude -> how fully the body leans onto the wall,
 	// sign = wall side (+ right / - left), matching STAT_WALLRUN's convention.
 	float			wallGrip;
+
+	// STRAFE 64: procedural crouch-slide pose. Eased 0 -> 1 while EF_SLIDING is
+	// set, 0 = upright, 1 = fully reclined into the slide. slideLean carries the
+	// signed bank from lateral velocity (+ leaning right / - leaning left).
+	float			slide;
+	float			slideLean;
 } playerEntity_t;
 
 //=================================================
@@ -1257,6 +1263,11 @@ extern	vmCvar_t		cg_swordTrailTipX;
 extern	vmCvar_t		cg_swordTrailTipY;
 extern	vmCvar_t		cg_swordTrailTipZ;
 extern	vmCvar_t		cg_swordTrailAlpha;	// slash-trail brightness multiplier (0..1)
+extern	vmCvar_t		cg_swordCarryPitch;	// third-person idle katana carry pose (model-space deg)
+extern	vmCvar_t		cg_swordCarryYaw;
+extern	vmCvar_t		cg_swordCarryRoll;
+extern	vmCvar_t		cg_swordCarryBack;	// pull the hilt back toward the hand (units along blade)
+extern	vmCvar_t		cg_swordCarryUp;	// raise the hilt into the grip (units, world up)
 extern	vmCvar_t		cg_drawGun;
 extern	vmCvar_t		cg_viewsize;
 extern	vmCvar_t		cg_tracerChance;
@@ -1283,16 +1294,26 @@ extern	vmCvar_t		cg_latticeAudio;
 extern	vmCvar_t		cg_latticeWave;
 extern	vmCvar_t		cg_arenaTrails;		// render the lattice speed-trails in ANY mode (visual only, no damage)
 extern	vmCvar_t		cg_playerGlow;		// each fighter casts a faint dynamic light in their own colour
+extern	vmCvar_t		cg_playerGlowSat;	// hue saturation of the glow (overlaps mix as colour, not white)
+extern	vmCvar_t		cg_playerGlowClamp;	// count-aware soft clamp so N pilots don't sum to white
+extern	vmCvar_t		cg_playerGlowAudio;	// per-pilot music-band spectrum -> out-of-phase flares, colours mix over time
+extern	vmCvar_t		cg_playerGlowHue;	// blend glow toward a distinct per-clientNum rainbow hue so pilots differ
 extern	vmCvar_t		cg_dashGlitch;		// 0-2: chromatic-ghost glitch trail intensity on air-dash
 extern	vmCvar_t		au_bass;
 extern	vmCvar_t		au_mid;
 extern	vmCvar_t		au_high;
 extern	vmCvar_t		au_level;
+extern	vmCvar_t		cg_dofBulletTime;	// STRAFE 64: rack DoF focus as bullet-time slows
+extern	vmCvar_t		cg_dofBase;
+extern	vmCvar_t		cg_dofMax;
+extern	vmCvar_t		cg_dofFocusTrace;
 extern	vmCvar_t		cg_ragdoll;
 extern	vmCvar_t		cg_ragdollDamp;
 extern	vmCvar_t		cg_ragdollIterations;
 extern	vmCvar_t		cg_wallGrip;		// STRAFE 64: procedural wall-grip body lean (0 off)
 extern	vmCvar_t		cg_wallGripScale;	// overall strength multiplier on the grip pose
+extern	vmCvar_t		cg_slidePose;		// STRAFE 64: procedural crouch-slide body recline (0 off)
+extern	vmCvar_t		cg_slidePoseScale;	// overall strength multiplier on the slide pose
 extern	vmCvar_t		cg_zoomFov;
 extern	vmCvar_t		cg_thirdPersonRange;
 extern	vmCvar_t		cg_thirdPersonAngle;
@@ -1485,6 +1506,7 @@ qhandle_t CG_StatusHandle(int task);
 // cg_player.c
 //
 void CG_Player( centity_t *cent );
+int  CG_GlowPilotCount( void );		// # of ET_PLAYER glow lights this frame (count-clamp)
 void CG_ResetPlayerEntity( centity_t *cent );
 void CG_AddRefEntityWithPowerups( refEntity_t *ent, entityState_t *state, int team );
 void CG_NewClientInfo( int clientNum );

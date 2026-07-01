@@ -223,6 +223,12 @@ extern float	pm_airaccelerate;
 extern float	pm_airStopAccelerate;
 extern float	pm_airControlAmount;
 
+// shared pure-A/D air-strafe optimum (defined in bg_pmove.c). The HUD strafe
+// meter and the bots both read these so the displayed optimum and the angle the
+// bots actually carve at can never drift apart. frameSec = pmove tick (msec/1000).
+float	PM_StrafeTickAccel( float frameSec );			// max along-wishdir add per tick
+float	PM_OptimalStrafeAngle( float speed, float frameSec );	// peak-gain angle, degrees
+
 //===================================================================================
 
 
@@ -501,7 +507,8 @@ typedef enum {
 
 	EV_DISMEMBER,			// STRAFE 64: sword sever — origin2 = cut direction, eventParm = cut type
 	EV_SWORD_HIT,			// STRAFE 64: blade connected (fired on attacker) — eventParm = finisher flag
-	EV_DOUBLE_JUMP			// STRAFE 64: mid-air double jump (air-dash kick-off) — jump sound + ground-burst puff
+	EV_DOUBLE_JUMP,			// STRAFE 64: mid-air double jump (air-dash kick-off) — jump sound + ground-burst puff
+	EV_DASH					// STRAFE 64: SHIFT revector dash (G_ClientDash) — chromatic-ghost strobe trail
 
 } entity_event_t;
 

@@ -76,11 +76,23 @@ course) MAP="strafe64_${SEED}_x3"; GEN="$SEED --length 3" ;;
 	MAP="$MODE"; GEN="" ;;
 esac
 
-# generate + deploy the map pk3 if it isn't already in baseoa
-if [ -n "$GEN" ] && [ ! -f "$OA/baseoa/$MAP.pk3" ]; then
-	echo "generating $MAP ..."
-	python3 "$STRAFEGEN/strafegen.py" $GEN --pk3 --out "$STRAFEGEN/generated" || exit 1
-	cp "$STRAFEGEN/generated/$MAP.pk3" "$OA/baseoa/" || exit 1
+# generate + deploy the map pk3. Regenerate when it's missing, when REGEN=1 is
+# set, or when the generator (strafegen.py / strafegen_gfx.py — the graphics
+# recipes) is NEWER than the deployed pk3. Without the staleness check, an old
+# pre-graphics pk3 sitting in baseoa is reused forever and the new hull/chrome/
+# sun never appear ("I wired graphics in but the map looks the same").
+if [ -n "$GEN" ]; then
+	DEPLOYED="$OA/baseoa/$MAP.pk3"
+	if [ ! -f "$DEPLOYED" ] || [ "${REGEN:-0}" = 1 ] \
+	   || [ "$STRAFEGEN/strafegen.py" -nt "$DEPLOYED" ] \
+	   || [ "$STRAFEGEN/strafegen_gfx.py" -nt "$DEPLOYED" ]; then
+		echo "generating $MAP (graphics-current) ..."
+		python3 "$STRAFEGEN/strafegen.py" $GEN --pk3 --out "$STRAFEGEN/generated" || exit 1
+		cp "$STRAFEGEN/generated/$MAP.pk3" "$OA/baseoa/" || exit 1
+		# shared shader+textures now ship in ONE deduped pak — deploy it too,
+		# else the lean map pk3 renders with the default grey shader.
+		cp "$STRAFEGEN/generated/zzz_strafe64_shader.pk3" "$OA/baseoa/" 2>/dev/null
+	fi
 fi
 
 BOTS="${BOTS:-5}"
@@ -129,18 +141,38 @@ fi
 
 echo "SHOWCASE :: $MAP  |  $BOTS bots @ skill $SKILL  |  fullscreen=$FULLSCREEN"
 
-# Renderer beauty cvars go on the command line (archive, read at GL init —
-# no vid_restart needed). $PRESET applies the live gameplay/effect half;
-# $PRELATCH latches the weapon ruleset BEFORE +map; $SQUAD_EXEC spawns the
-# Assassins AFTER the map loads.
+# Renderer beauty cvars go on the command line (read at GL init — no vid_restart).
+# FULL EYE CANDY (tuned 2026-06-23 for contrast, anti-blowout): HDR + filmic tonemap
+# + reflective PBR (cubemap/specular/normal/deluxe) + SSAO + a darker exposure for the
+# moody reflective look. r_cameraExposure / r_forceAutoExposure* are CVAR_CHEAT, so we
+# launch with +devmap (cheats on) or they'd reset to defaults and the dark look would
+# never apply. Bloom kept low (0.18) and auto-exposure clamped (max +0.7 stops) so the
+# additive neon datamosh + bright dev floors don't blow out to white.
+# CONTRAST: r_forceToneMap 1 pins the filmic curve (min/avg/max in stops) instead
+# of letting it auto-flatten — crushed blacks + a hard white point give the scene
+# real punch (dark hull monoliths vs blown neon) instead of a flat mid-grey wash.
+# To dial back: raise r_cameraExposure toward 0.85 (brighter), raise r_forceToneMapMin
+# toward -8 (lift the blacks / less contrast), drop r_pbr/r_cubeMapping 0 (less
+# chrome), or r_bloom 0 (no glow). $PRESET applies the live gameplay/effect
+# half; $PRELATCH latches the weapon ruleset BEFORE +devmap; $SQUAD_EXEC spawns bots after.
 exec "$APP" \
 	+set com_basegame baseoa +set fs_basepath "$OA" \
 	+set sv_pure 0 +set vm_game 0 +set vm_cgame 0 +set vm_ui 0 \
 	+set cl_renderer opengl2 \
 	+set r_postProcess 1 +set r_hdr 1 +set r_toneMap 1 \
-	+set r_autoExposure 1 +set r_cameraExposure 0.85 \
+	+set r_autoExposure 1 +set r_cameraExposure 0.52 \
+	+set r_forceAutoExposureMin -1.5 +set r_forceAutoExposureMax 0.4 \
+	+set r_forceToneMap 1 +set r_forceToneMapMin -5.5 +set r_forceToneMapAvg -2.1 +set r_forceToneMapMax 0.1 \
 	+set r_mapOverBrightBits 1 \
-	+set r_bloom 1 \
+	+set r_bloom 0.18 +set r_bloomBlur 1.1 \
+	+set r_dof 1 +set r_dofFocalRange 420 \
+	+set cg_dofBulletTime 1 +set cg_dofMax 12 +set cg_dofFocusTrace 1 \
+	+set r_pbr 1 +set r_cubeMapping 1 +set r_specularMapping 1 \
+	+set r_normalMapping 1 +set r_deluxeMapping 1 \
+	+set r_ssao 0 \
+	+set r_parallaxMapping 2 \
+	+set r_sunShadows 1 +set r_shadowFilter 2 +set r_shadowMapSize 4096 \
+	+set r_forceSunAmbientScale 0.45 \
 	+set r_ext_multisample 4 \
 	+set r_ext_texture_filter_anisotropic 1 +set r_ext_max_anisotropy 16 \
 	+set r_textureMode GL_LINEAR_MIPMAP_LINEAR +set r_picmip 0 \
@@ -149,6 +181,6 @@ exec "$APP" \
 	+set bot_enable 1 $BOTFILL +set g_spSkill "$SKILL" \
 	+set cg_forceModel "$FORCEMODEL" \
 	$PRELATCH \
-	+map "$MAP" \
+	+devmap "$MAP" \
 	+exec "$PRESET" \
 	$SQUAD_EXEC

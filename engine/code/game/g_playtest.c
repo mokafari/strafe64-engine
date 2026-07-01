@@ -26,6 +26,7 @@ typedef struct {
 	int			framesFast;		// frames above run speed
 	int			framesAir;		// airborne frames
 	int			wallrunFrames;
+	int			slideFrames;	// crouch-slide frames (EF_SLIDING)
 	float		sumSpeed;
 	float		maxSpeed;
 	int			maxBhop;
@@ -92,15 +93,16 @@ static void PT_Summary( int cn, const char *ev, const char *extra ) {
 	int			fastPct = p->frames > 0 ? ( p->framesFast    * 100 / p->frames ) : 0;
 	int			airPct  = p->frames > 0 ? ( p->framesAir     * 100 / p->frames ) : 0;
 	int			wrPct   = p->frames > 0 ? ( p->wallrunFrames * 100 / p->frames ) : 0;
+	int			slidePct= p->frames > 0 ? ( p->slideFrames   * 100 / p->frames ) : 0;
 	int			killSpd = p->frags > 0 ? (int)( p->sumKillSpeed / p->frags ) : 0;
 
 	Com_sprintf( line, sizeof( line ),
 		"{\"ev\":\"%s\",\"cn\":%i,\"durms\":%i,\"avgspd\":%i,\"maxspd\":%i,"
-		"\"flowpct\":%i,\"airpct\":%i,\"wallrunpct\":%i,\"maxbhop\":%i,"
+		"\"flowpct\":%i,\"airpct\":%i,\"wallrunpct\":%i,\"slidepct\":%i,\"maxbhop\":%i,"
 		"\"wj\":%i,\"dj\":%i,\"minvoid\":%i,\"stuckms\":%i,"
 		"\"frags\":%i,\"midair\":%i,\"killspd\":%i%s}\n",
 		ev, cn, dur, avg, (int)p->maxSpeed,
-		fastPct, airPct, wrPct, p->maxBhop,
+		fastPct, airPct, wrPct, slidePct, p->maxBhop,
 		p->walljumps, p->doublejumps,
 		(int)( p->minVoidDist > 1.0e8f ? -1.0f : p->minVoidDist ), p->stuckMs,
 		p->frags, p->midairFrags, killSpd,
@@ -163,6 +165,7 @@ void G_PlaytestSample( void ) {
 		if ( speed > PT_RUNSPEED )    p->framesFast++;
 		if ( cl->ps.groundEntityNum == ENTITYNUM_NONE ) p->framesAir++;
 		if ( cl->ps.stats[STAT_WALLRUN] != 0 ) p->wallrunFrames++;
+		if ( cl->ps.eFlags & EF_SLIDING ) p->slideFrames++;
 		if ( cl->ps.stats[STAT_BHOP_STREAK] > p->maxBhop ) {
 			p->maxBhop = cl->ps.stats[STAT_BHOP_STREAK];
 		}

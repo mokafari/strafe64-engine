@@ -343,8 +343,11 @@ void CG_AddKillBursts( void ) {
 			float	band  = 6.0f + ( 1.0f - frac ) * 16.0f;
 			float	inner = ringR;
 			float	outer = ringR + band;
-			// whiteShader is an ALPHA blend (see flash above) — fade by alpha with
-			// the colour pinned, or the ring draws as an opaque box that goes black.
+			// Draw the ring on the ADDITIVE datamosh shader (GL_SRC_ALPHA GL_ONE), not
+			// the alpha-blend whiteShader: under the GL2 HDR/filmic-tonemap pipeline the
+			// alpha-blend ring gets crushed to BLACK (same failure as the arena datamosh
+			// blocks). Additive blooms into a neon shockwave instead and can never go
+			// black. Still fades by alpha (alphaGen vertex scales the additive add).
 			byte	ca    = (byte)( alpha * 200.0f );
 			polyVert_t	verts[4];
 
@@ -379,7 +382,7 @@ void CG_AddKillBursts( void ) {
 					verts[j].modulate[2] = 180;
 					verts[j].modulate[3] = ca;
 				}
-				trap_R_AddPolyToScene( cgs.media.whiteShader, 4, verts );
+				trap_R_AddPolyToScene( cgs.media.datamoshShader, 4, verts );
 			}
 		}
 	}

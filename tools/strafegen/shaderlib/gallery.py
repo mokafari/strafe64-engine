@@ -113,14 +113,11 @@ def grid_tex(n, base, line, major):
 # ---------------------------------------------------------------------------
 ROOM_SHADERS = """
 // ---- STRAFE 64 shader-library gallery scaffolding (generated) ----
-textures/strafe64/fog
-{
-\tqer_nocarve
-\tsurfaceparm fog
-\tsurfaceparm nolightmap
-\tfogparms ( 0.015 0.0 0.04 ) 3200
-}
-
+// NOTE: no textures/strafe64/fog defined here. That name is the canonical
+// identity fog (strafegen SHADER_SCRIPT); re-defining it loose in this gallery
+// shader collided GLOBALLY — idTech3 keeps the first-scanned definition and
+// silently drops the rest, so every map's fog became load-order roulette. The
+// gallery never applied a fog surface anyway, so the dead def is simply gone.
 shaderlib/room
 {
 \tnopicmip

@@ -137,6 +137,11 @@ vmCvar_t	cg_swordTrailTipX;
 vmCvar_t	cg_swordTrailTipY;
 vmCvar_t	cg_swordTrailTipZ;
 vmCvar_t	cg_swordTrailAlpha;
+vmCvar_t	cg_swordCarryPitch;
+vmCvar_t	cg_swordCarryYaw;
+vmCvar_t	cg_swordCarryRoll;
+vmCvar_t	cg_swordCarryBack;
+vmCvar_t	cg_swordCarryUp;
 vmCvar_t	cg_gun_y;
 vmCvar_t	cg_gun_z;
 vmCvar_t	cg_tracerChance;
@@ -163,16 +168,26 @@ vmCvar_t	cg_latticeAudio;	// 0-2: how hard the lattice pulses to the music bands
 vmCvar_t	cg_latticeWave;		// 0-2: how hard the wall-top rides the music amplitude (waveform drawn as you run)
 vmCvar_t	cg_arenaTrails;		// draw the audio-reactive speed-trails for every player/bot in ANY mode (visual, no damage)
 vmCvar_t	cg_playerGlow;		// 0-2: each fighter casts a faint dynamic light in their own colour
+vmCvar_t	cg_playerGlowSat;	// hue saturation of the glow (0=raw colour, higher=purer hue -> overlaps MIX, not white)
+vmCvar_t	cg_playerGlowClamp;	// 0-1: count-aware soft clamp so N pilots' lights don't sum to white (1=full 1/sqrt(N))
+vmCvar_t	cg_playerGlowAudio;	// 0-2: each pilot reacts to a DIFFERENT music band (per-clientNum spectrum) -> they flare out of phase, colours mix over time
+vmCvar_t	cg_playerGlowHue;	// 0-1: blend the glow toward a DISTINCT per-clientNum rainbow hue (0=player's own colour, 1=full rainbow spread) so pilots aren't all the same colour
 vmCvar_t	cg_dashGlitch;		// 0-2: chromatic-ghost glitch trail intensity on air-dash
 vmCvar_t	cg_ragdoll;				// 1: dead bodies ragdoll; 0: stock death animation
 vmCvar_t	cg_ragdollDamp;			// Verlet velocity retention per step (0..1)
 vmCvar_t	cg_ragdollIterations;	// constraint relaxation passes per frame
 vmCvar_t	cg_wallGrip;			// 1: procedural wall-grip body lean; 0: stock pose
 vmCvar_t	cg_wallGripScale;		// overall strength multiplier on the grip pose
+vmCvar_t	cg_slidePose;			// 1: procedural crouch-slide body recline; 0: stock pose
+vmCvar_t	cg_slidePoseScale;		// overall strength multiplier on the slide pose
 vmCvar_t	au_bass;			// music band envelopes (set by snd_codec_mod), read for reactivity
 vmCvar_t	au_mid;
 vmCvar_t	au_high;
 vmCvar_t	au_level;
+vmCvar_t	cg_dofBulletTime;	// STRAFE 64: rack DoF focus as bullet-time slows
+vmCvar_t	cg_dofBase;			// r_dofAmount at full speed (px)
+vmCvar_t	cg_dofMax;			// r_dofAmount at deepest slow-mo (px)
+vmCvar_t	cg_dofFocusTrace;	// focus on the surface under the reticle, eased
 vmCvar_t	cg_zoomFov;
 vmCvar_t	cg_thirdPerson;
 vmCvar_t	cg_thirdPersonRange;
@@ -271,16 +286,26 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_latticeWave, "cg_latticeWave", "1", CVAR_ARCHIVE },
 	{ &cg_arenaTrails, "cg_arenaTrails", "0", CVAR_ARCHIVE },
 	{ &cg_playerGlow, "cg_playerGlow", "0.8", CVAR_ARCHIVE },
+	{ &cg_playerGlowSat, "cg_playerGlowSat", "1.0", CVAR_ARCHIVE },
+	{ &cg_playerGlowClamp, "cg_playerGlowClamp", "0.7", CVAR_ARCHIVE },
+	{ &cg_playerGlowAudio, "cg_playerGlowAudio", "1.0", CVAR_ARCHIVE },
+	{ &cg_playerGlowHue, "cg_playerGlowHue", "0.85", CVAR_ARCHIVE },
 	{ &cg_dashGlitch, "cg_dashGlitch", "1.0", CVAR_ARCHIVE },
 	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },
 	{ &cg_ragdollDamp, "cg_ragdollDamp", "0.97", CVAR_ARCHIVE },
 	{ &cg_ragdollIterations, "cg_ragdollIterations", "6", CVAR_ARCHIVE },
 	{ &cg_wallGrip, "cg_wallGrip", "1", CVAR_ARCHIVE },
 	{ &cg_wallGripScale, "cg_wallGripScale", "1", CVAR_ARCHIVE },
+	{ &cg_slidePose, "cg_slidePose", "1", CVAR_ARCHIVE },
+	{ &cg_slidePoseScale, "cg_slidePoseScale", "1", CVAR_ARCHIVE },
 	{ &au_bass, "au_bass", "0", 0 },
 	{ &au_mid, "au_mid", "0", 0 },
 	{ &au_high, "au_high", "0", 0 },
 	{ &au_level, "au_level", "0", 0 },
+	{ &cg_dofBulletTime, "cg_dofBulletTime", "1", CVAR_ARCHIVE },
+	{ &cg_dofBase, "cg_dofBase", "0", CVAR_ARCHIVE },
+	{ &cg_dofMax, "cg_dofMax", "14", CVAR_ARCHIVE },
+	{ &cg_dofFocusTrace, "cg_dofFocusTrace", "1", CVAR_ARCHIVE },
 	{ &cg_viewsize, "cg_viewsize", "100", CVAR_ARCHIVE },
 	{ &cg_shadows, "cg_shadows", "1", CVAR_ARCHIVE  },
 	{ &cg_gibs, "cg_gibs", "1", CVAR_ARCHIVE  },
@@ -315,6 +340,11 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_swordTrailTipY, "cg_swordTrailTipY", "0", CVAR_ARCHIVE },
 	{ &cg_swordTrailTipZ, "cg_swordTrailTipZ", "2.4", CVAR_ARCHIVE },	// tip rides high (katana curve)
 	{ &cg_swordTrailAlpha, "cg_swordTrailAlpha", "0.5", CVAR_ARCHIVE },	// trail brightness
+	{ &cg_swordCarryPitch, "cg_swordCarryPitch", "-70", CVAR_ARCHIVE },	// idle katana carry pose
+	{ &cg_swordCarryYaw, "cg_swordCarryYaw", "0", CVAR_ARCHIVE },
+	{ &cg_swordCarryRoll, "cg_swordCarryRoll", "0", CVAR_ARCHIVE },
+	{ &cg_swordCarryBack, "cg_swordCarryBack", "7", CVAR_ARCHIVE },	// seat the hilt in the hand
+	{ &cg_swordCarryUp, "cg_swordCarryUp", "3", CVAR_ARCHIVE },	// raise the hilt into the grip
 	{ &cg_centertime, "cg_centertime", "3", CVAR_CHEAT },
 	{ &cg_runpitch, "cg_runpitch", "0.002", CVAR_ARCHIVE},
 	{ &cg_runroll, "cg_runroll", "0.005", CVAR_ARCHIVE },

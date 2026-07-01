@@ -234,7 +234,7 @@ static void UI_SetupMenu_Init( void ) {
 	setupMenuInfo.cdkey.generic.y					= y;
 	setupMenuInfo.cdkey.generic.id					= ID_CDKEY;
 	setupMenuInfo.cdkey.generic.callback			= UI_SetupMenu_Event; 
-	setupMenuInfo.cdkey.string						= "CD Key";
+	setupMenuInfo.cdkey.string						= "LICENSE";
 	setupMenuInfo.cdkey.color						= color_red;
 	setupMenuInfo.cdkey.style						= UI_CENTER;
 

@@ -19,61 +19,98 @@ along with Quake III Arena source code; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
-//
 /*
 =======================================================================
 
-CD KEY MENU
+STRAFE 64 LICENSE / ACTIVATION SCREEN
+
+Replaces the stock Q3 16-character CD-key screen. Takes the long Ed25519
+license key (S64-...), hands it to the engine's `license` command, and reports
+the result by polling com_licensed. Built to be PASTED into, not typed: the
+key is ~146 characters. Themed to match the MAGI/NERV main menu.
+
+The menu keeps the historical UI_CDKeyMenu* symbol names so the Setup menu,
+the cache pass, and the `ui_cdkey` console alias keep working unchanged.
 
 =======================================================================
 */
 
-
 #include "ui_local.h"
 
+#define ID_KEYFIELD		10
+#define ID_PASTE		11
+#define ID_ACTIVATE		12
+#define ID_BACK			13
 
-#define ART_FRAME		"menu/art/cut_frame"
-#define ART_ACCEPT0		"menu/art/accept_0"
-#define ART_ACCEPT1		"menu/art/accept_1"	
-#define ART_BACK0		"menu/art/back_0"
-#define ART_BACK1		"menu/art/back_1"	
+// theme palette (mirrors ui_menu.c's MAGI look)
+static vec4_t lic_amber  = { 1.00f, 0.62f, 0.05f, 1.00f };	// headline
+static vec4_t lic_green  = { 0.45f, 1.00f, 0.55f, 1.00f };	// terminal green / OK
+static vec4_t lic_grid   = { 0.10f, 0.55f, 0.22f, 0.16f };	// dim rule
+static vec4_t lic_dim    = { 0.45f, 0.55f, 0.55f, 1.00f };	// labels
+static vec4_t lic_redhot = { 1.00f, 0.16f, 0.22f, 1.00f };	// reject red
+static vec4_t lic_panel  = { 0.04f, 0.09f, 0.07f, 0.55f };	// field backdrop
+static vec4_t lic_back   = { 0.02f, 0.04f, 0.05f, 0.92f };	// fullscreen scrim
 
-#define ID_CDKEY		10
-#define ID_ACCEPT		11
-#define ID_BACK			12
-
+#define FIELD_X			70
+#define FIELD_Y			236
+#define FIELD_W			500
 
 typedef struct {
 	menuframework_s	menu;
 
-	menutext_s		banner;
-	menubitmap_s	frame;
+	menufield_s		keyfield;
+	menutext_s		paste;
+	menutext_s		activate;
+	menutext_s		back;
 
-	menufield_s		cdkey;
+	int				submittedAt;	// uis.realtime of last ACTIVATE, or 0
+} licenseMenuInfo_t;
 
-	menubitmap_s	accept;
-	menubitmap_s	back;
-} cdkeyMenuInfo_t;
-
-static cdkeyMenuInfo_t	cdkeyMenuInfo;
+static licenseMenuInfo_t	licenseMenuInfo;
 
 
 /*
 ===============
-UI_CDKeyMenu_Event
+UI_License_Submit
+
+Persist the typed/pasted key and ask the engine to verify it. We cannot use
+EXEC_NOW from the UI, so the result lands on com_licensed a few frames later;
+the draw routine polls for it.
 ===============
 */
-static void UI_CDKeyMenu_Event( void *ptr, int event ) {
+static void UI_License_Submit( void ) {
+	char	cmd[MAX_EDIT_LINE + 16];
+	char	*key = licenseMenuInfo.keyfield.field.buffer;
+
+	if( !key[0] ) {
+		return;
+	}
+
+	trap_Cvar_Set( "cl_licenseKey", key );
+	Com_sprintf( cmd, sizeof( cmd ), "license %s\n", key );
+	trap_Cmd_ExecuteText( EXEC_APPEND, cmd );
+
+	licenseMenuInfo.submittedAt = uis.realtime;
+}
+
+
+/*
+===============
+UI_License_Event
+===============
+*/
+static void UI_License_Event( void *ptr, int event ) {
 	if( event != QM_ACTIVATED ) {
 		return;
 	}
 
 	switch( ((menucommon_s*)ptr)->id ) {
-	case ID_ACCEPT:
-		if( cdkeyMenuInfo.cdkey.field.buffer[0] ) {
-			trap_SetCDKey( cdkeyMenuInfo.cdkey.field.buffer );
-		}
-		UI_PopMenu();
+	case ID_PASTE:
+		MField_Paste( &licenseMenuInfo.keyfield.field );
+		break;
+
+	case ID_ACTIVATE:
+		UI_License_Submit();
 		break;
 
 	case ID_BACK:
@@ -84,100 +121,108 @@ static void UI_CDKeyMenu_Event( void *ptr, int event ) {
 
 
 /*
-=================
-UI_CDKeyMenu_PreValidateKey
-=================
+===============
+UI_License_DrawKey
+
+Owner-draw for the key field: a dark panel with the key in the small font,
+scrolled to keep the cursor visible (the key is far wider than the panel).
+===============
 */
-static int UI_CDKeyMenu_PreValidateKey( const char *key ) {
-	char	ch;
+static void UI_License_DrawKey( void *self ) {
+	menufield_s	*f = (menufield_s *)self;
+	qboolean	focus;
+	int			style;
+	vec4_t		*color;
 
-	if( strlen( key ) != 16 ) {
-		return 1;
+	focus = ( f->generic.parent->cursor == f->generic.menuPosition );
+
+	UI_FillRect( FIELD_X - 8, FIELD_Y - 6, FIELD_W + 16, SMALLCHAR_HEIGHT + 12, lic_panel );
+	UI_DrawRect( FIELD_X - 8, FIELD_Y - 6, FIELD_W + 16, SMALLCHAR_HEIGHT + 12,
+		focus ? lic_amber : lic_grid );
+
+	style = UI_SMALLFONT;
+	color = focus ? &lic_amber : &lic_dim;
+	if( focus ) {
+		style |= UI_PULSE;	// MField_Draw renders the cursor when UI_PULSE is set
 	}
 
-	while( ( ch = *key++ ) ) {
-		switch( ch ) {
-		case '2':
-		case '3':
-		case '7':
-		case 'a':
-		case 'b':
-		case 'c':
-		case 'd':
-		case 'g':
-		case 'h':
-		case 'j':
-		case 'l':
-		case 'p':
-		case 'r':
-		case 's':
-		case 't':
-		case 'w':
-			continue;
-		default:
-			return -1;
-		}
+	if( f->field.buffer[0] ) {
+		MField_Draw( &f->field, FIELD_X, FIELD_Y, style, *color );
+	} else if( !focus ) {
+		UI_DrawString( FIELD_X, FIELD_Y, "S64-XXXXXX-XXXXXX- ...  paste your key here",
+			UI_SMALLFONT, lic_dim );
+	} else {
+		MField_Draw( &f->field, FIELD_X, FIELD_Y, style, *color );
 	}
-
-	return 0;
 }
 
 
 /*
-=================
-UI_CDKeyMenu_DrawKey
-=================
+===============
+UI_License_MenuDraw
+
+Full-screen themed backdrop + headline + live status, drawn under the items.
+===============
 */
-static void UI_CDKeyMenu_DrawKey( void *self ) {
-	menufield_s		*f;
-	qboolean		focus;
-	int				style;
-	char			c;
-	float			*color;
-	int				x, y;
-	int				val;
+static void UI_License_MenuDraw( void ) {
+	qboolean	licensed;
+	float		j;
 
-	f = (menufield_s *)self;
+	// fullscreen scrim so this reads as its own screen
+	UI_FillRect( 0, 0, 640, 480, lic_back );
 
-	focus = (f->generic.parent->cursor == f->generic.menuPosition);
+	// chromatic headline, matching the main-menu wordmark treatment: a red
+	// ghost that stutters a couple px, with the amber wordmark on top
+	j = ( ( uis.realtime / 90 ) % 22 == 0 ) ? 2.0f : 0.0f;
+	UI_DrawProportionalString( 320 - 3 + j, 64, "ACCESS KEY", UI_CENTER, lic_redhot );
+	UI_DrawProportionalString( 320, 64, "ACCESS KEY", UI_CENTER, lic_amber );
 
-	style = UI_LEFT;
-	if( focus ) {
-		color = color_yellow;
-	}
-	else {
-		color = color_orange;
-	}
+	UI_DrawString( 320, 108, "MAGI-01  / /  LICENSE PROTOCOL  / /  ACTIVATE TO DEPLOY",
+		UI_CENTER|UI_SMALLFONT, lic_green );
 
-	x = 320 - 8 * BIGCHAR_WIDTH;
-	y = 240 - BIGCHAR_HEIGHT / 2;
-	UI_FillRect( x, y, 16 * BIGCHAR_WIDTH, BIGCHAR_HEIGHT, listbar_color );
-	UI_DrawString( x, y, f->field.buffer, style, color );
+	UI_FillRect( 70, 150, 500, 1, lic_grid );
+	UI_DrawString( 76, 154, "[  ENTER LICENSE  ]", UI_LEFT|UI_SMALLFONT, lic_green );
 
-	// draw cursor if we have focus
-	if( focus ) {
-		if ( trap_Key_GetOverstrikeMode() ) {
-			c = 11;
+	UI_DrawString( 320, 188, "Paste the key from your purchase e-mail.",
+		UI_CENTER|UI_SMALLFONT, lic_dim );
+	UI_DrawString( 320, 206, "CTRL+V  or  SHIFT+INS  to paste,  or click  PASTE.",
+		UI_CENTER|UI_SMALLFONT, lic_dim );
+
+	// live status line, polled from the engine verifier
+	licensed = trap_Cvar_VariableValue( "com_licensed" ) ? qtrue : qfalse;
+	if( licensed ) {
+		int tier = (int)trap_Cvar_VariableValue( "com_licenseTier" );
+		UI_DrawString( 320, 318, va( "ACTIVATED   / /   TIER %i   / /   ACCESS GRANTED", tier ),
+			UI_CENTER|UI_SMALLFONT, lic_green );
+		UI_DrawString( 320, 340, "press  BACK  to launch", UI_CENTER|UI_SMALLFONT, lic_dim );
+	} else if( licenseMenuInfo.submittedAt ) {
+		if( uis.realtime - licenseMenuInfo.submittedAt < 400 ) {
+			UI_DrawString( 320, 318, "VERIFYING...", UI_CENTER|UI_SMALLFONT, lic_amber );
 		} else {
-			c = 10;
+			UI_DrawString( 320, 318, "KEY REJECTED   / /   CHECK THE KEY AND RETRY",
+				UI_CENTER|UI_SMALLFONT, lic_redhot );
 		}
-
-		style &= ~UI_PULSE;
-		style |= UI_BLINK;
-
-		UI_DrawChar( x + f->field.cursor * BIGCHAR_WIDTH, y, c, style, color_white );
+	} else {
+		UI_DrawString( 320, 318, "UNREGISTERED   / /   AWAITING KEY",
+			UI_CENTER|UI_SMALLFONT, lic_dim );
 	}
 
-	val = UI_CDKeyMenu_PreValidateKey( f->field.buffer );
-	if( val == 1 ) {
-		UI_DrawProportionalString( 320, 376, "Please enter your CD Key", UI_CENTER|UI_SMALLFONT, color_yellow );
-	}
-	else if ( val == 0 ) {
-		UI_DrawProportionalString( 320, 376, "The CD Key appears to be valid, thank you", UI_CENTER|UI_SMALLFONT, color_white );
-	}
-	else {
-		UI_DrawProportionalString( 320, 376, "The CD Key is not valid", UI_CENTER|UI_SMALLFONT, color_red );
-	}
+	UI_DrawString( 22, 452, "SYS 6.66   //   baseoa   //   LICENSE   //   NERV",
+		UI_LEFT|UI_SMALLFONT, lic_green );
+	UI_DrawString( 618, 452, "PROJECT  No.666", UI_RIGHT|UI_SMALLFONT, lic_redhot );
+
+	// draw the menu items (field + buttons) on top
+	Menu_Draw( &licenseMenuInfo.menu );
+}
+
+
+/*
+===============
+UI_CDKeyMenu_Cache
+===============
+*/
+void UI_CDKeyMenu_Cache( void ) {
+	// nothing to precache; this screen is drawn procedurally
 }
 
 
@@ -187,86 +232,66 @@ UI_CDKeyMenu_Init
 ===============
 */
 static void UI_CDKeyMenu_Init( void ) {
-	trap_Cvar_Set( "ui_cdkeychecked", "1" );
-
 	UI_CDKeyMenu_Cache();
 
-	memset( &cdkeyMenuInfo, 0, sizeof(cdkeyMenuInfo) );
-	cdkeyMenuInfo.menu.wrapAround = qtrue;
-	cdkeyMenuInfo.menu.fullscreen = qtrue;
+	memset( &licenseMenuInfo, 0, sizeof(licenseMenuInfo) );
+	licenseMenuInfo.menu.wrapAround = qtrue;
+	licenseMenuInfo.menu.fullscreen = qtrue;
+	licenseMenuInfo.menu.draw       = UI_License_MenuDraw;
 
-	cdkeyMenuInfo.banner.generic.type				= MTYPE_BTEXT;
-	cdkeyMenuInfo.banner.generic.x					= 320;
-	cdkeyMenuInfo.banner.generic.y					= 16;
-	cdkeyMenuInfo.banner.string						= "CD KEY";
-	cdkeyMenuInfo.banner.color						= color_white;
-	cdkeyMenuInfo.banner.style						= UI_CENTER;
+	licenseMenuInfo.keyfield.generic.type			= MTYPE_FIELD;
+	licenseMenuInfo.keyfield.generic.flags			= QMF_NODEFAULTINIT;
+	licenseMenuInfo.keyfield.generic.ownerdraw		= UI_License_DrawKey;
+	licenseMenuInfo.keyfield.generic.x				= FIELD_X;
+	licenseMenuInfo.keyfield.generic.y				= FIELD_Y;
+	licenseMenuInfo.keyfield.generic.left			= FIELD_X - 8;
+	licenseMenuInfo.keyfield.generic.top			= FIELD_Y - 6;
+	licenseMenuInfo.keyfield.generic.right			= FIELD_X + FIELD_W + 8;
+	licenseMenuInfo.keyfield.generic.bottom			= FIELD_Y + SMALLCHAR_HEIGHT + 6;
+	licenseMenuInfo.keyfield.field.widthInChars		= FIELD_W / SMALLCHAR_WIDTH;
+	licenseMenuInfo.keyfield.field.maxchars			= MAX_EDIT_LINE - 1;
 
-	cdkeyMenuInfo.frame.generic.type				= MTYPE_BITMAP;
-	cdkeyMenuInfo.frame.generic.name				= ART_FRAME;
-	cdkeyMenuInfo.frame.generic.flags				= QMF_INACTIVE;
-	cdkeyMenuInfo.frame.generic.x					= 142;
-	cdkeyMenuInfo.frame.generic.y					= 118;
-	cdkeyMenuInfo.frame.width  						= 359;
-	cdkeyMenuInfo.frame.height  					= 256;
+	licenseMenuInfo.paste.generic.type				= MTYPE_PTEXT;
+	licenseMenuInfo.paste.generic.flags				= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
+	licenseMenuInfo.paste.generic.id				= ID_PASTE;
+	licenseMenuInfo.paste.generic.callback			= UI_License_Event;
+	licenseMenuInfo.paste.generic.x					= 170;
+	licenseMenuInfo.paste.generic.y					= 286;
+	licenseMenuInfo.paste.string					= "PASTE";
+	licenseMenuInfo.paste.color						= lic_green;
+	licenseMenuInfo.paste.style						= UI_CENTER|UI_SMALLFONT;
 
-	cdkeyMenuInfo.cdkey.generic.type				= MTYPE_FIELD;
-	cdkeyMenuInfo.cdkey.generic.name				= "CD Key:";
-	cdkeyMenuInfo.cdkey.generic.flags				= QMF_LOWERCASE;
-	cdkeyMenuInfo.cdkey.generic.x					= 320 - BIGCHAR_WIDTH * 2.5;
-	cdkeyMenuInfo.cdkey.generic.y					= 240 - BIGCHAR_HEIGHT / 2;
-	cdkeyMenuInfo.cdkey.field.widthInChars			= 16;
-	cdkeyMenuInfo.cdkey.field.maxchars				= 16;
-	cdkeyMenuInfo.cdkey.generic.ownerdraw			= UI_CDKeyMenu_DrawKey;
+	licenseMenuInfo.activate.generic.type			= MTYPE_PTEXT;
+	licenseMenuInfo.activate.generic.flags			= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
+	licenseMenuInfo.activate.generic.id				= ID_ACTIVATE;
+	licenseMenuInfo.activate.generic.callback		= UI_License_Event;
+	licenseMenuInfo.activate.generic.x				= 320;
+	licenseMenuInfo.activate.generic.y				= 286;
+	licenseMenuInfo.activate.string					= "ACTIVATE";
+	licenseMenuInfo.activate.color					= lic_amber;
+	licenseMenuInfo.activate.style					= UI_CENTER|UI_SMALLFONT;
 
-	cdkeyMenuInfo.accept.generic.type				= MTYPE_BITMAP;
-	cdkeyMenuInfo.accept.generic.name				= ART_ACCEPT0;
-	cdkeyMenuInfo.accept.generic.flags				= QMF_RIGHT_JUSTIFY|QMF_PULSEIFFOCUS;
-	cdkeyMenuInfo.accept.generic.id					= ID_ACCEPT;
-	cdkeyMenuInfo.accept.generic.callback			= UI_CDKeyMenu_Event;
-	cdkeyMenuInfo.accept.generic.x					= 640;
-	cdkeyMenuInfo.accept.generic.y					= 480-64;
-	cdkeyMenuInfo.accept.width						= 128;
-	cdkeyMenuInfo.accept.height						= 64;
-	cdkeyMenuInfo.accept.focuspic					= ART_ACCEPT1;
+	licenseMenuInfo.back.generic.type				= MTYPE_PTEXT;
+	licenseMenuInfo.back.generic.flags				= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
+	licenseMenuInfo.back.generic.id					= ID_BACK;
+	licenseMenuInfo.back.generic.callback			= UI_License_Event;
+	licenseMenuInfo.back.generic.x					= 470;
+	licenseMenuInfo.back.generic.y					= 286;
+	licenseMenuInfo.back.string						= "BACK";
+	licenseMenuInfo.back.color						= lic_dim;
+	licenseMenuInfo.back.style						= UI_CENTER|UI_SMALLFONT;
 
-	cdkeyMenuInfo.back.generic.type					= MTYPE_BITMAP;
-	cdkeyMenuInfo.back.generic.name					= ART_BACK0;
-	cdkeyMenuInfo.back.generic.flags				= QMF_LEFT_JUSTIFY|QMF_PULSEIFFOCUS;
-	cdkeyMenuInfo.back.generic.id					= ID_BACK;
-	cdkeyMenuInfo.back.generic.callback				= UI_CDKeyMenu_Event;
-	cdkeyMenuInfo.back.generic.x					= 0;
-	cdkeyMenuInfo.back.generic.y					= 480-64;
-	cdkeyMenuInfo.back.width						= 128;
-	cdkeyMenuInfo.back.height						= 64;
-	cdkeyMenuInfo.back.focuspic						= ART_BACK1;
+	Menu_AddItem( &licenseMenuInfo.menu, &licenseMenuInfo.keyfield );
+	Menu_AddItem( &licenseMenuInfo.menu, &licenseMenuInfo.paste );
+	Menu_AddItem( &licenseMenuInfo.menu, &licenseMenuInfo.activate );
+	Menu_AddItem( &licenseMenuInfo.menu, &licenseMenuInfo.back );
 
-	Menu_AddItem( &cdkeyMenuInfo.menu, &cdkeyMenuInfo.banner );
-	Menu_AddItem( &cdkeyMenuInfo.menu, &cdkeyMenuInfo.frame );
-	Menu_AddItem( &cdkeyMenuInfo.menu, &cdkeyMenuInfo.cdkey );
-	Menu_AddItem( &cdkeyMenuInfo.menu, &cdkeyMenuInfo.accept );
-	if( uis.menusp ) {
-		Menu_AddItem( &cdkeyMenuInfo.menu, &cdkeyMenuInfo.back );
-	}
+	// prefill with any stored key so the buyer can see / re-activate it
+	trap_Cvar_VariableStringBuffer( "cl_licenseKey",
+		licenseMenuInfo.keyfield.field.buffer, MAX_EDIT_LINE );
 
-	trap_GetCDKey( cdkeyMenuInfo.cdkey.field.buffer, cdkeyMenuInfo.cdkey.field.maxchars + 1 );
-	if( trap_VerifyCDKey( cdkeyMenuInfo.cdkey.field.buffer, NULL ) == qfalse ) {
-		cdkeyMenuInfo.cdkey.field.buffer[0] = 0;
-	}
-}
-
-
-/*
-=================
-UI_CDKeyMenu_Cache
-=================
-*/
-void UI_CDKeyMenu_Cache( void ) {
-	trap_R_RegisterShaderNoMip( ART_ACCEPT0 );
-	trap_R_RegisterShaderNoMip( ART_ACCEPT1 );
-	trap_R_RegisterShaderNoMip( ART_BACK0 );
-	trap_R_RegisterShaderNoMip( ART_BACK1 );
-	trap_R_RegisterShaderNoMip( ART_FRAME );
+	// start focus on the field
+	Menu_SetCursorToItem( &licenseMenuInfo.menu, &licenseMenuInfo.keyfield );
 }
 
 
@@ -277,7 +302,7 @@ UI_CDKeyMenu
 */
 void UI_CDKeyMenu( void ) {
 	UI_CDKeyMenu_Init();
-	UI_PushMenu( &cdkeyMenuInfo.menu );
+	UI_PushMenu( &licenseMenuInfo.menu );
 }
 
 

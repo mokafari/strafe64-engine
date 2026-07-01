@@ -339,7 +339,7 @@ def main():
     ap.add_argument("seed", type=int)
     ap.add_argument("--diff", type=int, default=1, choices=(0, 1, 2))
     ap.add_argument("--arch", default=None,
-                    choices=("spire", "spiral", "forest", "ring", "cross", "twin"),
+                    choices=("spire", "spiral", "forest", "ring", "cross", "twin", "court"),
                     help="force killbox centerpiece archetype (recipe selection)")
     ap.add_argument("--ascii", action="store_true", help="print ASCII grid to stdout")
     ap.add_argument("--out", default=None, help="SVG output path")

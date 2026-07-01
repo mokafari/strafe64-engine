@@ -15,8 +15,20 @@ set(USE_OPENAL_DLOPEN OFF CACHE INTERNAL "")
 set(BUILD_GAME_LIBRARIES OFF CACHE INTERNAL "")
 set(USE_HTTP OFF CACHE INTERNAL "")
 
+# Music codecs that have no internal copy (host libopenmpt/libmpg123) and the
+# platform shared-memory Mumble link can't build for wasm. Ogg/Vorbis/Opus stay
+# on (they use the bundled internal sources). Tracker/MP3 music is dropped from
+# the web demo; ogg music + all SFX still work.
+set(USE_CODEC_MOD OFF CACHE INTERNAL "")
+set(USE_CODEC_MP3 OFF CACHE INTERNAL "")
+set(USE_MUMBLE OFF CACHE INTERNAL "")
+
 # Disable LTO since the libraries Emscripten provides aren't LTO enabled
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION FALSE)
+
+# The browser build is the free demo: auto-grant the demo license entitlement
+# (the gate in SV_Map_f is otherwise unsatisfiable without a purchased key).
+add_compile_definitions(STRAFE64_WEB_DEMO)
 
 list(APPEND CLIENT_LINK_OPTIONS
     -sTOTAL_MEMORY=256MB

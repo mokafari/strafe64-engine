@@ -105,6 +105,11 @@ extern vmCvar_t	ui_ioq3;
 #define SLIDER_RANGE			10
 #define	MAX_EDIT_LINE			256
 
+// Slot-1 weapon binds shared by the Arena and Devmode launchers so the two
+// stay in lockstep (vectorgun = railgun-based WP_RAILGUN 7, sword = WP_SWORD 11).
+#define UI_BIND_VECTORGUN		"bind 1 \"weapon 7\"\n"
+#define UI_BIND_SWORD			"bind 1 \"weapon 11\"\n"
+
 #define MAX_MENUDEPTH			8
 #define MAX_MENUITEMS			64
 
@@ -307,6 +312,7 @@ extern void			MField_Clear( mfield_t *edit );
 extern void			MField_KeyDownEvent( mfield_t *edit, int key );
 extern void			MField_CharEvent( mfield_t *edit, int ch );
 extern void			MField_Draw( mfield_t *edit, int x, int y, int style, vec4_t color );
+extern void			MField_Paste( mfield_t *edit );
 extern void			MenuField_Init( menufield_s* m );
 extern void			MenuField_Draw( menufield_s *f );
 extern sfxHandle_t	MenuField_Key( menufield_s* m, int* key );
@@ -318,6 +324,21 @@ extern void MainMenu_Cache( void );
 extern void UI_MainMenu(void);
 extern void UI_RegisterCvars( void );
 extern void UI_UpdateCvars( void );
+
+//
+// ui_arena.c
+//
+extern void UI_ArenaMenu( void );
+
+//
+// ui_generate.c
+//
+extern void UI_GenerateMenu( void );
+
+//
+// ui_dev.c
+//
+extern void UI_DevMenu( void );
 
 //
 // ui_credits.c

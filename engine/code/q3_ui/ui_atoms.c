@@ -640,7 +640,7 @@ static void UI_DrawString2( int x, int y, const char* str, vec4_t color, int cha
 {
 	const char* s;
 	char	ch;
-	int forceColor = qfalse; //APSFIXME;
+	int forceColor = qfalse;
 	vec4_t	tempcolor;
 	float	ax;
 	float	ay;
@@ -1023,6 +1023,41 @@ qboolean UI_ConsoleCommand( int realTime ) {
 
 	if ( Q_stricmp (cmd, "ui_cache") == 0 ) {
 		UI_Cache_f();
+		return qtrue;
+	}
+
+	if ( Q_stricmp (cmd, "ui_arena") == 0 ) {
+		UI_ArenaMenu();
+		return qtrue;
+	}
+
+	if ( Q_stricmp (cmd, "ui_dev") == 0 ) {
+		UI_DevMenu();
+		return qtrue;
+	}
+
+	if ( Q_stricmp (cmd, "ui_setup") == 0 ) {
+		UI_SetupMenu();
+		return qtrue;
+	}
+
+	if ( Q_stricmp (cmd, "ui_graphics") == 0 ) {
+		UI_GraphicsOptionsMenu();
+		return qtrue;
+	}
+
+	if ( Q_stricmp (cmd, "ui_credits") == 0 ) {
+		UI_CreditMenu();
+		return qtrue;
+	}
+
+	if ( Q_stricmp (cmd, "ui_ingame") == 0 ) {
+		UI_InGameMenu();
+		return qtrue;
+	}
+
+	if ( Q_stricmp (cmd, "ui_servers") == 0 ) {
+		UI_ArenaServersMenu();
 		return qtrue;
 	}
 

@@ -171,10 +171,13 @@ void InGame_MenuInit( void ) {
 	s_ingame.frame.generic.type			= MTYPE_BITMAP;
 	s_ingame.frame.generic.flags		= QMF_INACTIVE;
 	s_ingame.frame.generic.name			= INGAME_FRAME;
-	s_ingame.frame.generic.x			= 320-233;//142;
-	s_ingame.frame.generic.y			= 240-166;//118;
-	s_ingame.frame.width				= 466;//359;
-	s_ingame.frame.height				= 332;//256;
+	// STRAFE 64: the frame art is replaced by a procedural themed panel
+	// (ui_qmenu.c Bitmap_Draw), so size it snug + symmetric around the item
+	// list below (10 items from y=88, 28px apart) — centered on 320,240.
+	s_ingame.frame.generic.x			= 320-190;
+	s_ingame.frame.generic.y			= 68;
+	s_ingame.frame.width				= 380;
+	s_ingame.frame.height				= 320;
 
 	//y = 96;
 	y = 88;

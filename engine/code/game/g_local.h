@@ -582,6 +582,7 @@ void trigger_teleporter_touch (gentity_t *self, gentity_t *other, trace_t *trace
 // g_misc.c
 //
 void TeleportPlayer( gentity_t *player, vec3_t origin, vec3_t angles );
+void TeleportPlayerRescue( gentity_t *player, vec3_t origin, vec3_t angles );	// STRAFE 64: gentle fall-rescue (no 400u fling)
 void G_RearmSliceGates( void );		// re-arm all slice_drone gates on lap restart
 #ifdef MISSIONPACK
 void DropPortalSource( gentity_t *ent );

@@ -1,0 +1,66 @@
+diff --git a/libs/generic/arrayrange.h b/libs/generic/arrayrange.h
+index a00ba76..3ac99e5 100644
+--- a/libs/generic/arrayrange.h
++++ b/libs/generic/arrayrange.h
+@@ -21,9 +21,34 @@
+ 
+ #pragma once
+ #include <span>
+-
++#include <array>
++#include <cstddef>
++#include <iterator>
++#include <ranges>
++#include <type_traits>
++
++// Upstream defines `template<...> using Span = std::span<...>;` and relies on
++// CTAD for alias templates (C++20 P1814), which Apple clang 15 does not yet
++// implement (landed in clang 19). Define Span as a thin std::span subclass and
++// provide the standard deduction guides on the real class instead, so the 78
++// `Span(ptr, count)` / `Span(range)` call sites deduce exactly as before.
+ template<typename _Type, size_t _Extent = std::dynamic_extent>
+-using Span = std::span<_Type, _Extent>;
++struct Span : std::span<_Type, _Extent>
++{
++	using std::span<_Type, _Extent>::span;
++	constexpr Span( std::span<_Type, _Extent> s ) noexcept : std::span<_Type, _Extent>( s ) {}
++};
++
++template<class It, class EndOrSize>
++Span( It, EndOrSize ) -> Span<std::remove_reference_t<std::iter_reference_t<It>>>;
++template<class T, size_t N>
++Span( T (&)[N] ) -> Span<T, N>;
++template<class T, size_t N>
++Span( std::array<T, N>& ) -> Span<T, N>;
++template<class T, size_t N>
++Span( const std::array<T, N>& ) -> Span<const T, N>;
++template<class R>
++Span( R&& ) -> Span<std::remove_reference_t<std::ranges::range_reference_t<R>>>;
+ 
+ using StringArrayRange = std::span<const char *const>;
+ 
+diff --git a/tools/quake3/q3map2/q3map2.h b/tools/quake3/q3map2/q3map2.h
+index 72fe481..496b7b0 100644
+--- a/tools/quake3/q3map2/q3map2.h
++++ b/tools/quake3/q3map2/q3map2.h
+@@ -805,7 +805,19 @@ public:
+ 	}
+ 	mesh_t( mesh_t&& other ) noexcept : width( other.width ), height( other.height ), m_verts( std::exchange( other.m_verts, nullptr ) ) {
+ 	}
+-	mesh_t& operator=( const mesh_t& ) = delete;
++	// libc++'s std::forward_list copy-assignment reuses nodes via value_type
++	// copy-ASSIGNMENT (libstdc++ copy-constructs), so entity_t's defaulted
++	// operator= — which copies its forward_list<parseMesh_t> patches — needs
++	// mesh_t to be copy-assignable. Implement it with the same destroy+
++	// construct_at pattern as the move-assign below (handles the const w/h),
++	// deep-copying via the explicit copy-ctor.
++	mesh_t& operator=( const mesh_t& other ) {
++		if( this != &other ){
++			std::destroy_at( this );
++			std::construct_at( this, other );
++		}
++		return *this;
++	}
+ 	mesh_t& operator=( mesh_t&& other ) noexcept {
+ 		if( this != &other ){
+ 			std::destroy_at( this );
