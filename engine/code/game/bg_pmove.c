@@ -834,7 +834,10 @@ static qboolean PM_CheckWallJump( void ) {
 		pm->ps->pm_flags |= PMF_JUMP_HELD;
 		pm->ps->stats[STAT_WALLJUMP_COUNT]++;
 
-		PM_AddEvent( EV_JUMP );
+		// dedicated event so the kick-off sounds/reads distinct from a ground
+		// hop — the parm carries the wall normal for the contact dust puff
+		BG_AddPredictableEventToPlayerstate( EV_WALLJUMP,
+			DirToByte( trace.plane.normal ), pm->ps );
 		PM_ForceLegsAnim( LEGS_JUMP );
 		pm->ps->pm_flags &= ~PMF_BACKWARDS_JUMP;
 
