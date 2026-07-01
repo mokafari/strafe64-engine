@@ -116,8 +116,8 @@ static void CG_ScoresUp_f( void ) {
 }
 
 #ifdef MISSIONPACK
-extern menuDef_t *menuScoreboard;
-void Menu_Reset( void );			// FIXME: add to right include file
+// menuScoreboard is declared in the MISSIONPACK block at the top of this
+// file; Menu_Reset comes from ui_shared.h (included there).
 
 static void CG_LoadHud_f( void) {
   char buff[1024];
