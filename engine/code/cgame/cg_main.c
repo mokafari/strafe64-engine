@@ -2188,6 +2188,12 @@ Called before every level change or subsystem restart
 =================
 */
 void CG_Shutdown( void ) {
+	// if we're quitting / changing level mid-killcam, hand the world clock and
+	// the grade/DoF/rim overrides back BEFORE the engine archives cvars --
+	// otherwise the killcam's temporary CVAR_ARCHIVE values get baked into the
+	// config and the "filter" would be stuck on across restarts.
+	CG_KillcamStop();
+
 	// some mods may need to do cleanup work here,
 	// like closing files or archiving session data
 }

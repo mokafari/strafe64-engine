@@ -218,8 +218,8 @@ void CG_KillcamPlayerDied( void ) {
 
 	ps = &cg.predictedPlayerState;
 
-	// the focal point is where we fell
-	VectorCopy( cg.snap->ps.origin, kc.killSpot );
+	// the focal point is where we fell (predicted origin -- the snapshot lags)
+	VectorCopy( ps->origin, kc.killSpot );
 
 	// horizontal speed at the moment of death (telemetry + score)
 	kc.speed = (int)sqrt( ps->velocity[0] * ps->velocity[0] +
@@ -472,11 +472,13 @@ void CG_KillcamUpdate( void ) {
 		return;
 	}
 
-	// end the kill screen only on a GENUINE local respawn -- alive again AND
-	// viewing our own player. While dead (health<=0) OR while following the
-	// killer (ps.clientNum != ours), the killcam holds.
-	if ( cg.snap && cg.snap->ps.clientNum == cg.clientNum
-		&& cg.snap->ps.stats[STAT_HEALTH] > 0 ) {
+	// end the kill screen on a GENUINE local respawn. Use the PREDICTED player
+	// state, not cg.snap->ps: the local death is applied by client prediction
+	// immediately (predicted health -999) while the server snapshot still shows
+	// us alive for ~1 round-trip. Checking the snapshot here stopped the killcam
+	// on its very first frame (snapshot lag) -> it never played. Predicted health
+	// reflects the true local state: <=0 for the whole dead window, >0 on respawn.
+	if ( cg.predictedPlayerState.stats[STAT_HEALTH] > 0 ) {
 		CG_KillcamStop();
 		return;
 	}
