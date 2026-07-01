@@ -282,8 +282,10 @@ NameToGenFunc
 */
 static genFunc_t NameToGenFunc( const char *funcname )
 {
-	if ( !Q_stricmp( funcname, "sin" ) )
+	if ( !Q_stricmp( funcname, "sin" ) || !Q_stricmp( funcname, "sine" ) )
 	{
+		// "sine" is a common community-shader spelling (e.g. lun3dm5);
+		// stock Q3 warned and fell back to GF_SIN anyway — accept it quietly.
 		return GF_SIN;
 	}
 	else if ( !Q_stricmp( funcname, "square" ) )
