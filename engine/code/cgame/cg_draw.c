@@ -2672,7 +2672,6 @@ static vec4_t nerv_red    = { 1.00f, 0.12f, 0.16f, 1.00f };	// alert
 static vec4_t nerv_green  = { 0.40f, 1.00f, 0.50f, 1.00f };	// nominal/go
 static vec4_t nerv_dim    = { 0.55f, 0.42f, 0.20f, 1.00f };	// idle
 static vec4_t nerv_cyan   = { 0.32f, 0.86f, 1.00f, 1.00f };	// MAGI teal — nominal readouts
-static vec4_t nerv_fill   = { 0.02f, 0.03f, 0.04f, 0.55f };	// panel plate
 
 static void CG_NervPanel( float x, float y, float w, float h, const float *accent ) {
 	// No borders, no plates — the HUD is clean floating LED text (the matrix font
@@ -2770,7 +2769,12 @@ static void CG_LedDrawString( float x, float y, const char *s, float cell, const
 	shadow[0] = shadow[1] = shadow[2] = 0.0f;
 	shadow[3] = ( color ? color[3] : 1.0f ) * 0.7f;
 	for ( p = s; *p; p++ ) {
-		int idx = CG_MatrixGlyphIndex( *p ), row, col;
+		int idx, row, col;
+		if ( Q_IsColorString( p ) ) {
+			p++;				// with the loop's p++, skips the ^N pair
+			continue;
+		}
+		idx = CG_MatrixGlyphIndex( *p );
 		if ( idx < 0 ) {
 			cx += 6.0f * cell;
 			continue;
@@ -2803,12 +2807,25 @@ static qboolean CG_HudFontReady( void ) {
 int CG_MatrixStringWidth( const char *s, float cell ) {
 	float	scale, w = 0.0f;
 
+	// ^N colour codes take no space in either path (they're skipped when drawn)
 	if ( !CG_HudFontReady() ) {
-		int n = 0; while ( s[n] ) n++;
+		int n = 0;
+		while ( *s ) {
+			if ( Q_IsColorString( s ) ) {
+				s += 2;
+				continue;
+			}
+			n++;
+			s++;
+		}
 		return (int)( n * 6.0f * cell );
 	}
 	scale = cell * 0.16f * cg_hudFont.glyphScale;
 	while ( *s ) {
+		if ( Q_IsColorString( s ) ) {
+			s += 2;
+			continue;
+		}
 		w += cg_hudFont.glyphs[ *s & 255 ].xSkip * scale;
 		s++;
 	}
@@ -2835,6 +2852,10 @@ void CG_DrawMatrixString( float x, float y, const char *s, float cell, const flo
 		trap_R_SetColor( pass ? color : shadow );
 		cx = x;
 		for ( p = s; *p; p++ ) {
+			if ( Q_IsColorString( p ) ) {
+				p++;			// with the loop's p++, skips the ^N pair
+				continue;
+			}
 			g = &cg_hudFont.glyphs[ *p & 255 ];
 			ax = cx + off;
 			ay = y - g->top * scale + off;
@@ -3544,9 +3565,8 @@ server will apply (mirrors the g_speedDamage curve), and hop streak
 */
 static void CG_DrawSpeedMeter( void ) {
 	char			str[64];
-	char			pkbuf[24];
 	float			speed, scale;
-	int				streak, x, w;
+	int				streak, w;
 	float			*color;
 	playerState_t	*ps;
 
