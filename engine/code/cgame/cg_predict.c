@@ -526,6 +526,10 @@ void CG_PredictPlayerState( void ) {
 		if ( b[0] ) pm_airStopAccelerate = atof( b );
 		trap_Cvar_VariableStringBuffer( "pm_airControlAmount", b, sizeof( b ) );
 		if ( b[0] ) pm_airControlAmount = atof( b );
+		trap_Cvar_VariableStringBuffer( "pm_swordMagnet", b, sizeof( b ) );
+		if ( b[0] ) pm_swordMagnet = atof( b );
+		trap_Cvar_VariableStringBuffer( "pm_swordMagnetRange", b, sizeof( b ) );
+		if ( b[0] ) pm_swordMagnetRange = atof( b );
 	}
 
 	// run cmds

@@ -162,6 +162,7 @@ typedef enum {
 #define PMF_FOLLOW			4096	// spectate following another player
 #define PMF_SCOREBOARD		8192	// spectate as a scoreboard
 #define PMF_INVULEXPAND		16384	// invulnerability sphere set to full size
+#define PMF_SWORD_BUFFER	32768	// STRAFE 64: a sword swing was queued during recovery (input buffer)
 
 #define	PMF_ALL_TIMES	(PMF_TIME_WATERJUMP|PMF_TIME_LAND|PMF_TIME_KNOCKBACK)
 
@@ -222,6 +223,13 @@ extern float	pm_wishSpeedClamp;
 extern float	pm_airaccelerate;
 extern float	pm_airStopAccelerate;
 extern float	pm_airControlAmount;
+
+// STRAFE 64 sword flow assist — the predicted lunge steers toward a nearby enemy
+// so a swing near a target snaps you onto them ("kill what you fly through"). Both
+// values are driven from cvars in g_active.c before each Pmove so prediction stays
+// in sync. pm_swordMagnet 0 disables the steer (raw forward lunge only).
+extern float	pm_swordMagnet;			// 0..1 strength of the lunge steer toward a target
+extern float	pm_swordMagnetRange;	// detection reach for the magnet (units)
 
 // shared pure-A/D air-strafe optimum (defined in bg_pmove.c). The HUD strafe
 // meter and the bots both read these so the displayed optimum and the angle the

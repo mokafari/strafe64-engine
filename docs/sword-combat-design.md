@@ -1,9 +1,29 @@
 # Sword / Katana Combat — Feel & Depth Design
 
-**Status:** design plan (not yet implemented). Research-backed, grounded in the current
-`WP_SWORD` code. Goal: fix the "ram forward and bump into each other" problem and add a
-mastery ceiling — a Tekken-like string system on two buttons — **without** breaking the
-movement pillar.
+**Status:** design plan. The neutral-game tiers below are **not yet implemented**. The
+*flow-assist* pass (superhuman-ninja feel) **is shipped** — see the box below. Goal: fix the
+"ram forward and bump into each other" problem and add a mastery ceiling — a Tekken-like
+string system on two buttons — **without** breaking the movement pillar.
+
+---
+
+## ✅ SHIPPED — flow-assist pass (the "fast superhuman ninja" feel)
+
+Four features, all cvar-gated, built + smoke-tested. These are the *power-fantasy* axis
+(assist, not friction); the Tier 1-3 friction below is for **duels** and still gates onto
+"opponent also has a sword".
+
+| Feature | What | Where | Cvar (default) |
+|---|---|---|---|
+| **Lunge magnetism** | Swing near an enemy steers the forward lunge onto them + boosts it to close the gap. Predicted (trace-fan in pmove). | `PM_SwordMagnetLunge` in `bg_pmove.c` | `pm_swordMagnet` (1.0, 0=off), `pm_swordMagnetRange` (300) |
+| **Aim-snap** | Bends the *cut axis* (not the camera) onto a near-miss enemy within N degrees so slightly-off aim connects. | `G_SwordFindTarget(byAngle)` in `Weapon_Sword`, `g_weapon.c` | `g_swordAimSnap` (12 deg, 0=off) |
+| **Kill-to-kill redirect** | On a clean kill, the forward kick aims at the *next* nearest body → clearing a room is one flowing line. | kills-block in `Weapon_Sword`, `g_weapon.c` | `g_swordChainRedirect` (1) |
+| **Input buffering** | A slash pressed during the 230ms recovery is queued (`PMF_SWORD_BUFFER`) and fires the instant recovery ends — no dropped taps. Guarding cancels the queued swing. | `PM_Weapon` in `bg_pmove.c` | (always on) |
+
+**Prediction-sync gotcha:** the magnet runs in *shared* pmove, so the two magnet cvars are
+registered under `pm_`-prefixed names and mirrored in **both** `g_active.c` (server) and
+`cg_predict.c` (client) — same pattern as the air-strafe tunables. Miss either bridge and a
+live cvar change mispredicts.
 
 ---
 

@@ -156,6 +156,56 @@ rewards staying in the movement chain. A lethal blow triggers dismemberment.
 #define	SWORD_KILL_SPEED	140.0f	// forward kick per clean kill — routing THROUGH is the fast line
 #define	SWORD_CLEAVE_KICK	340.0f	// base launch (ups) flung along the cut when a swing catches
 									// 2+ bodies, or on a finisher — scaled by g_swordKnockback
+#define	SWORD_CHAIN_RANGE	700.0f	// how far the on-kill kick looks for the next body to flow toward
+
+/*
+================
+G_SwordFindTarget
+
+STRAFE 64 sword flow assist. Find the best enemy body in a cone: a living entity
+that takes damage (a client, or a slice gate), within `range` of `from` and within
+`cosHalf` of `axis`. With byAngle set, the best-*aligned* target wins — used for
+aim-snap, bending the cut onto a near-miss. Otherwise the *nearest* wins — used for
+the kill-to-kill redirect, kicking toward the next body. NULL when the cone is
+empty. `self` is always skipped.
+================
+*/
+static gentity_t *G_SwordFindTarget( gentity_t *self, const vec3_t from,
+		const vec3_t axis, float range, float cosHalf, qboolean byAngle ) {
+	gentity_t	*t, *best;
+	vec3_t		delta, dir;
+	float		dist, dot, score, bestScore;
+	int			i;
+
+	best = NULL;
+	bestScore = byAngle ? cosHalf : range;		// must beat the cone/range to count
+
+	for ( i = 0 ; i < level.num_entities ; i++ ) {
+		t = &g_entities[i];
+		if ( t == self || !t->inuse || !t->takedamage || t->health <= 0 ) {
+			continue;
+		}
+		if ( !t->client && !( t->flags & FL_SLICE_GATE ) ) {
+			continue;
+		}
+		VectorSubtract( t->r.currentOrigin, from, delta );
+		dist = VectorLength( delta );
+		if ( dist < 1.0f || dist > range ) {
+			continue;
+		}
+		VectorScale( delta, 1.0f / dist, dir );
+		dot = DotProduct( dir, axis );
+		if ( dot < cosHalf ) {
+			continue;							// outside the cone
+		}
+		score = byAngle ? dot : dist;
+		if ( byAngle ? ( score > bestScore ) : ( score < bestScore ) ) {
+			bestScore = score;
+			best = t;
+		}
+	}
+	return best;
+}
 
 void Weapon_Sword( gentity_t *ent ) {
 	int			i, t;
@@ -222,6 +272,22 @@ void Weapon_Sword( gentity_t *ent ) {
 	if ( VectorNormalize( axis ) == 0.0f ) {
 		VectorCopy( viewDir, axis );
 	}
+
+	// --- AIM-SNAP: bend the cut onto a near-miss enemy so slightly-off aim still
+	// connects clean. Only assists misses within g_swordAimSnap degrees of the cut
+	// line — never a hard turn — and nudges the blade, not the camera. ---
+	if ( g_swordAimSnap.value > 0.0f ) {
+		float		snapCos = cos( DEG2RAD( g_swordAimSnap.value ) );
+		float		reach = SWORD_RANGE + SWORD_RANGE_BONUS;
+		gentity_t	*snap = G_SwordFindTarget( ent, muzzle, axis, reach, snapCos, qtrue );
+		if ( snap ) {
+			VectorSubtract( snap->r.currentOrigin, muzzle, axis );
+			if ( VectorNormalize( axis ) == 0.0f ) {
+				VectorCopy( viewDir, axis );
+			}
+		}
+	}
+
 	vectoangles( axis, sliceAngles );
 
 	// reach grows with speed so a fast fly-by still connects the cut
@@ -307,7 +373,20 @@ void Weapon_Sword( gentity_t *ent ) {
 	// air moves let a mid-air slice stay airborne to chain into the next space —
 	// so routing THROUGH the cluster is the fast line, not an interruption. ---
 	if ( kills > 0 && speed > 1.0f ) {
-		VectorCopy( ent->client->ps.velocity, velDir );
+		gentity_t	*nextTgt = NULL;
+
+		// aim the kick at the NEXT nearest body so clearing a cluster reads as one
+		// flowing line instead of a shove straight ahead; fall back to the flight
+		// line when the room is empty.
+		if ( g_swordChainRedirect.integer ) {
+			nextTgt = G_SwordFindTarget( ent, ent->r.currentOrigin, axis,
+				SWORD_CHAIN_RANGE, -1.0f, qfalse );
+		}
+		if ( nextTgt ) {
+			VectorSubtract( nextTgt->r.currentOrigin, ent->r.currentOrigin, velDir );
+		} else {
+			VectorCopy( ent->client->ps.velocity, velDir );
+		}
 		velDir[2] = 0;
 		if ( VectorNormalize( velDir ) > 0.0f ) {
 			float add = SWORD_KILL_SPEED * kills * frac;	// gated by entry speed

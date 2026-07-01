@@ -797,6 +797,10 @@ extern	vmCvar_t	g_dashSpeed;		// BUTTON_DASH burst magnitude (u/s)
 extern	vmCvar_t	g_dashHoming;		// 0..1 revector blend toward the nearest enemy on a dash
 extern	vmCvar_t	g_bulletSpeed;		// live scale on deflectable-bolt travel speed
 extern	vmCvar_t	g_swordKnockback;	// live scale on the katana cleave-launch (multi-hit / finisher fling)
+extern	vmCvar_t	g_swordMagnet;		// 0..1 lunge steer toward a target -> pm_swordMagnet (0 = off)
+extern	vmCvar_t	g_swordMagnetRange;	// detection reach for the lunge magnet -> pm_swordMagnetRange
+extern	vmCvar_t	g_swordAimSnap;		// max degrees the cut bends onto a near-miss (0 = off)
+extern	vmCvar_t	g_swordChainRedirect;	// 1 = on-kill kick aims at the next body (chain flow)
 extern	vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field)
 extern	vmCvar_t	g_corpseTime;		// STRAFE 64: seconds a dead body lingers before removal
 extern	vmCvar_t	g_strafeAccel;		// live air-strafe tuning cvars

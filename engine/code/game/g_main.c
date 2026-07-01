@@ -79,6 +79,10 @@ vmCvar_t	g_dashHoming;		// 0..1 blend of the dash toward the nearest enemy (mele
 vmCvar_t	g_bulletSpeed;		// live scale on deflectable-bolt travel speed: lower = the
 								// slow-mo darts you can see/track/parry (co-tune vs the guard window)
 vmCvar_t	g_swordKnockback;	// live scale on the katana cleave-launch (multi-hit / finisher fling)
+vmCvar_t	g_swordMagnet;		// 0..1 lunge steer toward a target -> pm_swordMagnet
+vmCvar_t	g_swordMagnetRange;	// detection reach for the lunge magnet -> pm_swordMagnetRange
+vmCvar_t	g_swordAimSnap;		// max degrees the cut bends onto a near-miss (0 = off)
+vmCvar_t	g_swordChainRedirect;	// 1 = on-kill kick aims at the next body (chain flow)
 vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field)
 vmCvar_t	g_corpseTime;		// STRAFE 64: seconds a dead body lingers before it's removed
 vmCvar_t	g_strafeAccel;		// live air-strafe tuning -> pm_strafeAccelerate
@@ -206,6 +210,10 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_dashHoming, "g_dashHoming", "0.5", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_bulletSpeed, "g_bulletSpeed", "0.45", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_swordKnockback, "g_swordKnockback", "1.0", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordMagnet, "pm_swordMagnet", "1.0", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordMagnetRange, "pm_swordMagnetRange", "300", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordAimSnap, "g_swordAimSnap", "12", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordChainRedirect, "g_swordChainRedirect", "1", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_botSwordOnly, "g_botSwordOnly", "0", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_corpseTime, "g_corpseTime", "15", CVAR_ARCHIVE, 0, qfalse  },	// STRAFE 64: corpse lifetime (s)
 	{ &g_strafeAccel, "pm_strafeAccelerate", "70", CVAR_ARCHIVE, 0, qfalse  },

@@ -1305,6 +1305,10 @@ void ClientThink_real( gentity_t *ent ) {
 	pm_airaccelerate     = g_airAccel.value;
 	pm_airStopAccelerate = g_airStopAccel.value;
 	pm_airControlAmount  = g_airControl.value;
+	// sword lunge magnetism (predicted): drive the steer from cvars so client and
+	// server pmove agree on how hard the swing snaps onto a target
+	pm_swordMagnet       = g_swordMagnet.value;
+	pm_swordMagnetRange  = g_swordMagnetRange.value;
 
 	VectorCopy( client->ps.origin, client->oldOrigin );
 
