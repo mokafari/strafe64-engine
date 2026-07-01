@@ -48,3 +48,17 @@ The harness lives in the polish-loop scratchpad (`bench/run_bench.sh` +
 `parse_bench.py`): one fresh engine boot per config, 6 s of `com_speeds 1`,
 condump, medians with the first 20% trimmed. Re-run after renderer changes and
 diff the deltas, not the absolutes.
+
+## CPU side
+
+5 bots + full game sim at 2560x1080: **+0 ms at the median** — G_RunFrame and
+botlib are not the wall; the frame budget is all present/GPU.
+
+## Bigger engineering levers (scoped, not yet built)
+
+- **r_renderScale** — this rend2 does not have one; adding it (render FBOs at
+  0.75-0.85x, stretch at present, HUD native) is the cleanest big win for
+  GPU-bound native-res fullscreen. Touches FBO_Init sizing + present blit.
+- **Bloom blit slimming** — the ~3 ms is mostly the full-screen capture +
+  composite FBO_Blits around the quarter-res chain (kept as FBO_Blit for the
+  Y-flip parity — see the RB_Bloom comment before touching this).
