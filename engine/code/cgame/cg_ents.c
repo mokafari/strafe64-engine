@@ -753,12 +753,11 @@ static void CG_Grapple( centity_t *cent ) {
 	// calculate the axis
 	VectorCopy( s1->angles, cent->lerpAngles);
 
-#if 0 // FIXME add grapple pull sound here..?
-	// add missile sound
-	if ( weapon->missileSound ) {
-		trap_S_AddLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin, weapon->missileSound );
+	// taut-rope tension loop while the hook is out (resolves the stock FIXME —
+	// the paks always shipped grappull.wav, it was just never wired)
+	if ( cgs.media.grapplePullSound ) {
+		trap_S_AddLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin, cgs.media.grapplePullSound );
 	}
-#endif
 
 	// Will draw cable if needed
 	CG_GrappleTrail ( cent, weapon );

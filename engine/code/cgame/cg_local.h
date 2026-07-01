@@ -981,6 +981,8 @@ typedef struct {
 	sfxHandle_t	respawnSound;
 	sfxHandle_t talkSound;
 	sfxHandle_t landSound;
+	sfxHandle_t grappleHitSound;	// STRAFE 64: hook bites the wall
+	sfxHandle_t grapplePullSound;	// STRAFE 64: taut-rope tension loop
 	sfxHandle_t fallSound;
 	sfxHandle_t jumpPadSound;
 	sfxHandle_t hopSound;		// chained bhop pop

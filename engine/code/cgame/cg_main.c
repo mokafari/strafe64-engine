@@ -756,6 +756,9 @@ static void CG_RegisterSounds( void ) {
 
 	cgs.media.talkSound = trap_S_RegisterSound( "sound/player/talk.wav", qfalse );
 	cgs.media.landSound = trap_S_RegisterSound( "sound/player/land1.wav", qfalse);
+	// STRAFE 64: the paks ship purpose-made grapple audio that stock never wired
+	cgs.media.grappleHitSound  = trap_S_RegisterSound( "sound/weapons/grapple/graphit.wav", qfalse );
+	cgs.media.grapplePullSound = trap_S_RegisterSound( "sound/weapons/grapple/grappull.wav", qfalse );
 	cgs.media.hopSound = trap_S_RegisterSound( "sound/misc/menu3.wav", qfalse );
 	cgs.media.hopSoundHigh = trap_S_RegisterSound( "sound/misc/menu1.wav", qfalse );
 	cgs.media.hopSoundMax = trap_S_RegisterSound( "sound/misc/menu4.wav", qfalse );

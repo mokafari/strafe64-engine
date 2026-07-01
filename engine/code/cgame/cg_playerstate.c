@@ -642,5 +642,11 @@ void CG_TransitionPlayerState( playerState_t *ps, playerState_t *ops ) {
 	if ( ( ps->pm_flags & PMF_SLIDING ) && !( ops->pm_flags & PMF_SLIDING ) ) {
 		cg.fovPunch = 7.0f;
 	}
+
+	// grapple ATTACH: the hook just bit — a solid metallic thunk marks the
+	// moment the rope goes live (the taut-rope loop rides the hook entity).
+	if ( ( ps->pm_flags & PMF_GRAPPLE_PULL ) && !( ops->pm_flags & PMF_GRAPPLE_PULL ) ) {
+		trap_S_StartSound( NULL, ps->clientNum, CHAN_AUTO, cgs.media.grappleHitSound );
+	}
 }
 
