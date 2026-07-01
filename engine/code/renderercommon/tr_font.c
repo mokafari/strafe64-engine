@@ -391,6 +391,12 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 	}
 
 	len = ri.FS_ReadFile(name, NULL);
+	if (len != sizeof(fontInfo_t)) {
+		// legacy fallback: pregenerated font packs (e.g. Team Arena pk3s) ship
+		// size-only fontImage_<size>.dat with no source .ttf to regenerate from
+		Com_sprintf(name, sizeof(name), "fonts/fontImage_%i.dat", pointSize);
+		len = ri.FS_ReadFile(name, NULL);
+	}
 	if (len == sizeof(fontInfo_t)) {
 		ri.FS_ReadFile(name, &faceData);
 		fdOffset = 0;
