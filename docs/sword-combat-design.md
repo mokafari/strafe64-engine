@@ -1,9 +1,30 @@
 # Sword / Katana Combat — Feel & Depth Design
 
-**Status:** design plan. The neutral-game tiers below are **not yet implemented**. The
-*flow-assist* pass (superhuman-ninja feel) **is shipped** — see the box below. Goal: fix the
-"ram forward and bump into each other" problem and add a mastery ceiling — a Tekken-like
-string system on two buttons — **without** breaking the movement pillar.
+**Status:** ✅ **all tiers implemented** on branch `feature/sword-combat-depth` (flow-assist +
+Tiers 1–4), built green and smoke-tested. Goal: fix the "ram forward and bump into each
+other" problem and add a mastery ceiling — a Tekken-like string system on two buttons —
+**without** breaking the movement pillar. The tier descriptions below are the design intent;
+the "what shipped" note at the head of each tier records what actually landed.
+
+### Shipped cvar cheat-sheet (all live/archive)
+| cvar | default | what |
+|---|---|---|
+| `pm_swordRecovery` / `pm_swordRecoveryMin` | 300 / 180 | swing recovery ms at standstill / flow speed |
+| `g_swordWhiffScale` | 1.0 | recovery a connecting hit refunds (miss = exposed); 0 = off |
+| `g_swordMinRange` | 28 | cut whiffs closer than this (anti-ram); 0 = off |
+| `g_swordGuardRaise` | 90 | ms the guard must be up before it parries |
+| `g_swordRiposte` | 250 | clean-parry counter-buff window (defender +50%) |
+| `g_swordCounterHit` | 1 | hit a mid-swing enemy → +50% + pop |
+| `g_swordJuggle` | 1 | up-cut launches / down-cut spikes caught bodies |
+| `g_swordGuardBreak` | 1 | slash after dropping guard breaks a blocker (P~S) |
+| `cg_swordReticle` | 1 | hot-tint crosshair when an enemy is in kill-range |
+| _(flow-assist)_ `pm_swordMagnet`/`Range`, `g_swordAimSnap`, `g_swordChainRedirect` | 1.0/300, 12, 1 | lunge magnetism, aim-snap, kill-redirect |
+
+> **Note on Tier 4:** the counter-hit / directional-ender / guard-break moves shipped by
+> reusing the existing quadrant + combo + guard state (prediction-safe, no new networked
+> fields). A full data-driven S/P string *routing table* (arbitrary buffered move-strings) was
+> left as a future extension — the moves below deliver the Tekken feel through systems already
+> in place. Feint is covered by the guard-cancel of a buffered swing (flow-assist commit).
 
 ---
 
