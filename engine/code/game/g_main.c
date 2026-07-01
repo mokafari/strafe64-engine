@@ -76,6 +76,10 @@ vmCvar_t	g_timeBindBlock;	// GUARD TIME-DIP: intent cap while BUTTON_BLOCK held,
 								// blade drops the world into a defensive slow-mo beat (read/parry)
 vmCvar_t	g_dashSpeed;		// BUTTON_DASH horizontal burst magnitude (u/s)
 vmCvar_t	g_dashHoming;		// 0..1 blend of the dash toward the nearest enemy (melee-lunge revector)
+vmCvar_t	g_kickDamage;		// BUTTON_KICK melee kick damage (airborne kung-fu kick does 1.5x)
+vmCvar_t	g_kickKnockback;	// baseline kick shove (u/s handed to the victim on any connect)
+vmCvar_t	g_kickNinjaSpeed;	// attacker speed (u/s) past which the kick becomes a ninja LAUNCH
+vmCvar_t	g_kickNinjaScale;	// fraction of attacker speed transferred on a ninja launch (momentum theft)
 vmCvar_t	g_bulletSpeed;		// live scale on deflectable-bolt travel speed: lower = the
 								// slow-mo darts you can see/track/parry (co-tune vs the guard window)
 vmCvar_t	g_swordKnockback;	// live scale on the katana cleave-launch (multi-hit / finisher fling)
@@ -88,6 +92,7 @@ vmCvar_t	g_swordRecoveryMin;	// swing recovery ms at flow speed -> pm_swordRecov
 vmCvar_t	g_swordWhiffScale;	// 0..1 recovery a connecting hit refunds (miss = exposed)
 vmCvar_t	g_swordMinRange;	// cut whiffs closer than this (anti-ram)
 vmCvar_t	g_swordGuardRaise;	// ms the guard must be up before it parries
+vmCvar_t	g_swordRiposte;		// ms the clean-parry counter-buff window lasts
 vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field)
 vmCvar_t	g_corpseTime;		// STRAFE 64: seconds a dead body lingers before it's removed
 vmCvar_t	g_strafeAccel;		// live air-strafe tuning -> pm_strafeAccelerate
@@ -213,6 +218,10 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_timeBindBlock, "g_timeBindBlock", "0.5", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_dashSpeed, "g_dashSpeed", "430", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_dashHoming, "g_dashHoming", "0.5", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_kickDamage, "g_kickDamage", "30", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_kickKnockback, "g_kickKnockback", "320", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_kickNinjaSpeed, "g_kickNinjaSpeed", "450", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_kickNinjaScale, "g_kickNinjaScale", "1.1", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_bulletSpeed, "g_bulletSpeed", "0.45", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_swordKnockback, "g_swordKnockback", "1.0", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_swordMagnet, "pm_swordMagnet", "1.0", CVAR_ARCHIVE, 0, qfalse  },
@@ -224,6 +233,7 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_swordWhiffScale, "g_swordWhiffScale", "1.0", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_swordMinRange, "g_swordMinRange", "28", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_swordGuardRaise, "g_swordGuardRaise", "90", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordRiposte, "g_swordRiposte", "250", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_botSwordOnly, "g_botSwordOnly", "0", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_corpseTime, "g_corpseTime", "15", CVAR_ARCHIVE, 0, qfalse  },	// STRAFE 64: corpse lifetime (s)
 	{ &g_strafeAccel, "pm_strafeAccelerate", "70", CVAR_ARCHIVE, 0, qfalse  },

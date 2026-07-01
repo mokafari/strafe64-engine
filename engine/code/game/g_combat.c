@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "g_local.h"
 
 #define	SWORD_PARRY_KICK	280.0f	// ups the attacker is shoved back when their melee is parried
+#define	SWORD_RIPOSTE_LOCK	350		// extra recovery ms piled on a cleanly-parried attacker (open for the riposte)
 
 
 /*
@@ -373,7 +374,8 @@ char	*modNames[] = {
 #endif
 	"MOD_GRAPPLE",
 	"MOD_SWORD",
-	"MOD_LATTICE"
+	"MOD_LATTICE",
+	"MOD_KICK"
 };
 
 #ifdef MISSIONPACK
@@ -1064,6 +1066,13 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 						attacker->client->ps.velocity[2] += SWORD_PARRY_KICK * 0.3f;
 					}
 					G_AddEvent( attacker, EV_SWORD_HIT, SWORDHIT_STAGGER );	// clang on the attacker too
+
+					// RIPOSTE: lock the parried attacker in a longer recovery and
+					// open a brief window where the defender's counter-cut bites
+					// harder — reading the quadrant and parrying EARNS the kill,
+					// not just a shove (Sekiro posture-break payoff).
+					attacker->client->ps.weaponTime += SWORD_RIPOSTE_LOCK;
+					client->riposteTime = level.time + (int)g_swordRiposte.value;
 				}
 			} else {
 				damage = (int)( damage * 0.2f );			// blast/other: 80% soak, not a full stop

@@ -250,6 +250,14 @@ void Weapon_Sword( gentity_t *ent ) {
 		speed = SWORD_SPEED_CAP;
 	}
 	frac = speed / SWORD_SPEED_CAP;
+
+	// clean-parry RIPOSTE: a counter-cut thrown inside the window (set in
+	// g_combat.c when this player cleanly parried) bites noticeably harder.
+	if ( ent->client->riposteTime > level.time ) {
+		combomul += 0.5f;
+		ent->client->riposteTime = 0;			// consume the window
+	}
+
 	damage = (int)( ( SWORD_DMG_MIN + frac * ( SWORD_DMG_MAX - SWORD_DMG_MIN ) ) * combomul );
 	damage *= s_quadFactor;
 

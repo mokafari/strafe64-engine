@@ -1869,6 +1869,7 @@ static void CG_DrawCrosshair(void)
 	float		f;
 	float		x, y;
 	int			ca;
+	qboolean	swordThreat = qfalse;
 
 	if ( !cg_drawCrosshair.integer ) {
 		return;
@@ -1882,8 +1883,26 @@ static void CG_DrawCrosshair(void)
 		return;
 	}
 
-	// set color based on health
-	if ( cg_crosshairHealth.integer ) {
+	// STRAFE 64 melee threat cue: with the katana out, trace forward to kill-range
+	// and flag when an enemy is inside it. First-person can't judge melee spacing
+	// by eye — this lets you feel the edge of your reach and dance at it.
+	if ( cg_swordReticle.integer && cg.snap->ps.weapon == WP_SWORD ) {
+		trace_t	tr;
+		vec3_t	end;
+
+		VectorMA( cg.refdef.vieworg, 160.0f, cg.refdef.viewaxis[0], end );
+		CG_Trace( &tr, cg.refdef.vieworg, vec3_origin, vec3_origin, end,
+			cg.snap->ps.clientNum, MASK_SHOT );
+		if ( tr.entityNum < MAX_CLIENTS && tr.entityNum != cg.snap->ps.clientNum ) {
+			swordThreat = qtrue;
+		}
+	}
+
+	// set color based on health — a melee threat overrides it with a hot tint
+	if ( swordThreat ) {
+		vec4_t	tcolor = { 1.0f, 0.28f, 0.22f, 1.0f };
+		trap_R_SetColor( tcolor );
+	} else if ( cg_crosshairHealth.integer ) {
 		vec4_t		hcolor;
 
 		CG_ColorForHealth( hcolor );
@@ -1893,6 +1912,10 @@ static void CG_DrawCrosshair(void)
 	}
 
 	w = h = cg_crosshairSize.value;
+	if ( swordThreat ) {
+		w *= 1.3f;		// pulse bigger when a cut would land
+		h *= 1.3f;
+	}
 
 	// pulse the size of the crosshair when picking up items
 	f = cg.time - cg.itemPickupBlendTime;

@@ -322,6 +322,7 @@ struct gclient_s {
 	int			swordWindupUntil;	// level.time until which the last swing is in startup (counter-hit window on the victim)
 	int			dashTime;			// level.time the dash is off cooldown (BUTTON_DASH)
 	int			dashSurge;			// level.time until which a dash wakes the clock (snappy real-time lunge)
+	int			kickTime;			// level.time the melee kick is off cooldown (BUTTON_KICK)
 
 	qboolean	fireHeld;			// used for hook
 	gentity_t	*hook;				// grapple hook if out
@@ -800,6 +801,10 @@ extern	vmCvar_t	g_timeBindCrouch;	// crouch/slide time-brake: intent scale while
 extern	vmCvar_t	g_timeBindBlock;	// guard time-dip: intent cap while BUTTON_BLOCK held (defensive slow-mo)
 extern	vmCvar_t	g_dashSpeed;		// BUTTON_DASH burst magnitude (u/s)
 extern	vmCvar_t	g_dashHoming;		// 0..1 revector blend toward the nearest enemy on a dash
+extern	vmCvar_t	g_kickDamage;		// BUTTON_KICK melee kick damage (air kung-fu kick does 1.5x)
+extern	vmCvar_t	g_kickKnockback;	// baseline kick shove (u/s added to the victim)
+extern	vmCvar_t	g_kickNinjaSpeed;	// attacker speed (u/s) past which a kick becomes a ninja LAUNCH
+extern	vmCvar_t	g_kickNinjaScale;	// how much attacker speed transfers into a ninja-launch victim
 extern	vmCvar_t	g_bulletSpeed;		// live scale on deflectable-bolt travel speed
 extern	vmCvar_t	g_swordKnockback;	// live scale on the katana cleave-launch (multi-hit / finisher fling)
 extern	vmCvar_t	g_swordMagnet;		// 0..1 lunge steer toward a target -> pm_swordMagnet (0 = off)
@@ -811,6 +816,7 @@ extern	vmCvar_t	g_swordRecoveryMin;	// swing recovery ms at flow speed -> pm_swo
 extern	vmCvar_t	g_swordWhiffScale;	// 0..1 recovery a connecting hit refunds (miss = exposed); 0 = off
 extern	vmCvar_t	g_swordMinRange;	// cut whiffs closer than this (anti-ram); 0 = off
 extern	vmCvar_t	g_swordGuardRaise;	// ms the guard must be up before it parries (0 = instant)
+extern	vmCvar_t	g_swordRiposte;		// ms the clean-parry counter-buff window lasts on the defender
 extern	vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field)
 extern	vmCvar_t	g_corpseTime;		// STRAFE 64: seconds a dead body lingers before removal
 extern	vmCvar_t	g_strafeAccel;		// live air-strafe tuning cvars
