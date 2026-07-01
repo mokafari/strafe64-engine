@@ -812,6 +812,14 @@ typedef enum {
 #define SWORD_START_QUAD(p)		( (p) & 7 )
 #define SWORD_END_QUAD(p)		( ( (p) >> 3 ) & 7 )
 
+// EV_SWORD_HIT eventParm — the KIND of contact, so the client picks the matching
+// punch / hit-stop / clank-vs-clunk feedback.
+#define SWORDHIT_NORMAL		0	// ordinary flesh cut
+#define SWORDHIT_FINISHER	1	// heavy 3rd-swing finisher (weightier everything)
+#define SWORDHIT_PARRY		2	// clean directional parry — bright layered clank
+#define SWORDHIT_GLANCE		3	// glancing / soaked block — dull single clunk
+#define SWORDHIT_STAGGER	4	// attacker shoved back after being cleanly parried
+
 // pick the swing's start/end quadrants from movement input. parity (0/1) only
 // matters when the input is neutral — it alternates the default cross-cut so a
 // held attack reads as a flowing combo. Shared by pmove and (for guard dir) the

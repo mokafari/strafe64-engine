@@ -726,6 +726,7 @@ typedef struct {
 	int			swordStartQuad;		// directional swing: start quadrant (from the fire event parm)
 	int			swordEndQuad;		// directional swing: end quadrant — the blade sweeps start->end
 	int			swordHitStopTime;	// cg.time a blade hit froze the swing (hit-stop), 0 = none
+	int			swordHitStopMs;		// duration of the current hit-stop (heavier on finisher / clean parry)
 	int			swordQuiverTime;	// cg.time a hit/parry set the blade quivering, 0 = none
 	float		swordQuiverMag;		// quiver amplitude (heavier on a finisher / parry)
 

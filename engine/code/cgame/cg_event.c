@@ -1276,19 +1276,34 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 
 	case EV_SWORD_HIT:
 		DEBUGNAME("EV_SWORD_HIT");
-		// blade connected: meaty impact "chunk" + a short view punch for the
-		// attacker so hacking lands with weight. eventParm != 0 = finisher.
-		trap_S_StartSound( NULL, es->number, CHAN_AUTO, cgs.media.swordHitSound );
-		if ( es->number == cg.snap->ps.clientNum ) {
-			float	mag = es->eventParm ? 1.8f : 1.0f;
-			cg.weaponKickTime = cg.time;
-			cg.weaponKickPitch = 2.6f * mag;					// brief downward bite
-			cg.weaponKickRoll = ( ( cg.swordSwingStep & 1 ) ? -1.0f : 1.0f ) * 1.8f * mag;
-			// the cut BITES: the blade sticks for a beat (hit-stop) then shudders.
-			// Together with the view punch this is what gives a connect real weight.
-			cg.swordHitStopTime = cg.time;
-			cg.swordQuiverTime  = cg.time;
-			cg.swordQuiverMag   = es->eventParm ? 8.0f : 5.0f;	// heavier on a finisher
+		// blade contact: meaty impact "chunk" + a short view punch so a connect
+		// lands with weight. eventParm (SWORDHIT_*) says what kind of contact so a
+		// clean parry rings and a glance thuds.
+		{
+			int			hittype = es->eventParm;
+			qboolean	heavy = ( hittype == SWORDHIT_FINISHER
+				|| hittype == SWORDHIT_PARRY || hittype == SWORDHIT_STAGGER );
+
+			trap_S_StartSound( NULL, es->number, CHAN_AUTO, cgs.media.swordHitSound );
+			// CLANK vs CLUNK: a clean parry (or the attacker's stagger clang) layers
+			// the heavier steel ring on top; a glancing block stays the dull single
+			// hit. Reuses the finisher whoosh asset as the metallic clash.
+			if ( ( hittype == SWORDHIT_PARRY || hittype == SWORDHIT_STAGGER )
+					&& cgs.media.swordHeavySound ) {
+				trap_S_StartSound( NULL, es->number, CHAN_WEAPON, cgs.media.swordHeavySound );
+			}
+			if ( es->number == cg.snap->ps.clientNum ) {
+				float	mag = heavy ? 1.8f : 1.0f;
+				cg.weaponKickTime = cg.time;
+				cg.weaponKickPitch = 2.6f * mag;					// brief downward bite
+				cg.weaponKickRoll = ( ( cg.swordSwingStep & 1 ) ? -1.0f : 1.0f ) * 1.8f * mag;
+				// the cut BITES: the blade sticks for a beat (hit-stop) then shudders.
+				// A finisher / clean parry freezes longer so it reads as decisive.
+				cg.swordHitStopTime = cg.time;
+				cg.swordHitStopMs   = heavy ? 90 : SWORD_HITSTOP_MS;
+				cg.swordQuiverTime  = cg.time;
+				cg.swordQuiverMag   = heavy ? 8.0f : 5.0f;			// heavier on a finisher/parry
+			}
 		}
 		break;
 

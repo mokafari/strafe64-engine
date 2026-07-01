@@ -443,7 +443,7 @@ void Weapon_Sword( gentity_t *ent ) {
 	// blade connected: tell the attacker so the client lands an impact "chunk"
 	// + view punch (heavier on a finisher). This is what makes hacking bite.
 	if ( numHit > 0 ) {
-		G_AddEvent( ent, EV_SWORD_HIT, finisher ? 1 : 0 );
+		G_AddEvent( ent, EV_SWORD_HIT, finisher ? SWORDHIT_FINISHER : SWORDHIT_NORMAL );
 
 		// WHIFF PUNISH: a CONNECTING hit refunds recovery toward the fast value, so
 		// a landed cut flows straight into the next while a MISS eats the full

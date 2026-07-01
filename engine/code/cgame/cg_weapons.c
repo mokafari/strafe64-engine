@@ -1513,7 +1513,8 @@ int CG_SwordSwingDt( int swingTime ) {
 
 	if ( cg.swordHitStopTime ) {
 		int	since = cg.time - cg.swordHitStopTime;
-		if ( since >= 0 && since < SWORD_HITSTOP_MS ) {
+		int	holdMs = cg.swordHitStopMs > 0 ? cg.swordHitStopMs : SWORD_HITSTOP_MS;
+		if ( since >= 0 && since < holdMs ) {
 			int held = cg.swordHitStopTime - swingTime;		// freeze at the impact frame
 			if ( held >= 0 && held < dt ) {
 				dt = held;

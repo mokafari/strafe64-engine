@@ -1047,7 +1047,9 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 				}
 
 				damage = (int)( damage * blockFrac );
-				G_AddEvent( targ, EV_SWORD_HIT, 0 );		// clang on the defender
+				// clean parry rings (clank), a glancing block thuds (clunk)
+				G_AddEvent( targ, EV_SWORD_HIT,
+					blockFrac <= 0.0f ? SWORDHIT_PARRY : SWORDHIT_GLANCE );
 
 				// a CLEAN parry (full stop) clashes and shoves the attacker back,
 				// staggered and open for the riposte — this is what makes the duel read
@@ -1061,11 +1063,11 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 						attacker->client->ps.velocity[1] -= push[1] * SWORD_PARRY_KICK;
 						attacker->client->ps.velocity[2] += SWORD_PARRY_KICK * 0.3f;
 					}
-					G_AddEvent( attacker, EV_SWORD_HIT, 0 );	// clang on the attacker too
+					G_AddEvent( attacker, EV_SWORD_HIT, SWORDHIT_STAGGER );	// clang on the attacker too
 				}
 			} else {
 				damage = (int)( damage * 0.2f );			// blast/other: 80% soak, not a full stop
-				G_AddEvent( targ, EV_SWORD_HIT, 0 );
+				G_AddEvent( targ, EV_SWORD_HIT, SWORDHIT_GLANCE );
 			}
 
 			// clash spark: a guard contact (clean parry or soaked blast) throws
