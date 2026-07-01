@@ -83,6 +83,11 @@ vmCvar_t	g_swordMagnet;		// 0..1 lunge steer toward a target -> pm_swordMagnet
 vmCvar_t	g_swordMagnetRange;	// detection reach for the lunge magnet -> pm_swordMagnetRange
 vmCvar_t	g_swordAimSnap;		// max degrees the cut bends onto a near-miss (0 = off)
 vmCvar_t	g_swordChainRedirect;	// 1 = on-kill kick aims at the next body (chain flow)
+vmCvar_t	g_swordRecovery;	// swing recovery ms at standstill -> pm_swordRecovery
+vmCvar_t	g_swordRecoveryMin;	// swing recovery ms at flow speed -> pm_swordRecoveryMin
+vmCvar_t	g_swordWhiffScale;	// 0..1 recovery a connecting hit refunds (miss = exposed)
+vmCvar_t	g_swordMinRange;	// cut whiffs closer than this (anti-ram)
+vmCvar_t	g_swordGuardRaise;	// ms the guard must be up before it parries
 vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field)
 vmCvar_t	g_corpseTime;		// STRAFE 64: seconds a dead body lingers before it's removed
 vmCvar_t	g_strafeAccel;		// live air-strafe tuning -> pm_strafeAccelerate
@@ -214,6 +219,11 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_swordMagnetRange, "pm_swordMagnetRange", "300", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_swordAimSnap, "g_swordAimSnap", "12", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_swordChainRedirect, "g_swordChainRedirect", "1", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordRecovery, "pm_swordRecovery", "300", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordRecoveryMin, "pm_swordRecoveryMin", "180", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordWhiffScale, "g_swordWhiffScale", "1.0", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordMinRange, "g_swordMinRange", "28", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_swordGuardRaise, "g_swordGuardRaise", "90", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_botSwordOnly, "g_botSwordOnly", "0", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_corpseTime, "g_corpseTime", "15", CVAR_ARCHIVE, 0, qfalse  },	// STRAFE 64: corpse lifetime (s)
 	{ &g_strafeAccel, "pm_strafeAccelerate", "70", CVAR_ARCHIVE, 0, qfalse  },

@@ -231,6 +231,12 @@ extern float	pm_airControlAmount;
 extern float	pm_swordMagnet;			// 0..1 strength of the lunge steer toward a target
 extern float	pm_swordMagnetRange;	// detection reach for the magnet (units)
 
+// STRAFE 64 sword neutral game — swing recovery is speed-INVERSE: a standstill
+// swing is committed (long recovery, punishable if it whiffs), at flow speed it
+// snaps back fast so the chain never stalls. Predicted; bridged both sides.
+extern float	pm_swordRecovery;		// recovery ms at a standstill (the committed value)
+extern float	pm_swordRecoveryMin;	// recovery ms at full flow speed (the snappy value)
+
 // shared pure-A/D air-strafe optimum (defined in bg_pmove.c). The HUD strafe
 // meter and the bots both read these so the displayed optimum and the angle the
 // bots actually carve at can never drift apart. frameSec = pmove tick (msec/1000).

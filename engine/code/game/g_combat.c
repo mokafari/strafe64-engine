@@ -999,8 +999,13 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 	// STRAFE 64: a raised katana guard stops frontal damage. Projectiles are
 	// parried (deflected) earlier in the missile code; this catches the sword,
 	// the gauntlet and explosions that wash over the guard.
+	// guard must be SETTLED to parry: a blade raised only a few ms ago hasn't
+	// formed a real cover yet, so reacting-to-block on the last frame won't save
+	// you — you have to read the swing early. g_swordGuardRaise 0 disables.
 	if ( client && ( client->ps.eFlags & EF_BLOCKING ) && targ != attacker
-			&& dir && !( dflags & DAMAGE_NO_PROTECTION ) ) {
+			&& dir && !( dflags & DAMAGE_NO_PROTECTION )
+			&& ( g_swordGuardRaise.value <= 0.0f
+				|| level.time - client->guardRaiseTime >= (int)g_swordGuardRaise.value ) ) {
 		vec3_t	vf;
 
 		AngleVectors( client->ps.viewangles, vf, NULL, NULL );

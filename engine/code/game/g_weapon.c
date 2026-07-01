@@ -336,6 +336,15 @@ void Weapon_Sword( gentity_t *ent ) {
 			continue;
 		}
 
+		// MIN-RANGE: too close to get the blade moving — a cut needs room, so an
+		// enemy in your face whiffs and you must step to distance (kills the
+		// occupy-the-same-voxel ram). Speed-gated: a fast fly-by ignores it, since
+		// at flow speed you're passing through, not standing on them.
+		if ( g_swordMinRange.value > 0.0f && speed < SWORD_VEL_ALIGN
+				&& tr.fraction * range < g_swordMinRange.value ) {
+			continue;
+		}
+
 		// only hit each entity once per swing
 		for ( i = 0 ; i < numHit ; i++ ) {
 			if ( hit[i] == tr.entityNum ) {
@@ -435,6 +444,21 @@ void Weapon_Sword( gentity_t *ent ) {
 	// + view punch (heavier on a finisher). This is what makes hacking bite.
 	if ( numHit > 0 ) {
 		G_AddEvent( ent, EV_SWORD_HIT, finisher ? 1 : 0 );
+
+		// WHIFF PUNISH: a CONNECTING hit refunds recovery toward the fast value, so
+		// a landed cut flows straight into the next while a MISS eats the full
+		// committed recovery pmove set. This is what makes whiffing the exposed
+		// choice — the core of the neutral game. g_swordWhiffScale 0 disables.
+		if ( g_swordWhiffScale.value > 0.0f ) {
+			int	floorT = (int)pm_swordRecoveryMin;
+			int	refund = (int)( ( pm_swordRecovery - pm_swordRecoveryMin ) * g_swordWhiffScale.value );
+
+			if ( ent->client->ps.weaponTime - refund > floorT ) {
+				ent->client->ps.weaponTime -= refund;
+			} else if ( ent->client->ps.weaponTime > floorT ) {
+				ent->client->ps.weaponTime = floorT;
+			}
+		}
 	}
 }
 

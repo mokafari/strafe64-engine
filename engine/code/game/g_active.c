@@ -1309,6 +1309,8 @@ void ClientThink_real( gentity_t *ent ) {
 	// server pmove agree on how hard the swing snaps onto a target
 	pm_swordMagnet       = g_swordMagnet.value;
 	pm_swordMagnetRange  = g_swordMagnetRange.value;
+	pm_swordRecovery     = g_swordRecovery.value;
+	pm_swordRecoveryMin  = g_swordRecoveryMin.value;
 
 	VectorCopy( client->ps.origin, client->oldOrigin );
 
@@ -1329,6 +1331,19 @@ void ClientThink_real( gentity_t *ent ) {
 #else
 		Pmove (&pm);
 #endif
+
+	// STRAFE 64 guard commitment: stamp when the blade was first raised so the
+	// parry only becomes protective after g_swordGuardRaise ms — reading the swing
+	// early is the skill, not panic-blocking on reaction (Sekiro block-early).
+	if ( ent->client->ps.eFlags & EF_BLOCKING ) {
+		if ( !ent->client->wasBlocking ) {
+			ent->client->guardRaiseTime = level.time;
+		}
+		ent->client->wasBlocking = qtrue;
+	} else {
+		ent->client->wasBlocking = qfalse;
+		ent->client->guardRaiseTime = 0;
+	}
 
 	// SUPERHOT-style time dilation: drive the world clock from movement intent
 	G_UpdateTimeBind( ent, ucmd, msec );

@@ -58,6 +58,8 @@ float	pm_airControlAmount = 150.0f;	// W-only velocity turning strength
 // live from cvars (g_swordMagnet / g_swordMagnetRange) via g_active.c.
 float	pm_swordMagnet = 1.0f;			// 0..1 steer strength (0 = raw forward lunge)
 float	pm_swordMagnetRange = 300.0f;	// how far ahead the magnet looks for a target
+float	pm_swordRecovery = 300.0f;		// swing recovery ms at a standstill (committed / punishable)
+float	pm_swordRecoveryMin = 180.0f;	// swing recovery ms at flow speed (snappy, keeps the chain)
 
 // bunny hop chain (jump can be held: rehop on the landing frame, no friction)
 int		pm_bhopWindowMs = 100;			// grounded longer than this breaks the chain
@@ -2434,8 +2436,14 @@ static float PM_SwordMagnetLunge( vec3_t outDir ) {
 			if ( VectorNormalize( outDir ) == 0.0f ) {
 				VectorCopy( flatforward, outDir );
 			}
-			// close the gap: stronger pull the closer they are, so you land in range
-			lunge = 120.0f + ( 220.0f * bestWeight * pm_swordMagnet );
+			// close the gap: stronger pull the closer they are, so you land in
+			// range — but don't ram a target you're already on top of (the
+			// faceplant-mash the neutral game discourages), just step baseline
+			if ( bestDist < 45.0f ) {
+				lunge = 120.0f;
+			} else {
+				lunge = 120.0f + ( 220.0f * bestWeight * pm_swordMagnet );
+			}
 			speed = lunge;
 		}
 	}
@@ -2647,7 +2655,19 @@ static void PM_Weapon( void ) {
 		addTime = 400;
 		break;
 	case WP_SWORD:
-		addTime = 230;		// brisk hack-and-slash cadence (not machine-gun fast)
+		{
+			// speed-INVERSE recovery: a standstill swing is committed (long, so a
+			// whiff is punishable), a full-speed pass snaps back fast so the flow
+			// chain never stalls. A connecting hit refunds toward the fast value
+			// server-side (g_swordWhiffScale) — so the MISS is what leaves you open.
+			float	sp = sqrt( pm->ps->velocity[0] * pm->ps->velocity[0]
+				+ pm->ps->velocity[1] * pm->ps->velocity[1] );
+			float	t = sp / 600.0f;			// 0 at rest -> 1 at flow speed
+			if ( t > 1.0f ) {
+				t = 1.0f;
+			}
+			addTime = (int)( pm_swordRecovery - ( pm_swordRecovery - pm_swordRecoveryMin ) * t );
+		}
 		break;
 	case WP_LIGHTNING:
 		addTime = 50;
