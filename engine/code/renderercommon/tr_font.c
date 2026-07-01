@@ -346,6 +346,7 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 	void *faceData;
 	int i, len;
 	char name[1024];
+	char fontTag[MAX_QPATH];
 
 	if (!fontName) {
 		ri.Printf(PRINT_ALL, "RE_RegisterFont: called with empty name\n");
@@ -356,6 +357,24 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 		pointSize = 12;
 	}
 
+	// Derive a filesystem-safe tag from the font name so the atlas cache is keyed
+	// per-font, not just per-size. The stock key "fonts/fontImage_<size>.dat"
+	// collides for two different fonts at the same point size — the second
+	// RegisterFont matches the first's cached entry and returns the WRONG font.
+	{
+		const char *base = COM_SkipPath((char *)fontName);
+		int t = 0, c;
+		while ((c = base[t] & 0xff) != 0 && c != '.' && t < (int)sizeof(fontTag) - 1) {
+			fontTag[t] = ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			              (c >= '0' && c <= '9')) ? (char)c : '_';
+			t++;
+		}
+		fontTag[t] = '\0';
+		if (t == 0) {
+			Q_strncpyz(fontTag, "font", sizeof(fontTag));
+		}
+	}
+
 	R_IssuePendingRenderCommands();
 
 	if (registeredFontCount >= MAX_FONTS) {
@@ -363,7 +382,7 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 		return;
 	}
 
-	Com_sprintf(name, sizeof(name), "fonts/fontImage_%i.dat",pointSize);
+	Com_sprintf(name, sizeof(name), "fonts/fontImage_%s_%i.dat", fontTag, pointSize);
 	for (i = 0; i < registeredFontCount; i++) {
 		if (Q_stricmp(name, registeredFont[i].name) == 0) {
 			Com_Memcpy(font, &registeredFont[i], sizeof(fontInfo_t));
@@ -492,7 +511,7 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 				imageBuff[left++] = ((float)out[k] * max);
 			}
 
-			Com_sprintf (name, sizeof(name), "fonts/fontImage_%i_%i.tga", imageNumber++, pointSize);
+			Com_sprintf (name, sizeof(name), "fonts/fontImage_%s_%i_%i.tga", fontTag, imageNumber++, pointSize);
 			if (r_saveFontData->integer) { 
 				WriteTGA(name, imageBuff, 256, 256);
 			}
@@ -528,7 +547,7 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 	Com_Memcpy(&registeredFont[registeredFontCount++], font, sizeof(fontInfo_t));
 
 	if (r_saveFontData->integer) {
-		ri.FS_WriteFile(va("fonts/fontImage_%i.dat", pointSize), font, sizeof(fontInfo_t));
+		ri.FS_WriteFile(va("fonts/fontImage_%s_%i.dat", fontTag, pointSize), font, sizeof(fontInfo_t));
 	}
 
 	ri.Free(out);
