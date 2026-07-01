@@ -95,6 +95,9 @@ static void CG_Obituary( entityState_t *ent ) {
 	attacker = ent->otherEntityNum2;
 	mod = ent->eventParm;
 
+	// remember who killed us, so the killcam can frame the attacker
+	CG_KillcamNoteObituary( target, attacker, mod );
+
 	if ( target < 0 || target >= MAX_CLIENTS ) {
 		CG_Error( "CG_Obituary: target out of range" );
 	}

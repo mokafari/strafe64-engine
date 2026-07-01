@@ -552,7 +552,15 @@ void CG_TransitionPlayerState( playerState_t *ps, playerState_t *ops ) {
 		trap_S_StartLocalSound( cgs.media.excellentSound, CHAN_ANNOUNCER );
 	}
 
-	// respawning
+	// roll the cinematic killcam on the moment of death
+	if ( ps->stats[STAT_HEALTH] <= 0 && ops->stats[STAT_HEALTH] > 0 ) {
+		CG_KillcamPlayerDied();
+	}
+
+	// respawning. NOTE: don't stop the killcam here -- this also fires when the
+	// dead pilot's view switches to FOLLOW the killer (ps flips to their
+	// clientNum + spawn count), which would cut the kill screen short. The
+	// killcam ends itself on a genuine local respawn (see CG_KillcamUpdate).
 	if ( ps->persistant[PERS_SPAWN_COUNT] != ops->persistant[PERS_SPAWN_COUNT] ) {
 		CG_Respawn();
 	}

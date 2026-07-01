@@ -856,6 +856,14 @@ static int CG_CalcViewValues( void ) {
 	CG_CalcVrect();
 
 	ps = &cg.predictedPlayerState;
+
+	// STRAFE 64: the cinematic killcam owns the camera while it runs. It flies a
+	// director rig on the real clock through the (time-bind-frozen) death moment.
+	if ( CG_KillcamActive() ) {
+		CG_KillcamCalcView();	// sets vieworg, angles AND fov (its own framing)
+		AnglesToAxis( cg.refdefViewAngles, cg.refdef.viewaxis );
+		return qfalse;
+	}
 /*
 	if (cg.cameraMode) {
 		vec3_t origin, angles;
@@ -1642,6 +1650,10 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	// decide on third person view
 	cg.renderingThirdPerson = cg.snap->ps.persistant[PERS_TEAM] != TEAM_SPECTATOR
 							&& (cg_thirdPerson.integer || (cg.snap->ps.stats[STAT_HEALTH] <= 0));
+
+	// advance/expire the cinematic killcam (drives rack-focus + bloom, restores
+	// the look on respawn or timeout) before the view is built
+	CG_KillcamUpdate();
 
 	// build cg.refdef
 	inwater = CG_CalcViewValues();

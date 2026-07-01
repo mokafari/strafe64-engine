@@ -1382,6 +1382,10 @@ extern	vmCvar_t		cg_oldRail;
 extern	vmCvar_t		cg_oldRocket;
 extern	vmCvar_t		cg_oldPlasma;
 extern	vmCvar_t		cg_trueLightning;
+extern	vmCvar_t		cg_killcam;			// STRAFE 64: cinematic death replay (0 off, 1 on)
+extern	vmCvar_t		cg_killcamStyle;	// 0 = diagnostic dusk (subtle), 1 = full Matrix
+extern	vmCvar_t		cg_killcamTime;		// camera-move duration in ms (then holds until respawn)
+extern	vmCvar_t		cg_killcamShop;		// 0 = no buy menu (killcam is the whole kill screen), 1 = loadout shop
 #ifdef MISSIONPACK
 extern	vmCvar_t		cg_redTeamName;
 extern	vmCvar_t		cg_blueTeamName;
@@ -1439,6 +1443,19 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
 // race layer (cg_view.c)
 void CG_RaceFrame( void );
+
+// cg_killcam.c -- cinematic death replay
+void CG_KillcamNoteObituary( int victim, int attacker, int mod );
+void CG_KillcamPlayerDied( void );
+void CG_KillcamStop( void );
+void CG_KillcamUpdate( void );
+qboolean CG_KillcamActive( void );
+qboolean CG_KillcamHolding( void );
+void CG_KillcamCalcView( void );
+void CG_DrawKillcam( void );
+
+// cg_draw.c
+void CG_DrawMissionReport( void );
 void CG_GhostInit( void );
 int CG_GhostBestMs( void );
 float CG_VoidZ( void );

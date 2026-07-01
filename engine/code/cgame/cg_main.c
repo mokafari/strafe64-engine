@@ -242,6 +242,10 @@ vmCvar_t	cg_oldRail;
 vmCvar_t	cg_oldRocket;
 vmCvar_t	cg_oldPlasma;
 vmCvar_t	cg_trueLightning;
+vmCvar_t	cg_killcam;			// STRAFE 64: cinematic death replay
+vmCvar_t	cg_killcamStyle;	// 0 = diagnostic dusk (subtle), 1 = full Matrix
+vmCvar_t	cg_killcamTime;		// camera-move duration in ms (then holds)
+vmCvar_t	cg_killcamShop;		// 0 = no buy menu, 1 = loadout shop on the kill screen
 
 vmCvar_t	cg_slideDust;		// STRAFE 64: crouch-slide dust — built in baseq3 too (CG_SlideTrail is not MISSIONPACK-gated)
 
@@ -437,7 +441,11 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_oldRail, "cg_oldRail", "1", CVAR_ARCHIVE},
 	{ &cg_oldRocket, "cg_oldRocket", "1", CVAR_ARCHIVE},
 	{ &cg_oldPlasma, "cg_oldPlasma", "1", CVAR_ARCHIVE},
-	{ &cg_trueLightning, "cg_trueLightning", "0.0", CVAR_ARCHIVE}
+	{ &cg_trueLightning, "cg_trueLightning", "0.0", CVAR_ARCHIVE},
+	{ &cg_killcam, "cg_killcam", "1", CVAR_ARCHIVE},
+	{ &cg_killcamStyle, "cg_killcamStyle", "0", CVAR_ARCHIVE},
+	{ &cg_killcamTime, "cg_killcamTime", "8000", CVAR_ARCHIVE},
+	{ &cg_killcamShop, "cg_killcamShop", "0", CVAR_ARCHIVE}
 //	{ &cg_pmove_fixed, "cg_pmove_fixed", "0", CVAR_USERINFO | CVAR_ARCHIVE }
 };
 
