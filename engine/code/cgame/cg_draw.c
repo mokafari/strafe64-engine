@@ -1552,10 +1552,52 @@ static void CG_DrawCrosshair(void)
 	if (ca < 0) {
 		ca = 0;
 	}
+
+	// STRAFE 64 procedural crosshairs (10+): crisp resolution-independent
+	// rect crosshairs with a dark outline so they read on the bright dev
+	// floors — no stock icon art. 10 = gap-cross + dot, 11 = dot, 12 = T.
+	// cg_crosshairSize scales the arms, cg_crosshairHealth tints as usual,
+	// and the item-pickup pulse rides the same w scaling as the shaders.
+	if ( ca >= 10 ) {
+		float	cx = 320.0f + cg_crosshairX.integer;
+		float	cy = 240.0f + cg_crosshairY.integer;
+		float	arm = ( w / cg_crosshairSize.value ) * 6.0f;	// pulse-scaled
+		float	gap = 3.0f, th = 1.4f;
+		vec4_t	cc, oc;
+		int		style = ca - 10;
+
+		if ( cg_crosshairHealth.integer ) {
+			CG_ColorForHealth( cc );
+		} else {
+			cc[0] = 0.92f; cc[1] = 0.96f; cc[2] = 1.0f; cc[3] = 1.0f;
+		}
+		oc[0] = oc[1] = oc[2] = 0.0f; oc[3] = 0.65f;
+
+		#define S64_XHAIR_RECT( rx, ry, rw, rh )						\
+			CG_FillRect( (rx) - 0.6f, (ry) - 0.6f, (rw) + 1.2f, (rh) + 1.2f, oc );	\
+			CG_FillRect( (rx), (ry), (rw), (rh), cc )
+
+		if ( style == 0 || style == 2 ) {			// arms (T skips the top)
+			if ( style == 0 ) {
+				S64_XHAIR_RECT( cx - th / 2, cy - gap - arm, th, arm );	// up
+			}
+			S64_XHAIR_RECT( cx - th / 2, cy + gap, th, arm );			// down
+			S64_XHAIR_RECT( cx - gap - arm, cy - th / 2, arm, th );	// left
+			S64_XHAIR_RECT( cx + gap, cy - th / 2, arm, th );			// right
+		}
+		if ( style == 0 || style == 1 ) {			// center dot
+			S64_XHAIR_RECT( cx - th, cy - th, th * 2, th * 2 );
+		}
+		#undef S64_XHAIR_RECT
+
+		trap_R_SetColor( NULL );
+		return;
+	}
+
 	hShader = cgs.media.crosshairShader[ ca % NUM_CROSSHAIRS ];
 
-	trap_R_DrawStretchPic( x + cg.refdef.x + 0.5 * (cg.refdef.width - w), 
-		y + cg.refdef.y + 0.5 * (cg.refdef.height - h), 
+	trap_R_DrawStretchPic( x + cg.refdef.x + 0.5 * (cg.refdef.width - w),
+		y + cg.refdef.y + 0.5 * (cg.refdef.height - h),
 		w, h, 0, 0, 1, 1, hShader );
 
 	trap_R_SetColor( NULL );
