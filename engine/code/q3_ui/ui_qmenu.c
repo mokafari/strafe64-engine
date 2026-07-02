@@ -1881,9 +1881,18 @@ void Menu_Cache( void )
 		// the blend effect turns to shit with the normal 
 		uis.menuBackShader	= trap_R_RegisterShaderNoMip( "menubackRagePro" );
 	} else {
-		uis.menuBackShader	= trap_R_RegisterShaderNoMip( "menuback" );
+		// STRAFE 64: prefer the NERV plate from the identity pak (unique name —
+		// duplicate shader names resolve to the lowest-priority pak, so stock
+		// "menuback" can't be overridden by name; same rule as the console).
+		uis.menuBackShader	= trap_R_RegisterShaderNoMip( "s64menuback" );
+		if ( !uis.menuBackShader ) {
+			uis.menuBackShader	= trap_R_RegisterShaderNoMip( "menuback" );
+		}
 	}
-	uis.menuBackNoLogoShader = trap_R_RegisterShaderNoMip( "menubacknologo" );
+	uis.menuBackNoLogoShader = trap_R_RegisterShaderNoMip( "s64menuback" );
+	if ( !uis.menuBackNoLogoShader ) {
+		uis.menuBackNoLogoShader = trap_R_RegisterShaderNoMip( "menubacknologo" );
+	}
 
 	menu_in_sound	= trap_S_RegisterSound( "sound/misc/menu1.wav", qfalse );
 	menu_move_sound	= trap_S_RegisterSound( "sound/misc/menu2.wav", qfalse );

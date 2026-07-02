@@ -307,6 +307,25 @@ s64console
 		tcMod scroll 0 -0.05
 	}
 }
+
+// Main-menu background: same NERV terminal plate (slightly deeper, slower
+// drift). Replaces OA's logo menuback via the same unique-name mechanism.
+s64menuback
+{
+	nopicmip
+	nomipmaps
+	{
+		map $whiteimage
+		rgbGen const ( 0.008 0.014 0.020 )
+	}
+	{
+		map textures/strafe64/matrix.tga
+		blendFunc GL_ONE GL_ONE
+		rgbGen const ( 0.04 0.07 0.06 )
+		tcMod scale 1.0 1.2
+		tcMod scroll 0.01 -0.03
+	}
+}
 """
 
 
