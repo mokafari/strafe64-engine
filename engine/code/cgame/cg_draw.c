@@ -1935,8 +1935,14 @@ static void CG_DrawVote(void) {
 	s = "or press ESC then click Vote";
 	CG_DrawSmallString( 0, 58 + SMALLCHAR_HEIGHT + 2, s, 1.0F );
 #else
-	s = va("VOTE(%i):%s yes:%i no:%i", sec, cgs.voteString, cgs.voteYes, cgs.voteNo );
-	CG_DrawSmallString( 0, 58, s, 1.0F );
+	// NERV-themed: centred matrix line, amber count, cyan tallies
+	{
+		vec4_t amber = { 1.0f, 0.6f, 0.06f, 1.0f };
+		int    vw;
+		s = va( "VOTE %i  /  %s  /  YES %i  NO %i", sec, cgs.voteString, cgs.voteYes, cgs.voteNo );
+		vw = CG_MatrixStringWidth( s, 1.1f );
+		CG_DrawMatrixString( 320 - vw / 2, 58, s, 1.1f, amber );
+	}
 #endif
 }
 
@@ -2187,9 +2193,10 @@ static void CG_DrawWarmup( void ) {
 	}
 
 	if ( sec < 0 ) {
-		s = "Waiting for players";		
-		w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
-		CG_DrawBigString(320 - w / 2, 24, s, 1.0F);
+		vec4_t dim = { 0.55f, 0.42f, 0.20f, 1.0f };
+		s = "AWAITING PILOTS";
+		w = CG_MatrixStringWidth( s, 1.4f );
+		CG_DrawMatrixString( 320 - w / 2, 24, s, 1.4f, dim );
 		cg.warmupCount = 0;
 		return;
 	}
@@ -2214,14 +2221,11 @@ static void CG_DrawWarmup( void ) {
 			w = CG_Text_Width(s, 0.6f, 0);
 			CG_Text_Paint(320 - w / 2, 60, 0.6f, colorWhite, s, 0, 0, ITEM_TEXTSTYLE_SHADOWEDMORE);
 #else
-			w = CG_DrawStrlen( s );
-			if ( w > 640 / GIANT_WIDTH ) {
-				cw = 640 / w;
-			} else {
-				cw = GIANT_WIDTH;
+			{
+				vec4_t amber = { 1.0f, 0.6f, 0.06f, 1.0f };
+				w = CG_MatrixStringWidth( s, 2.0f );
+				CG_DrawMatrixString( 320 - w / 2, 20, s, 2.0f, amber );
 			}
-			CG_DrawStringExt( 320 - w * cw/2, 20,s, colorWhite, 
-					qfalse, qtrue, cw, (int)(cw * 1.5f), 0 );
 #endif
 		}
 	} else {
@@ -2246,14 +2250,11 @@ static void CG_DrawWarmup( void ) {
 		w = CG_Text_Width(s, 0.6f, 0);
 		CG_Text_Paint(320 - w / 2, 90, 0.6f, colorWhite, s, 0, 0, ITEM_TEXTSTYLE_SHADOWEDMORE);
 #else
-		w = CG_DrawStrlen( s );
-		if ( w > 640 / GIANT_WIDTH ) {
-			cw = 640 / w;
-		} else {
-			cw = GIANT_WIDTH;
+		{
+			vec4_t amber = { 1.0f, 0.6f, 0.06f, 1.0f };
+			w = CG_MatrixStringWidth( s, 2.0f );
+			CG_DrawMatrixString( 320 - w / 2, 25, s, 2.0f, amber );
 		}
-		CG_DrawStringExt( 320 - w * cw/2, 25,s, colorWhite, 
-				qfalse, qtrue, cw, (int)(cw * 1.1f), 0 );
 #endif
 	}
 
@@ -2314,9 +2315,13 @@ static void CG_DrawWarmup( void ) {
 		break;
 	}
 
-	w = CG_DrawStrlen( s );
-	CG_DrawStringExt( 320 - w * cw/2, 70, s, colorWhite, 
-			qfalse, qtrue, cw, (int)(cw * 1.5), 0 );
+	{
+		// countdown grows as it approaches zero (cw 16->28 mapped to cell)
+		vec4_t	cyan = { 0.32f, 0.86f, 1.0f, 1.0f };
+		float	cell = cw / 10.0f;
+		w = CG_MatrixStringWidth( s, cell );
+		CG_DrawMatrixString( 320 - w / 2, 70, s, cell, cyan );
+	}
 #endif
 }
 
