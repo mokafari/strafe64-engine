@@ -708,6 +708,28 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		}
 		break;
 
+	case EV_WALLJUMP:
+		DEBUGNAME("EV_WALLJUMP");
+		// wall kick-off: jump grunt + a landing-thump layer (boot hits wall) +
+		// dust burst AT the wall contact, kicked out along the wall normal —
+		// distinct from a ground hop in both ear and eye. eventParm = normal.
+		trap_S_StartSound( NULL, es->number, CHAN_VOICE, CG_CustomSound( es->number, "*jump1.wav" ) );
+		trap_S_StartSound( NULL, es->number, CHAN_BODY, cgs.media.landSound );
+		{
+			vec3_t	normal, spot;
+
+			ByteToDir( es->eventParm, normal );
+			VectorMA( cent->lerpOrigin, -14, normal, spot );	// at the wall face
+			CG_SmokePuff( spot, normal,
+						  16,
+						  0.75f, 0.82f, 0.95f, 0.45f,	// cool synth-grey
+						  320,
+						  cg.time, 0,
+						  LEF_PUFF_DONT_SCALE,
+						  cgs.media.smokePuffShader );
+		}
+		break;
+
 	case EV_DASH:
 		DEBUGNAME("EV_DASH");
 		// STRAFE 64: SHIFT revector dash — same chromatic-ghost strobe trail as the

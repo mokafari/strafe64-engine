@@ -20,259 +20,248 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 //
-// cg_scoreboard -- draw the scoreboard on top of the game screen
+// cg_scoreboard -- the STRAFE 64 "COMBAT RECORD": a clean NERV/MAGI panel in
+// the HUD's matrix font. Replaces the stock Q3/OpenArena board (3D heads,
+// medal icons, giant char rows) with flat plates, an accent rail, colored
+// pings and an (AI) tag for bots. No stock icon art is referenced at all.
+//
 #include "cg_local.h"
 
+// palette — matches the NERV HUD in cg_draw.c
+static vec4_t sb_amber  = { 1.00f, 0.60f, 0.06f, 1.00f };
+static vec4_t sb_cyan   = { 0.32f, 0.86f, 1.00f, 1.00f };
+static vec4_t sb_green  = { 0.40f, 1.00f, 0.50f, 1.00f };
+static vec4_t sb_red    = { 1.00f, 0.12f, 0.16f, 1.00f };
+static vec4_t sb_blue   = { 0.35f, 0.55f, 1.00f, 1.00f };
+static vec4_t sb_dim    = { 0.55f, 0.42f, 0.20f, 1.00f };
+static vec4_t sb_white  = { 0.92f, 0.94f, 0.96f, 1.00f };
+static vec4_t sb_plate  = { 0.01f, 0.02f, 0.03f, 0.72f };
+static vec4_t sb_rowme  = { 1.00f, 0.60f, 0.06f, 0.14f };
 
-#define	SCOREBOARD_X		(0)
+#define SB_X		70
+#define SB_W		500
+#define SB_ROW_H	18
+#define SB_CELL		1.15f
+#define SB_HEAD_CELL 0.95f
 
-#define SB_HEADER			86
-#define SB_TOP				(SB_HEADER+32)
-
-// Where the status bar starts, so we don't overwrite it
-#define SB_STATUSBAR		420
-
-#define SB_NORMAL_HEIGHT	40
-#define SB_INTER_HEIGHT		16 // interleaved height
-
-#define SB_MAXCLIENTS_NORMAL  ((SB_STATUSBAR - SB_TOP) / SB_NORMAL_HEIGHT)
-#define SB_MAXCLIENTS_INTER   ((SB_STATUSBAR - SB_TOP) / SB_INTER_HEIGHT - 1)
-
-// Used when interleaved
-
-
-
-#define SB_LEFT_BOTICON_X	(SCOREBOARD_X+0)
-#define SB_LEFT_HEAD_X		(SCOREBOARD_X+32)
-#define SB_RIGHT_BOTICON_X	(SCOREBOARD_X+64)
-#define SB_RIGHT_HEAD_X		(SCOREBOARD_X+96)
-// Normal
-#define SB_BOTICON_X		(SCOREBOARD_X+32)
-#define SB_HEAD_X			(SCOREBOARD_X+64)
-
-#define SB_SCORELINE_X		112
-
-#define SB_RATING_WIDTH	    (6 * BIGCHAR_WIDTH) // width 6
-#define SB_SCORE_X			(SB_SCORELINE_X + BIGCHAR_WIDTH) // width 6
-#define SB_RATING_X			(SB_SCORELINE_X + 6 * BIGCHAR_WIDTH) // width 6
-#define SB_PING_X			(SB_SCORELINE_X + 12 * BIGCHAR_WIDTH + 8) // width 5
-#define SB_TIME_X			(SB_SCORELINE_X + 17 * BIGCHAR_WIDTH + 8) // width 5
-#define SB_NAME_X			(SB_SCORELINE_X + 22 * BIGCHAR_WIDTH) // width 15
-
-// The new and improved score board
-//
-// In cases where the number of clients is high, the score board heads are interleaved
-// here's the layout
-
-//
-//	0   32   80  112  144   240  320  400   <-- pixel position
-//  bot head bot head score ping time name
-//  
-//  wins/losses are drawn on bot icon now
-
-static qboolean localClient; // true if local client has been displayed
-
-
-							 /*
+/*
 =================
-CG_DrawScoreboard
+CG_SBText
+
+Matrix-font text with a per-call alpha fold (fade), keeping the palette.
 =================
 */
-static void CG_DrawClientScore( int y, score_t *score, float *color, float fade, qboolean largeFormat ) {
-	char	string[1024];
-	vec3_t	headAngles;
+static void CG_SBText( float x, float y, const char *s, float cell,
+					   const float *color, float fade ) {
+	vec4_t c;
+
+	c[0] = color[0]; c[1] = color[1]; c[2] = color[2]; c[3] = color[3] * fade;
+	CG_DrawMatrixString( x, y, s, cell, c );
+}
+
+static void CG_SBTextRight( float xRight, float y, const char *s, float cell,
+							const float *color, float fade ) {
+	CG_SBText( xRight - CG_MatrixStringWidth( s, cell ), y, s, cell, color, fade );
+}
+
+static void CG_SBTextCenter( float xMid, float y, const char *s, float cell,
+							 const float *color, float fade ) {
+	CG_SBText( xMid - CG_MatrixStringWidth( s, cell ) / 2, y, s, cell, color, fade );
+}
+
+/*
+=================
+CG_SBPlate
+
+Panel plate with a 2px accent rail across the top.
+=================
+*/
+static void CG_SBPlate( float x, float y, float w, float h,
+						const float *accent, float fade ) {
+	vec4_t c;
+
+	c[0] = sb_plate[0]; c[1] = sb_plate[1]; c[2] = sb_plate[2];
+	c[3] = sb_plate[3] * fade;
+	CG_FillRect( x, y, w, h, c );
+	c[0] = accent[0]; c[1] = accent[1]; c[2] = accent[2]; c[3] = 0.9f * fade;
+	CG_FillRect( x, y, w, 2, c );
+}
+
+/*
+=================
+CG_SBClientRow
+
+One pilot line: #  NAME (AI)  SCORE  PING  TIME  ACC
+=================
+*/
+static void CG_SBClientRow( const score_t *score, int place, float x, float y,
+							float w, float fade ) {
 	clientInfo_t	*ci;
-	int iconx, headx;
+	char			buf[64];
+	char			name[26];
+	float			*pc;
 
 	if ( score->client < 0 || score->client >= cgs.maxclients ) {
-		Com_Printf( "Bad score->client: %i\n", score->client );
 		return;
 	}
-	
-	ci = &cgs.clientinfo[score->client];
-
-	iconx = SB_BOTICON_X + (SB_RATING_WIDTH / 2);
-	headx = SB_HEAD_X + (SB_RATING_WIDTH / 2);
-
-	// draw the handicap or bot skill marker (unless player has flag)
-	if ( ci->powerups & ( 1 << PW_NEUTRALFLAG ) ) {
-		if( largeFormat ) {
-			CG_DrawFlagModel( iconx, y - ( 32 - BIGCHAR_HEIGHT ) / 2, 32, 32, TEAM_FREE, qfalse );
-		}
-		else {
-			CG_DrawFlagModel( iconx, y, 16, 16, TEAM_FREE, qfalse );
-		}
-	} else if ( ci->powerups & ( 1 << PW_REDFLAG ) ) {
-		if( largeFormat ) {
-			CG_DrawFlagModel( iconx, y - ( 32 - BIGCHAR_HEIGHT ) / 2, 32, 32, TEAM_RED, qfalse );
-		}
-		else {
-			CG_DrawFlagModel( iconx, y, 16, 16, TEAM_RED, qfalse );
-		}
-	} else if ( ci->powerups & ( 1 << PW_BLUEFLAG ) ) {
-		if( largeFormat ) {
-			CG_DrawFlagModel( iconx, y - ( 32 - BIGCHAR_HEIGHT ) / 2, 32, 32, TEAM_BLUE, qfalse );
-		}
-		else {
-			CG_DrawFlagModel( iconx, y, 16, 16, TEAM_BLUE, qfalse );
-		}
-	} else {
-		if ( ci->botSkill > 0 && ci->botSkill <= 5 ) {
-			if ( cg_drawIcons.integer ) {
-				if( largeFormat ) {
-					CG_DrawPic( iconx, y - ( 32 - BIGCHAR_HEIGHT ) / 2, 32, 32, cgs.media.botSkillShaders[ ci->botSkill - 1 ] );
-				}
-				else {
-					CG_DrawPic( iconx, y, 16, 16, cgs.media.botSkillShaders[ ci->botSkill - 1 ] );
-				}
-			}
-		} else if ( ci->handicap < 100 ) {
-			Com_sprintf( string, sizeof( string ), "%i", ci->handicap );
-			if ( cgs.gametype == GT_TOURNAMENT )
-				CG_DrawSmallStringColor( iconx, y - SMALLCHAR_HEIGHT/2, string, color );
-			else
-				CG_DrawSmallStringColor( iconx, y, string, color );
-		}
-
-		// draw the wins / losses
-		if ( cgs.gametype == GT_TOURNAMENT ) {
-			Com_sprintf( string, sizeof( string ), "%i/%i", ci->wins, ci->losses );
-			if( ci->handicap < 100 && !ci->botSkill ) {
-				CG_DrawSmallStringColor( iconx, y + SMALLCHAR_HEIGHT/2, string, color );
-			}
-			else {
-				CG_DrawSmallStringColor( iconx, y, string, color );
-			}
-		}
+	ci = &cgs.clientinfo[ score->client ];
+	if ( !ci->infoValid ) {
+		return;
 	}
 
-	// draw the face
-	VectorClear( headAngles );
-	headAngles[YAW] = 180;
-	if( largeFormat ) {
-		CG_DrawHead( headx, y - ( ICON_SIZE - BIGCHAR_HEIGHT ) / 2, ICON_SIZE, ICON_SIZE, 
-			score->client, headAngles );
-	}
-	else {
-		CG_DrawHead( headx, y, 16, 16, score->client, headAngles );
-	}
-
-#ifdef MISSIONPACK
-	// draw the team task
-	if ( ci->teamTask != TEAMTASK_NONE ) {
-		if ( ci->teamTask == TEAMTASK_OFFENSE ) {
-			CG_DrawPic( headx + 48, y, 16, 16, cgs.media.assaultShader );
-		}
-		else if ( ci->teamTask == TEAMTASK_DEFENSE ) {
-			CG_DrawPic( headx + 48, y, 16, 16, cgs.media.defendShader );
-		}
-	}
-#endif
-	// draw the score line
-	if ( score->ping == -1 ) {
-		Com_sprintf(string, sizeof(string),
-			" connecting    %s", ci->name);
-	} else if ( ci->team == TEAM_SPECTATOR ) {
-		Com_sprintf(string, sizeof(string),
-			" SPECT %3i %4i %s", score->ping, score->time, ci->name);
-	} else {
-		Com_sprintf(string, sizeof(string),
-			"%5i %4i %4i %s", score->score, score->ping, score->time, ci->name);
-	}
-
-	// highlight your position
+	// the local pilot's row gets a highlight plate
 	if ( score->client == cg.snap->ps.clientNum ) {
-		float	hcolor[4];
-		int		rank;
-
-		localClient = qtrue;
-
-		if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR 
-			|| cgs.gametype >= GT_TEAM ) {
-			rank = -1;
-		} else {
-			rank = cg.snap->ps.persistant[PERS_RANK] & ~RANK_TIED_FLAG;
-		}
-		if ( rank == 0 ) {
-			hcolor[0] = 0;
-			hcolor[1] = 0;
-			hcolor[2] = 0.7f;
-		} else if ( rank == 1 ) {
-			hcolor[0] = 0.7f;
-			hcolor[1] = 0;
-			hcolor[2] = 0;
-		} else if ( rank == 2 ) {
-			hcolor[0] = 0.7f;
-			hcolor[1] = 0.7f;
-			hcolor[2] = 0;
-		} else {
-			hcolor[0] = 0.7f;
-			hcolor[1] = 0.7f;
-			hcolor[2] = 0.7f;
-		}
-
-		hcolor[3] = fade * 0.7;
-		CG_FillRect( SB_SCORELINE_X + BIGCHAR_WIDTH + (SB_RATING_WIDTH / 2), y, 
-			640 - SB_SCORELINE_X - BIGCHAR_WIDTH, BIGCHAR_HEIGHT+1, hcolor );
+		vec4_t hc;
+		hc[0] = sb_rowme[0]; hc[1] = sb_rowme[1]; hc[2] = sb_rowme[2];
+		hc[3] = sb_rowme[3] * fade;
+		CG_FillRect( x + 2, y - 2, w - 4, SB_ROW_H - 2, hc );
 	}
 
-	CG_DrawBigString( SB_SCORELINE_X + (SB_RATING_WIDTH / 2), y, string, fade );
+	// place
+	Com_sprintf( buf, sizeof( buf ), "%i", place );
+	CG_SBTextRight( x + 34, y, buf, SB_CELL, sb_dim, fade );
 
-	// add the "ready" marker for intermission exiting
-	if ( cg.snap->ps.stats[ STAT_CLIENTS_READY ] & ( 1 << score->client ) ) {
-		CG_DrawBigStringColor( iconx, y, "READY", color );
+	// name (colour codes are skipped by the font) + AI tag
+	Q_strncpyz( name, ci->name, sizeof( name ) );
+	CG_SBText( x + 46, y, name, SB_CELL, sb_white, fade );
+	if ( ci->botSkill > 0 && ci->botSkill <= 5 ) {
+		CG_SBText( x + 46 + CG_MatrixStringWidth( name, SB_CELL ) + 8, y,
+				   "(AI)", 0.9f, sb_dim, fade );
 	}
+
+	// score ("*" = perfect, shown at intermission like the stock medal)
+	if ( cg.snap->ps.pm_type == PM_INTERMISSION && score->perfect ) {
+		Com_sprintf( buf, sizeof( buf ), "%i*", score->score );
+	} else {
+		Com_sprintf( buf, sizeof( buf ), "%i", score->score );
+	}
+	CG_SBTextRight( x + w - 150, y, buf, SB_CELL, sb_amber, fade );
+
+	// ping: green/amber/red bands; bots have none
+	if ( ci->botSkill > 0 ) {
+		CG_SBTextRight( x + w - 92, y, "-", SB_CELL, sb_dim, fade );
+	} else if ( score->ping < 0 ) {
+		CG_SBTextRight( x + w - 92, y, "CNCT", 0.9f, sb_dim, fade );
+	} else {
+		pc = ( score->ping < 60 ) ? sb_green
+		   : ( score->ping < 150 ) ? sb_amber : sb_red;
+		Com_sprintf( buf, sizeof( buf ), "%i", score->ping );
+		CG_SBTextRight( x + w - 92, y, buf, SB_CELL, pc, fade );
+	}
+
+	// time in match (minutes)
+	Com_sprintf( buf, sizeof( buf ), "%i", score->time );
+	CG_SBTextRight( x + w - 48, y, buf, SB_CELL, sb_cyan, fade );
+
+	// accuracy
+	Com_sprintf( buf, sizeof( buf ), "%i%%", score->accuracy );
+	CG_SBTextRight( x + w - 8, y, buf, SB_CELL, sb_dim, fade );
 }
 
 /*
 =================
-CG_TeamScoreboard
+CG_SBColumnHeads
 =================
 */
-static int CG_TeamScoreboard( int y, team_t team, float fade, int maxClients, int lineHeight ) {
-	int		i;
-	score_t	*score;
-	float	color[4];
-	int		count;
-	clientInfo_t	*ci;
-
-	color[0] = color[1] = color[2] = 1.0;
-	color[3] = fade;
-
-	count = 0;
-	for ( i = 0 ; i < cg.numScores && count < maxClients ; i++ ) {
-		score = &cg.scores[i];
-		ci = &cgs.clientinfo[ score->client ];
-
-		if ( team != ci->team ) {
-			continue;
-		}
-
-		CG_DrawClientScore( y + lineHeight * count, score, color, fade, lineHeight == SB_NORMAL_HEIGHT );
-
-		count++;
-	}
-
-	return count;
+static void CG_SBColumnHeads( float x, float y, float w, float fade ) {
+	CG_SBTextRight( x + 34, y, "#", SB_HEAD_CELL, sb_dim, fade );
+	CG_SBText( x + 46, y, "PILOT", SB_HEAD_CELL, sb_dim, fade );
+	CG_SBTextRight( x + w - 150, y, "SCORE", SB_HEAD_CELL, sb_dim, fade );
+	CG_SBTextRight( x + w - 92, y, "PING", SB_HEAD_CELL, sb_dim, fade );
+	CG_SBTextRight( x + w - 48, y, "TIME", SB_HEAD_CELL, sb_dim, fade );
+	CG_SBTextRight( x + w - 8, y, "ACC", SB_HEAD_CELL, sb_dim, fade );
 }
 
 /*
 =================
-CG_DrawScoreboard
+CG_SBListTeam
 
-Draw the normal in-game scoreboard
+Draw every scoreboard entry belonging to `team` (or all, when team == -1).
+Returns the y after the last row.
+=================
+*/
+static float CG_SBListTeam( int team, float x, float y, float w,
+							float yMax, float fade ) {
+	int		i, place = 0, skipped = 0;
+	const score_t *score;
+
+	for ( i = 0; i < cg.numScores; i++ ) {
+		score = &cg.scores[i];
+		if ( team != -1 && score->team != team ) {
+			continue;
+		}
+		if ( score->team == TEAM_SPECTATOR ) {
+			continue;
+		}
+		place++;
+		if ( y + SB_ROW_H > yMax ) {
+			skipped++;
+			continue;
+		}
+		CG_SBClientRow( score, place, x, y, w, fade );
+		y += SB_ROW_H;
+	}
+	if ( skipped ) {
+		char buf[32];
+		Com_sprintf( buf, sizeof( buf ), "+%i MORE", skipped );
+		CG_SBText( x + 46, y, buf, 0.9f, sb_dim, fade );
+		y += SB_ROW_H;
+	}
+	return y;
+}
+
+/*
+=================
+CG_SBSpectators
+=================
+*/
+static void CG_SBSpectators( float y, float fade ) {
+	char	line[256];
+	int		i, n = 0;
+
+	line[0] = '\0';
+	for ( i = 0; i < cg.numScores; i++ ) {
+		clientInfo_t *ci;
+		if ( cg.scores[i].team != TEAM_SPECTATOR ) {
+			continue;
+		}
+		if ( cg.scores[i].client < 0 || cg.scores[i].client >= cgs.maxclients ) {
+			continue;
+		}
+		ci = &cgs.clientinfo[ cg.scores[i].client ];
+		if ( !ci->infoValid ) {
+			continue;
+		}
+		if ( n++ ) {
+			Q_strcat( line, sizeof( line ), "  " );
+		}
+		Q_strcat( line, sizeof( line ), ci->name );
+		if ( strlen( line ) > 60 ) {
+			break;
+		}
+	}
+	if ( n ) {
+		char full[300];
+		Com_sprintf( full, sizeof( full ), "SPEC: %s", line );
+		CG_SBTextCenter( 320, y, full, 0.9f, sb_dim, fade );
+	}
+}
+
+/*
+=================
+CG_DrawOldScoreboard
+
+The COMBAT RECORD. Entry contract matches the stock board: qfalse when
+paused / warmup-hidden / suppressed by the death MISSION REPORT.
 =================
 */
 qboolean CG_DrawOldScoreboard( void ) {
-	int		x, y, w, i, n1, n2;
-	float	fade;
+	float	fade, y, yMax;
 	float	*fadeColor;
-	char	*s;
-	int maxClients;
-	int lineHeight;
-	int topBorderSize, bottomBorderSize;
+	char	buf[128];
+	const char *info;
 
-	// don't draw amuthing if the menu or console is up
+	// don't draw anything if the menu or console is up
 	if ( cg_paused.integer ) {
 		cg.deferredPlayerLoading = 0;
 		return qfalse;
@@ -283,152 +272,110 @@ qboolean CG_DrawOldScoreboard( void ) {
 		return qfalse;
 	}
 
-	// don't draw scoreboard during death while warmup up
+	// don't draw scoreboard during death while warming up
 	if ( cg.warmup && !cg.showScores ) {
 		return qfalse;
 	}
 
-	// STRAFE 64: on a normal death the NERV MISSION REPORT owns the screen — suppress
-	// the old frag scoreboard (the player-name/score list) unless you're explicitly
-	// holding the scores key. End-of-match intermission still shows it.
+	// STRAFE 64: on a normal death the NERV MISSION REPORT owns the screen —
+	// only show the record when the scores key is held. Intermission shows it.
 	if ( cg.predictedPlayerState.pm_type == PM_DEAD && !cg.showScores ) {
 		return qfalse;
 	}
 
 	if ( cg.showScores || cg.predictedPlayerState.pm_type == PM_DEAD ||
 		 cg.predictedPlayerState.pm_type == PM_INTERMISSION ) {
-		fade = 1.0;
-		fadeColor = colorWhite;
+		fade = 1.0f;
 	} else {
 		fadeColor = CG_FadeColor( cg.scoreFadeTime, FADE_TIME );
-		
 		if ( !fadeColor ) {
-			// next time scoreboard comes up, don't print killer
 			cg.deferredPlayerLoading = 0;
 			cg.killerName[0] = 0;
 			return qfalse;
 		}
-		fade = *fadeColor;
+		fade = fadeColor[3];
 	}
 
+	// no 3D heads on this board — nothing to defer-load
+	cg.deferredPlayerLoading = 0;
 
-	// fragged by ... line
+	// fragged-by line above the record
+	y = 44;
 	if ( cg.killerName[0] ) {
-		s = va("Fragged by %s", cg.killerName );
-		w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
-		x = ( SCREEN_WIDTH - w ) / 2;
-		y = 40;
-		CG_DrawBigString( x, y, s, fade );
+		Com_sprintf( buf, sizeof( buf ), "CUT DOWN BY %s", cg.killerName );
+		CG_SBTextCenter( 320, y, buf, 1.2f, sb_red, fade );
 	}
+	y = 66;
 
-	// current rank
-	if ( cgs.gametype < GT_TEAM) {
-		if (cg.snap->ps.persistant[PERS_TEAM] != TEAM_SPECTATOR ) {
-			s = va("%s place with %i",
-				CG_PlaceString( cg.snap->ps.persistant[PERS_RANK] + 1 ),
-				cg.snap->ps.persistant[PERS_SCORE] );
-			w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
-			x = ( SCREEN_WIDTH - w ) / 2;
-			y = 60;
-			CG_DrawBigString( x, y, s, fade );
-		}
-	} else {
-		if ( cg.teamScores[0] == cg.teamScores[1] ) {
-			s = va("Teams are tied at %i", cg.teamScores[0] );
-		} else if ( cg.teamScores[0] >= cg.teamScores[1] ) {
-			s = va("Red leads %i to %i",cg.teamScores[0], cg.teamScores[1] );
-		} else {
-			s = va("Blue leads %i to %i",cg.teamScores[1], cg.teamScores[0] );
-		}
+	// header
+	CG_SBTextCenter( 320, y, "COMBAT RECORD", 1.7f, sb_amber, fade );
+	y += 22;
 
-		w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
-		x = ( SCREEN_WIDTH - w ) / 2;
-		y = 60;
-		CG_DrawBigString( x, y, s, fade );
+	// map + limits
+	info = CG_ConfigString( CS_SERVERINFO );
+	Com_sprintf( buf, sizeof( buf ), "%s", Info_ValueForKey( info, "mapname" ) );
+	Q_strupr( buf );
+	if ( cgs.fraglimit && cgs.gametype < GT_CTF ) {
+		Com_sprintf( buf + strlen( buf ), sizeof( buf ) - strlen( buf ),
+					 "  /  FRAG LIMIT %i", cgs.fraglimit );
 	}
-
-	// scoreboard
-	y = SB_HEADER;
-
-	CG_DrawPic( SB_SCORE_X + (SB_RATING_WIDTH / 2), y, 64, 32, cgs.media.scoreboardScore );
-	CG_DrawPic( SB_PING_X - (SB_RATING_WIDTH / 2), y, 64, 32, cgs.media.scoreboardPing );
-	CG_DrawPic( SB_TIME_X - (SB_RATING_WIDTH / 2), y, 64, 32, cgs.media.scoreboardTime );
-	CG_DrawPic( SB_NAME_X - (SB_RATING_WIDTH / 2), y, 64, 32, cgs.media.scoreboardName );
-
-	y = SB_TOP;
-
-	// If there are more than SB_MAXCLIENTS_NORMAL, use the interleaved scores
-	if ( cg.numScores > SB_MAXCLIENTS_NORMAL ) {
-		maxClients = SB_MAXCLIENTS_INTER;
-		lineHeight = SB_INTER_HEIGHT;
-		topBorderSize = 8;
-		bottomBorderSize = 16;
-	} else {
-		maxClients = SB_MAXCLIENTS_NORMAL;
-		lineHeight = SB_NORMAL_HEIGHT;
-		topBorderSize = 16;
-		bottomBorderSize = 16;
+	if ( cgs.timelimit ) {
+		Com_sprintf( buf + strlen( buf ), sizeof( buf ) - strlen( buf ),
+					 "  /  %i MIN", cgs.timelimit );
 	}
+	CG_SBTextCenter( 320, y, buf, 0.95f, sb_dim, fade );
+	y += 24;
 
-	localClient = qfalse;
+	yMax = 414;
 
 	if ( cgs.gametype >= GT_TEAM ) {
-		//
-		// teamplay scoreboard
-		//
-		y += lineHeight/2;
+		// two team panels, red left / blue right — sized to the longer roster
+		float	wHalf = ( SB_W - 10 ) / 2;
+		float	xR = SB_X, xB = SB_X + wHalf + 10;
+		float	yTop = y, yR, yB, h;
+		int		i, nR = 0, nB = 0, rows;
 
-		if ( cg.teamScores[0] >= cg.teamScores[1] ) {
-			n1 = CG_TeamScoreboard( y, TEAM_RED, fade, maxClients, lineHeight );
-			CG_DrawTeamBackground( 0, y - topBorderSize, 640, n1 * lineHeight + bottomBorderSize, 0.33f, TEAM_RED );
-			y += (n1 * lineHeight) + BIGCHAR_HEIGHT;
-			maxClients -= n1;
-			n2 = CG_TeamScoreboard( y, TEAM_BLUE, fade, maxClients, lineHeight );
-			CG_DrawTeamBackground( 0, y - topBorderSize, 640, n2 * lineHeight + bottomBorderSize, 0.33f, TEAM_BLUE );
-			y += (n2 * lineHeight) + BIGCHAR_HEIGHT;
-			maxClients -= n2;
-		} else {
-			n1 = CG_TeamScoreboard( y, TEAM_BLUE, fade, maxClients, lineHeight );
-			CG_DrawTeamBackground( 0, y - topBorderSize, 640, n1 * lineHeight + bottomBorderSize, 0.33f, TEAM_BLUE );
-			y += (n1 * lineHeight) + BIGCHAR_HEIGHT;
-			maxClients -= n1;
-			n2 = CG_TeamScoreboard( y, TEAM_RED, fade, maxClients, lineHeight );
-			CG_DrawTeamBackground( 0, y - topBorderSize, 640, n2 * lineHeight + bottomBorderSize, 0.33f, TEAM_RED );
-			y += (n2 * lineHeight) + BIGCHAR_HEIGHT;
-			maxClients -= n2;
+		for ( i = 0; i < cg.numScores; i++ ) {
+			if ( cg.scores[i].team == TEAM_RED )  nR++;
+			if ( cg.scores[i].team == TEAM_BLUE ) nB++;
 		}
-		n1 = CG_TeamScoreboard( y, TEAM_SPECTATOR, fade, maxClients, lineHeight );
-		y += (n1 * lineHeight) + BIGCHAR_HEIGHT;
+		rows = ( nR > nB ) ? nR : nB;
+		h = 34 + rows * SB_ROW_H + 8;
+		if ( yTop + h > yMax ) h = yMax - yTop;
 
+		CG_SBPlate( xR, yTop, wHalf, h, sb_red, fade );
+		CG_SBPlate( xB, yTop, wHalf, h, sb_blue, fade );
+
+		Com_sprintf( buf, sizeof( buf ), "RED  %i", cg.teamScores[0] );
+		CG_SBText( xR + 10, yTop + 8, buf, 1.4f, sb_red, fade );
+		Com_sprintf( buf, sizeof( buf ), "BLUE  %i", cg.teamScores[1] );
+		CG_SBTextRight( xB + wHalf - 10, yTop + 8, buf, 1.4f, sb_blue, fade );
+
+		yR = CG_SBListTeam( TEAM_RED,  xR, yTop + 34, wHalf, yTop + h - 6, fade );
+		yB = CG_SBListTeam( TEAM_BLUE, xB, yTop + 34, wHalf, yTop + h - 6, fade );
+		y = ( yR > yB ) ? yR : yB;
 	} else {
-		//
-		// free for all scoreboard
-		//
-		n1 = CG_TeamScoreboard( y, TEAM_FREE, fade, maxClients, lineHeight );
-		y += (n1 * lineHeight) + BIGCHAR_HEIGHT;
-		n2 = CG_TeamScoreboard( y, TEAM_SPECTATOR, fade, maxClients - n1, lineHeight );
-		y += (n2 * lineHeight) + BIGCHAR_HEIGHT;
-	}
+		// one panel, sized to the roster
+		float	h;
+		int		i, rows = 0;
 
-	if (!localClient) {
-		// draw local client at the bottom
-		for ( i = 0 ; i < cg.numScores ; i++ ) {
-			if ( cg.scores[i].client == cg.snap->ps.clientNum ) {
-				CG_DrawClientScore( y, &cg.scores[i], fadeColor, fade, lineHeight == SB_NORMAL_HEIGHT );
-				break;
-			}
+		for ( i = 0; i < cg.numScores; i++ ) {
+			if ( cg.scores[i].team != TEAM_SPECTATOR ) rows++;
 		}
+		h = 30 + rows * SB_ROW_H + 8;
+		if ( y + h > yMax ) h = yMax - y;
+
+		CG_SBPlate( SB_X, y, SB_W, h, sb_amber, fade );
+		CG_SBColumnHeads( SB_X, y + 8, SB_W, fade );
+		y = CG_SBListTeam( -1, SB_X, y + 30, SB_W, y + h - 6, fade );
 	}
 
-	// load any models that have been deferred
-	if ( ++cg.deferredPlayerLoading > 10 ) {
-		CG_LoadDeferredPlayers();
-	}
+	CG_SBSpectators( 424, fade );
 
+	// load any changed model info while the board is up (stock behaviour)
+	CG_LoadDeferredPlayers();
 	return qtrue;
 }
-
-//================================================================================
 
 /*
 ================
@@ -436,29 +383,18 @@ CG_CenterGiantLine
 ================
 */
 static void CG_CenterGiantLine( float y, const char *string ) {
-	float		x;
-	vec4_t		color;
-
-	color[0] = 1;
-	color[1] = 1;
-	color[2] = 1;
-	color[3] = 1;
-
-	x = 0.5 * ( 640 - GIANT_WIDTH * CG_DrawStrlen( string ) );
-
-	CG_DrawStringExt( x, y, string, color, qtrue, qtrue, GIANT_WIDTH, GIANT_HEIGHT, 0 );
+	CG_SBTextCenter( 320, y, string, 2.2f, sb_amber, 1.0f );
 }
 
 /*
 =================
 CG_DrawTourneyScoreboard
 
-Draw the oversize scoreboard for tournements
+Draw the oversized scoreboard for tournaments
 =================
 */
 void CG_DrawTourneyScoreboard( void ) {
 	const char		*s;
-	vec4_t			color;
 	int				min, tens, ones;
 	clientInfo_t	*ci;
 	int				y;
@@ -470,57 +406,27 @@ void CG_DrawTourneyScoreboard( void ) {
 		trap_SendClientCommand( "score" );
 	}
 
-	// draw the dialog background
-	color[0] = color[1] = color[2] = 0;
-	color[3] = 1;
-	CG_FillRect( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, color );
-
-	color[0] = 1;
-	color[1] = 1;
-	color[2] = 1;
-	color[3] = 1;
-
-	// print the mesage of the day
+	// print the message of the day
 	s = CG_ConfigString( CS_MOTD );
 	if ( !s[0] ) {
-		s = "Scoreboard";
+		s = "STRAFE 64";
 	}
-
-	// print optional title
 	CG_CenterGiantLine( 8, s );
 
-	// print server time
-	ones = cg.time / 1000;
-	min = ones / 60;
-	ones %= 60;
-	tens = ones / 10;
-	ones %= 10;
-	s = va("%i:%i%i", min, tens, ones );
+	// print the current time
+	min = ( cg.time - cgs.levelStartTime ) / 60000;
+	tens = ( ( cg.time - cgs.levelStartTime ) / 10000 ) % 6;
+	ones = ( ( cg.time - cgs.levelStartTime ) / 1000 ) % 10;
+	CG_SBTextCenter( 320, 64, va( "%i:%i%i", min, tens, ones ), 1.6f, sb_cyan, 1.0f );
 
-	CG_CenterGiantLine( 64, s );
+	y = 120;
 
-
-	// print the two scores
-
-	y = 160;
 	if ( cgs.gametype >= GT_TEAM ) {
-		//
-		// teamplay scoreboard
-		//
-		CG_DrawStringExt( 8, y, "Red Team", color, qtrue, qtrue, GIANT_WIDTH, GIANT_HEIGHT, 0 );
-		s = va("%i", cg.teamScores[0] );
-		CG_DrawStringExt( 632 - GIANT_WIDTH * strlen(s), y, s, color, qtrue, qtrue, GIANT_WIDTH, GIANT_HEIGHT, 0 );
-		
-		y += 64;
-
-		CG_DrawStringExt( 8, y, "Blue Team", color, qtrue, qtrue, GIANT_WIDTH, GIANT_HEIGHT, 0 );
-		s = va("%i", cg.teamScores[1] );
-		CG_DrawStringExt( 632 - GIANT_WIDTH * strlen(s), y, s, color, qtrue, qtrue, GIANT_WIDTH, GIANT_HEIGHT, 0 );
+		CG_SBText( 80, y, va( "RED  %i", cg.teamScores[0] ), 2.0f, sb_red, 1.0f );
+		y += 40;
+		CG_SBText( 80, y, va( "BLUE  %i", cg.teamScores[1] ), 2.0f, sb_blue, 1.0f );
 	} else {
-		//
-		// free for all scoreboard
-		//
-		for ( i = 0 ; i < MAX_CLIENTS ; i++ ) {
+		for ( i = 0; i < MAX_CLIENTS; i++ ) {
 			ci = &cgs.clientinfo[i];
 			if ( !ci->infoValid ) {
 				continue;
@@ -528,14 +434,11 @@ void CG_DrawTourneyScoreboard( void ) {
 			if ( ci->team != TEAM_FREE ) {
 				continue;
 			}
-
-			CG_DrawStringExt( 8, y, ci->name, color, qtrue, qtrue, GIANT_WIDTH, GIANT_HEIGHT, 0 );
-			s = va("%i", ci->score );
-			CG_DrawStringExt( 632 - GIANT_WIDTH * strlen(s), y, s, color, qtrue, qtrue, GIANT_WIDTH, GIANT_HEIGHT, 0 );
-			y += 64;
+			CG_SBText( 80, y, va( "%-4i %s", ci->score, ci->name ), 2.0f, sb_white, 1.0f );
+			y += 40;
+			if ( y > 400 ) {
+				break;
+			}
 		}
 	}
-
-
 }
-

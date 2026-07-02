@@ -642,5 +642,22 @@ void CG_TransitionPlayerState( playerState_t *ps, playerState_t *ops ) {
 	if ( ( ps->pm_flags & PMF_SLIDING ) && !( ops->pm_flags & PMF_SLIDING ) ) {
 		cg.fovPunch = 7.0f;
 	}
+
+	// grapple ATTACH: the hook just bit — a solid metallic thunk marks the
+	// moment the rope goes live (the taut-rope loop rides the hook entity).
+	if ( ( ps->pm_flags & PMF_GRAPPLE_PULL ) && !( ops->pm_flags & PMF_GRAPPLE_PULL ) ) {
+		trap_S_StartSound( NULL, ps->clientNum, CHAN_AUTO, cgs.media.grappleHitSound );
+	}
+
+	// bhop CHAIN tick: a local three-step riser as the streak climbs — hop 2-3
+	// low, 4-5 mid, 6+ high — so a kept chain is audible flow, not just a HUD
+	// number. First hop stays silent (every jump ticking would be noise).
+	if ( cg_bhopTick.integer
+		&& ps->stats[STAT_BHOP_STREAK] > ops->stats[STAT_BHOP_STREAK]
+		&& ps->stats[STAT_BHOP_STREAK] >= 2 ) {
+		int step = ( ps->stats[STAT_BHOP_STREAK] < 4 ) ? 0
+				 : ( ps->stats[STAT_BHOP_STREAK] < 6 ) ? 1 : 2;
+		trap_S_StartLocalSound( cgs.media.bhopTick[step], CHAN_LOCAL_SOUND );
+	}
 }
 

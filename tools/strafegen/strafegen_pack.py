@@ -11,7 +11,7 @@ import zipfile
 import sys
 
 import strafegen_gfx as gfx
-from strafegen_shaders import build_shader
+from strafegen_shaders import build_shader, CONSOLE_SHADER
 from strafegen_textures import build_detail_textures
 
 # repo root = three up from tools/strafegen/strafegen_pack.py (matches the
@@ -55,6 +55,7 @@ def write_shared_assets(out_dir, gfx_on=True):
     pk3 = os.path.join(out_dir, SHARED_ASSETS_PK3)
     with zipfile.ZipFile(pk3, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("scripts/strafe64.shader", build_shader(gfx_on))
+        z.writestr("scripts/zzz_s64_console.shader", CONSOLE_SHADER)
         for arc, data in build_detail_textures().items():
             z.writestr(arc, data)
         if gfx_on:
@@ -80,6 +81,7 @@ def write_pk3(bsp_path, name, out_dir, aas_path=None, gfx_on=True,
         z.writestr(f"scripts/{name}.arena", arena)
         if standalone:
             z.writestr("scripts/strafe64.shader", build_shader(gfx_on))
+            z.writestr("scripts/zzz_s64_console.shader", CONSOLE_SHADER)
             for arc, data in build_detail_textures().items():
                 z.writestr(arc, data)
             if gfx_on:

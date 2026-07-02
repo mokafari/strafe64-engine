@@ -240,7 +240,8 @@ vmCvar_t	cg_oldRocket;
 vmCvar_t	cg_oldPlasma;
 vmCvar_t	cg_trueLightning;
 
-vmCvar_t	cg_slideDust;		// STRAFE 64: crouch-slide dust — built in baseq3 too (CG_SlideTrail is not MISSIONPACK-gated)
+vmCvar_t	cg_slideDust;
+vmCvar_t	cg_bhopTick;		// STRAFE 64: rising audio tick on bhop chain (0 = off)		// STRAFE 64: crouch-slide dust — built in baseq3 too (CG_SlideTrail is not MISSIONPACK-gated)
 
 #ifdef MISSIONPACK
 vmCvar_t 	cg_redTeamName;
@@ -396,7 +397,8 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_bloodTime, "cg_bloodTime", "2", CVAR_ARCHIVE },	// STRAFE 64: gore lingers this much longer
 	{ &cg_bloodSpurtTime, "cg_bloodSpurtTime", "4000", CVAR_ARCHIVE },	// STRAFE 64: dismember geyser duration (ms)
 	{ &cg_synchronousClients, "g_synchronousClients", "0", CVAR_SYSTEMINFO },
-	{ &cg_slideDust, "cg_slideDust", "1", CVAR_ARCHIVE},		// STRAFE 64: crouch-slide ground dust trail (baseq3 too — CG_SlideTrail isn't MISSIONPACK-gated)
+	{ &cg_slideDust, "cg_slideDust", "1", CVAR_ARCHIVE},
+	{ &cg_bhopTick, "cg_bhopTick", "1", CVAR_ARCHIVE},		// rising bhop chain tick (never MISSIONPACK-gate: baseq3 ships)		// STRAFE 64: crouch-slide ground dust trail (baseq3 too — CG_SlideTrail isn't MISSIONPACK-gated)
 #ifdef MISSIONPACK
 	{ &cg_redTeamName, "g_redteam", DEFAULT_REDTEAM_NAME, CVAR_ARCHIVE | CVAR_SERVERINFO | CVAR_USERINFO },
 	{ &cg_blueTeamName, "g_blueteam", DEFAULT_BLUETEAM_NAME, CVAR_ARCHIVE | CVAR_SERVERINFO | CVAR_USERINFO },
@@ -756,6 +758,14 @@ static void CG_RegisterSounds( void ) {
 
 	cgs.media.talkSound = trap_S_RegisterSound( "sound/player/talk.wav", qfalse );
 	cgs.media.landSound = trap_S_RegisterSound( "sound/player/land1.wav", qfalse);
+	// STRAFE 64: the paks ship purpose-made grapple audio that stock never wired
+	cgs.media.grappleHitSound  = trap_S_RegisterSound( "sound/weapons/grapple/graphit.wav", qfalse );
+	cgs.media.grapplePullSound = trap_S_RegisterSound( "sound/weapons/grapple/grappull.wav", qfalse );
+	// bhop chain ticks: the obelisk impact family — a designed 3-step ladder
+	// that never plays in STRAFE 64 modes, so it can't alias damage feedback
+	cgs.media.bhopTick[0] = trap_S_RegisterSound( "sound/items/obelisk_hit_01.wav", qfalse );
+	cgs.media.bhopTick[1] = trap_S_RegisterSound( "sound/items/obelisk_hit_02.wav", qfalse );
+	cgs.media.bhopTick[2] = trap_S_RegisterSound( "sound/items/obelisk_hit_03.wav", qfalse );
 	cgs.media.hopSound = trap_S_RegisterSound( "sound/misc/menu3.wav", qfalse );
 	cgs.media.hopSoundHigh = trap_S_RegisterSound( "sound/misc/menu1.wav", qfalse );
 	cgs.media.hopSoundMax = trap_S_RegisterSound( "sound/misc/menu4.wav", qfalse );
