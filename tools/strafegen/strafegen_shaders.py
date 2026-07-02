@@ -281,6 +281,34 @@ textures/strafe64/matrix
 }
 """
 
+# The console override lives in its OWN shader file: shader FILES parse in
+# reverse-alphabetical order and the first-parsed definition of a name wins,
+# so overriding OA's "console" (defined in a file sorting after s*) needs a
+# file name sorting after ALL stock scripts — scripts/zzz_s64_console.shader.
+CONSOLE_SHADER = """\
+// STRAFE 64 console: replaces the stock OpenArena logo-watermark background
+// with a NERV terminal plate — near-black base + a faint drifting matrix-rain
+// layer. UNIQUE name (s64console): duplicate shader names across files resolve
+// to the lowest-priority pak, so shadowing stock "console" by name can't work —
+// the engine prefers this name and falls back to stock if the pak is absent.
+s64console
+{
+	nopicmip
+	nomipmaps
+	{
+		map $whiteimage
+		rgbGen const ( 0.010 0.018 0.024 )
+	}
+	{
+		map textures/strafe64/matrix.tga
+		blendFunc GL_ONE GL_ONE
+		rgbGen const ( 0.05 0.09 0.07 )
+		tcMod scale 1.0 1.5
+		tcMod scroll 0 -0.05
+	}
+}
+"""
+
 
 
 def build_shader(gfx_on=True):

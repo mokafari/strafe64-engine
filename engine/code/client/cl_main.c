@@ -3174,7 +3174,14 @@ void CL_InitRenderer( void ) {
 	// load character sets
 	cls.charSetShader = re.RegisterShader( "gfx/2d/bigchars" );
 	cls.whiteShader = re.RegisterShader( "white" );
-	cls.consoleShader = re.RegisterShader( "console" );
+	// STRAFE 64: prefer the NERV console plate from the identity pak. Duplicate
+	// shader NAMES across different files resolve to the lowest-priority pak
+	// (reverse text concat), so overriding stock "console" by name is impossible
+	// from an add-on pak — a UNIQUE name with a fallback is the reliable path.
+	cls.consoleShader = re.RegisterShader( "s64console" );
+	if ( !cls.consoleShader ) {
+		cls.consoleShader = re.RegisterShader( "console" );
+	}
 	g_console_field_width = cls.glconfig.vidWidth / g_smallchar_width - 2;
 	g_consoleField.widthInChars = g_console_field_width;
 }
