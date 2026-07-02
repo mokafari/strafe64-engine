@@ -1242,25 +1242,26 @@ static void CG_DrawDisconnect( void ) {
 		return;
 	}
 
-	// also add text in center of screen
-	s = "Connection Interrupted";
-	w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
-	CG_DrawBigString( 320 - w/2, 100, s, 1.0F);
+	// NERV alert instead of the stock big-font line + OA phone-jack icon
+	{
+		vec4_t	red = { 1.0f, 0.12f, 0.16f, 1.0f };
 
-	// blink the icon
-	if ( ( cg.time >> 9 ) & 1 ) {
-		return;
-	}
+		s = "SIGNAL LOST";
+		w = CG_MatrixStringWidth( s, 1.6f );
+		CG_DrawMatrixString( 320 - w / 2, 100, s, 1.6f, red );
 
+		// blinking corner chip
+		if ( ( cg.time >> 9 ) & 1 ) {
+			return;
+		}
 #ifdef MISSIONPACK
-	x = 640 - 48;
-	y = 480 - 144;
+		x = 640 - 8; y = 480 - 144;
 #else
-	x = 640 - 48;
-	y = 480 - 48;
+		x = 640 - 8; y = 480 - 70;
 #endif
-
-	CG_DrawPic( x, y, 48, 48, trap_R_RegisterShader("gfx/2d/net.tga" ) );
+		w = CG_MatrixStringWidth( "NET", 1.2f );
+		CG_DrawMatrixString( x - w, y, "NET", 1.2f, red );
+	}
 }
 
 
