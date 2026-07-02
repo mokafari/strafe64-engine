@@ -983,6 +983,7 @@ typedef struct {
 	sfxHandle_t landSound;
 	sfxHandle_t grappleHitSound;	// STRAFE 64: hook bites the wall
 	sfxHandle_t bhopTick[3];		// STRAFE 64: rising chain tick (obelisk family — unused in our modes)
+	sfxHandle_t slideSound;			// STRAFE 64: crouch-slide scrape loop
 	sfxHandle_t grapplePullSound;	// STRAFE 64: taut-rope tension loop
 	sfxHandle_t fallSound;
 	sfxHandle_t jumpPadSound;
@@ -1378,7 +1379,8 @@ extern  vmCvar_t		cg_recordSPDemoName;
 extern	vmCvar_t		cg_obeliskRespawnDelay;
 #endif
 extern	vmCvar_t		cg_slideDust;
-extern	vmCvar_t		cg_bhopTick;		// STRAFE 64: crouch-slide dust (base build, not MISSIONPACK-gated)
+extern	vmCvar_t		cg_bhopTick;
+extern	vmCvar_t		cg_slideSound;		// STRAFE 64: crouch-slide dust (base build, not MISSIONPACK-gated)
 
 //
 // cg_main.c
