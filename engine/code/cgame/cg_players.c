@@ -2980,6 +2980,15 @@ void CG_Player( centity_t *cent ) {
 
 	CG_SlideTrail(cent);
 
+	// crouch-slide scrape loop — rides the same networked EF_SLIDING flag as
+	// the dust, so every sliding pilot is audible, and stops the frame the
+	// slide ends (looping sounds must be re-added every frame)
+	if ( cg_slideSound.integer && ( cent->currentState.eFlags & EF_SLIDING )
+		&& cgs.media.slideSound ) {
+		trap_S_AddLoopingSound( cent->currentState.number, cent->lerpOrigin,
+			vec3_origin, cgs.media.slideSound );
+	}
+
 	// STRAFE 64: each fighter glows faintly in their OWN colour, so they read as
 	// neon-lit holographic figures rather than dark silhouettes against the world.
 	// Skip the local pilot in first person (the light would wash the near view);

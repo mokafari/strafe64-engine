@@ -241,7 +241,8 @@ vmCvar_t	cg_oldPlasma;
 vmCvar_t	cg_trueLightning;
 
 vmCvar_t	cg_slideDust;
-vmCvar_t	cg_bhopTick;		// STRAFE 64: rising audio tick on bhop chain (0 = off)		// STRAFE 64: crouch-slide dust — built in baseq3 too (CG_SlideTrail is not MISSIONPACK-gated)
+vmCvar_t	cg_bhopTick;		// STRAFE 64: rising audio tick on bhop chain (0 = off)
+vmCvar_t	cg_slideSound;		// STRAFE 64: crouch-slide scrape loop (0 = off)		// STRAFE 64: crouch-slide dust — built in baseq3 too (CG_SlideTrail is not MISSIONPACK-gated)
 
 #ifdef MISSIONPACK
 vmCvar_t 	cg_redTeamName;
@@ -398,7 +399,8 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_bloodSpurtTime, "cg_bloodSpurtTime", "4000", CVAR_ARCHIVE },	// STRAFE 64: dismember geyser duration (ms)
 	{ &cg_synchronousClients, "g_synchronousClients", "0", CVAR_SYSTEMINFO },
 	{ &cg_slideDust, "cg_slideDust", "1", CVAR_ARCHIVE},
-	{ &cg_bhopTick, "cg_bhopTick", "1", CVAR_ARCHIVE},		// rising bhop chain tick (never MISSIONPACK-gate: baseq3 ships)		// STRAFE 64: crouch-slide ground dust trail (baseq3 too — CG_SlideTrail isn't MISSIONPACK-gated)
+	{ &cg_bhopTick, "cg_bhopTick", "1", CVAR_ARCHIVE},		// rising bhop chain tick (never MISSIONPACK-gate: baseq3 ships)
+	{ &cg_slideSound, "cg_slideSound", "1", CVAR_ARCHIVE},	// crouch-slide scrape loop		// STRAFE 64: crouch-slide ground dust trail (baseq3 too — CG_SlideTrail isn't MISSIONPACK-gated)
 #ifdef MISSIONPACK
 	{ &cg_redTeamName, "g_redteam", DEFAULT_REDTEAM_NAME, CVAR_ARCHIVE | CVAR_SERVERINFO | CVAR_USERINFO },
 	{ &cg_blueTeamName, "g_blueteam", DEFAULT_BLUETEAM_NAME, CVAR_ARCHIVE | CVAR_SERVERINFO | CVAR_USERINFO },
@@ -766,6 +768,7 @@ static void CG_RegisterSounds( void ) {
 	cgs.media.bhopTick[0] = trap_S_RegisterSound( "sound/items/obelisk_hit_01.wav", qfalse );
 	cgs.media.bhopTick[1] = trap_S_RegisterSound( "sound/items/obelisk_hit_02.wav", qfalse );
 	cgs.media.bhopTick[2] = trap_S_RegisterSound( "sound/items/obelisk_hit_03.wav", qfalse );
+	cgs.media.slideSound = trap_S_RegisterSound( "sound/player/slide.wav", qfalse );
 	cgs.media.hopSound = trap_S_RegisterSound( "sound/misc/menu3.wav", qfalse );
 	cgs.media.hopSoundHigh = trap_S_RegisterSound( "sound/misc/menu1.wav", qfalse );
 	cgs.media.hopSoundMax = trap_S_RegisterSound( "sound/misc/menu4.wav", qfalse );

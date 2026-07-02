@@ -56,6 +56,10 @@ def write_shared_assets(out_dir, gfx_on=True):
     with zipfile.ZipFile(pk3, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("scripts/strafe64.shader", build_shader(gfx_on))
         z.writestr("scripts/zzz_s64_console.shader", CONSOLE_SHADER)
+        _slide = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "assets", "slide.wav")
+        if os.path.isfile(_slide):
+            z.write(_slide, "sound/player/slide.wav")
         for arc, data in build_detail_textures().items():
             z.writestr(arc, data)
         if gfx_on:
@@ -82,6 +86,10 @@ def write_pk3(bsp_path, name, out_dir, aas_path=None, gfx_on=True,
         if standalone:
             z.writestr("scripts/strafe64.shader", build_shader(gfx_on))
             z.writestr("scripts/zzz_s64_console.shader", CONSOLE_SHADER)
+        _slide = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "assets", "slide.wav")
+        if os.path.isfile(_slide):
+            z.write(_slide, "sound/player/slide.wav")
             for arc, data in build_detail_textures().items():
                 z.writestr(arc, data)
             if gfx_on:
