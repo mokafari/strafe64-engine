@@ -689,16 +689,17 @@ void Con_DrawSolidConsole( float frac ) {
 		SCR_DrawPic( 0, 0, SCREEN_WIDTH, y, cls.consoleShader );
 	}
 
-	color[0] = 1;
-	color[1] = 0;
-	color[2] = 0;
+	// STRAFE 64: NERV amber divider rail, not the stock Q3 red
+	color[0] = 1.0f;
+	color[1] = 0.6f;
+	color[2] = 0.06f;
 	color[3] = 1;
 	SCR_FillRect( 0, y, SCREEN_WIDTH, 2, color );
 
 
-	// draw the version number
+	// draw the version number (same amber as the rail)
 
-	re.SetColor( g_color_table[ColorIndex(COLOR_RED)] );
+	re.SetColor( color );
 
 	i = strlen( Q3_VERSION );
 
