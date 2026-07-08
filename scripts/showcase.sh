@@ -21,6 +21,8 @@
 #   SKILL=4 ./scripts/showcase.sh         bot skill 1-5 (default 4)
 #   FULLSCREEN=1 ./scripts/showcase.sh    same as -f
 #   FORCEMODEL=1 ./scripts/showcase.sh    make EVERYONE the cyber Angelyss
+#   MAXQ=1 ./scripts/showcase.sh          screenshot-grade (4096 shadows + 4x MSAA
+#                                         + relief); default is balanced/playable
 #
 # Capture, once you're in (bound by autoexec.cfg):
 #   F9 = start/stop 60fps video   F8 = demo record   F10 = screenshot
@@ -141,6 +143,21 @@ fi
 
 echo "SHOWCASE :: $MAP  |  $BOTS bots @ skill $SKILL  |  fullscreen=$FULLSCREEN"
 
+# --- performance tier ---------------------------------------------------
+# The heaviest renderer cvars scale with SCENE GEOMETRY (sun-shadow cascades)
+# or framebuffer bandwidth (MSAA over the HDR float pipeline), which is why
+# dense brush maps like lun3dm5 crater while the sparse generated arenas don't.
+# Default = BALANCED: keeps ~95% of the look but
+#   - drops 4x MSAA (the grade pass's FXAA already antialiases — quality-neutral),
+#   - 2048 shadow maps instead of 4096 (4x less shadow fill, near-identical),
+#   - parallax instead of relief mapping, picmip 1 instead of 0.
+# Set MAXQ=1 for the original screenshot-grade settings (4096 + 4x MSAA + relief).
+if [ "${MAXQ:-0}" = 1 ]; then
+	MSAA=4; SHADOWSIZE=4096; PARALLAX=2; PICMIP=0
+else
+	MSAA=0; SHADOWSIZE=2048; PARALLAX=1; PICMIP=1
+fi
+
 # Renderer beauty cvars go on the command line (read at GL init — no vid_restart).
 # FULL EYE CANDY (tuned 2026-06-23 for contrast, anti-blowout): HDR + filmic tonemap
 # + reflective PBR (cubemap/specular/normal/deluxe) + SSAO + a darker exposure for the
@@ -159,6 +176,7 @@ exec "$APP" \
 	+set com_basegame baseoa +set fs_basepath "$OA" \
 	+set sv_pure 0 +set vm_game 0 +set vm_cgame 0 +set vm_ui 0 \
 	+set cl_renderer opengl2 \
+	+set r_finish 0 +set r_swapInterval 0 +set com_maxfps 250 \
 	+set r_postProcess 1 +set r_hdr 1 +set r_toneMap 1 \
 	+set r_autoExposure 1 +set r_cameraExposure 0.52 \
 	+set r_forceAutoExposureMin -1.5 +set r_forceAutoExposureMax 0.4 \
@@ -170,12 +188,13 @@ exec "$APP" \
 	+set r_pbr 1 +set r_cubeMapping 1 +set r_specularMapping 1 \
 	+set r_normalMapping 1 +set r_deluxeMapping 1 \
 	+set r_ssao 0 \
-	+set r_parallaxMapping 2 \
-	+set r_sunShadows 1 +set r_shadowFilter 2 +set r_shadowMapSize 4096 \
+	+set r_parallaxMapping $PARALLAX \
+	+set r_sunShadows 1 +set r_shadowFilter 2 +set r_shadowMapSize $SHADOWSIZE \
 	+set r_forceSunAmbientScale 0.45 \
-	+set r_ext_multisample 4 \
+	+set r_ext_multisample $MSAA \
+	+set r_grade 1 +set r_fxaa 1 \
 	+set r_ext_texture_filter_anisotropic 1 +set r_ext_max_anisotropy 16 \
-	+set r_textureMode GL_LINEAR_MIPMAP_LINEAR +set r_picmip 0 \
+	+set r_textureMode GL_LINEAR_MIPMAP_LINEAR +set r_picmip $PICMIP \
 	+set r_vertexLight 0 \
 	+set r_fullscreen "$FULLSCREEN" \
 	+set bot_enable 1 $BOTFILL +set g_spSkill "$SKILL" \

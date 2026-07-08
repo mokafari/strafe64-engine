@@ -53,6 +53,14 @@ float	pm_strafeAccelerate = 70.0f;	// accel when strafing with A/D only
 float	pm_wishSpeedClamp = 30.0f;		// wishspeed cap for A/D-only strafing
 float	pm_airControlAmount = 150.0f;	// W-only velocity turning strength
 
+// STRAFE 64 sword lunge magnetism — a swing near an enemy steers the forward
+// lunge onto them so the intent "kill that one" closes the gap for you. Driven
+// live from cvars (g_swordMagnet / g_swordMagnetRange) via g_active.c.
+float	pm_swordMagnet = 1.0f;			// 0..1 steer strength (0 = raw forward lunge)
+float	pm_swordMagnetRange = 300.0f;	// how far ahead the magnet looks for a target
+float	pm_swordRecovery = 300.0f;		// swing recovery ms at a standstill (committed / punishable)
+float	pm_swordRecoveryMin = 180.0f;	// swing recovery ms at flow speed (snappy, keeps the chain)
+
 // bunny hop chain (jump can be held: rehop on the landing frame, no friction)
 int		pm_bhopWindowMs = 100;			// grounded longer than this breaks the chain
 float	pm_bhopBoostBase = 1.05f;		// speed multiplier on the first chained hop
@@ -81,6 +89,14 @@ float	pm_airDashSpeed = 150.0f;		// horizontal burst added on the air jump -> a 
 // stair jump (rejumping within the window after landing goes higher)
 int		pm_doubleJumpWindowMs = 400;
 float	pm_doubleJumpBoost = 75.0f;		// added to JUMP_VELOCITY
+
+// jump cooldown: a held jump can't re-fire within this many real-time ms of the
+// last one. A real jump arcs you airborne for hundreds of ms, so this never
+// touches normal bunny-hopping; it only kills the multi-trigger you get on
+// ramps, where the slope can leave PM_GroundTrace calling you "walking" the very
+// next frame even though you just launched (the throw-off dot test cancels the
+// jump's vertical against your into-slope horizontal velocity).
+int		pm_jumpCooldownMs = 80;
 
 // terminal velocity: hard cap on downward speed so long void drops stay
 // controllable and fall damage stays bounded (0 = uncapped, vanilla Quake)
@@ -140,6 +156,10 @@ PM_AddEvent
 */
 void PM_AddEvent( int newEvent ) {
 	BG_AddPredictableEventToPlayerstate( newEvent, 0, pm->ps );
+}
+
+void PM_AddEventWithParm( int newEvent, int eventParm ) {
+	BG_AddPredictableEventToPlayerstate( newEvent, eventParm, pm->ps );
 }
 
 /*
@@ -501,6 +521,16 @@ static qboolean PM_CheckJump( void ) {
 
 	// jump can be held: rehopping on the landing frame keeps the chain alive
 	// (the PMF_JUMP_HELD gate is gone on purpose)
+
+	// ...but enforce a short cooldown so a held jump can't re-fire several times
+	// in a few frames. STAT_JUMP_MS counts the ms remaining in the double-jump
+	// window since the last jump, so (window - remaining) is the elapsed time.
+	// This is what stops the ramp multi-trigger, where the throw-off test can
+	// leave you "walking" again the frame after you launched.
+	if ( pm_jumpCooldownMs > 0 && pm->ps->stats[STAT_JUMP_MS] > 0
+		&& pm_doubleJumpWindowMs - pm->ps->stats[STAT_JUMP_MS] < pm_jumpCooldownMs ) {
+		return qfalse;
+	}
 
 	speed2d = sqrt( pm->ps->velocity[0] * pm->ps->velocity[0]
 		+ pm->ps->velocity[1] * pm->ps->velocity[1] );
@@ -2328,6 +2358,105 @@ static void PM_TorsoAnimation( void ) {
 
 /*
 ==============
+PM_SwordMagnetLunge
+
+STRAFE 64 flow assist. On a sword swing, fan a few short traces around the aim
+line and, if one catches an enemy player within reach, steer the forward lunge
+onto them and boost it toward the gap — so a swing "near" a target snaps you into
+it (Ghostrunner / MGR blink-strike feel). Runs inside prediction: pm->trace clips
+against other clients the same way on client and server, so the steer stays in
+sync. Falls back to a straight forward lunge when nothing is caught (or when
+pm_swordMagnet is 0). Returns the lunge direction in outDir and its speed as the
+return value; both are flattened to the horizontal plane.
+==============
+*/
+static float PM_SwordMagnetLunge( vec3_t outDir ) {
+	vec3_t		eye, flatforward, targetDir, best;
+	float		bestDist, bestWeight, w, speed;
+	int			i;
+	trace_t		tr;
+	// detection fan as (yaw, pitch) degree offsets from the aim line: centre, the
+	// four cardinals and the four diagonals of a cone around it.
+	static const float off[9][2] = {
+		{  0,   0 }, { -14,  0 }, { 14,  0 }, {  0, -12 }, {  0, 12 },
+		{ -10, -9 }, {  10, -9 }, { -10,  9 }, { 10,  9 }
+	};
+
+	flatforward[0] = pml.forward[0];
+	flatforward[1] = pml.forward[1];
+	flatforward[2] = 0;
+	VectorNormalize( flatforward );
+	VectorCopy( flatforward, outDir );
+
+	if ( pm_swordMagnet <= 0.0f ) {
+		return 120.0f;			// steer disabled — plain forward step
+	}
+
+	VectorCopy( pm->ps->origin, eye );
+	eye[2] += pm->ps->viewheight;
+
+	bestDist = pm_swordMagnetRange + 1.0f;
+	bestWeight = 0.0f;
+	VectorClear( best );
+
+	for ( i = 0 ; i < 9 ; i++ ) {
+		vec3_t	ang, dir, end;
+		float	dist;
+
+		VectorCopy( pm->ps->viewangles, ang );
+		ang[YAW]   = pm->ps->viewangles[YAW]   + off[i][0];
+		ang[PITCH] = pm->ps->viewangles[PITCH] + off[i][1];
+		AngleVectors( ang, dir, NULL, NULL );
+		VectorMA( eye, pm_swordMagnetRange, dir, end );
+
+		pm->trace( &tr, eye, vec3_origin, vec3_origin, end, pm->ps->clientNum, MASK_SHOT );
+		// a client entity (< MAX_CLIENTS) is a player/bot body; ignore world + movers
+		if ( tr.fraction >= 1.0f || tr.entityNum >= MAX_CLIENTS
+			|| tr.entityNum == pm->ps->clientNum ) {
+			continue;
+		}
+		dist = tr.fraction * pm_swordMagnetRange;
+		// centred rays win ties: weight 1 at the crosshair, tapering to the rim
+		w = 1.0f - ( (float)i > 0 ? 0.10f * i : 0.0f );
+		if ( dist < bestDist ) {
+			bestDist = dist;
+			bestWeight = w;
+			VectorSubtract( tr.endpos, eye, best );
+		}
+	}
+
+	speed = 120.0f;					// baseline forward step when nothing is caught
+	if ( bestWeight > 0.0f ) {
+		float	steer, lunge;
+
+		best[2] = 0.0f;
+		if ( VectorNormalize( best ) > 0.0f ) {
+			VectorCopy( best, targetDir );
+			steer = 0.65f * pm_swordMagnet * bestWeight;	// how hard to bend onto them
+			for ( i = 0 ; i < 3 ; i++ ) {
+				outDir[i] = flatforward[i] + ( targetDir[i] - flatforward[i] ) * steer;
+			}
+			if ( VectorNormalize( outDir ) == 0.0f ) {
+				VectorCopy( flatforward, outDir );
+			}
+			// close the gap: stronger pull the closer they are, so you land in
+			// range — but don't ram a target you're already on top of (the
+			// faceplant-mash the neutral game discourages), just step baseline
+			if ( bestDist < 45.0f ) {
+				lunge = 120.0f;
+			} else {
+				lunge = 120.0f + ( 220.0f * bestWeight * pm_swordMagnet );
+			}
+			speed = lunge;
+		}
+	}
+
+	return speed;
+}
+
+
+/*
+==============
 PM_Weapon
 
 Generates weapon events and modifes the weapon counter
@@ -2406,6 +2535,13 @@ static void PM_Weapon( void ) {
 	}
 
 	if ( pm->ps->weaponTime > 0 ) {
+		// STRAFE 64: buffer a sword swing pressed mid-recovery so a tapped rhythm
+		// never drops an input at the cadence boundary — the queued swing fires the
+		// instant recovery ends, even if the button is already back up.
+		if ( pm->ps->weapon == WP_SWORD && ( pm->cmd.buttons & BUTTON_ATTACK )
+			&& !( pm->ps->eFlags & EF_BLOCKING ) ) {
+			pm->ps->pm_flags |= PMF_SWORD_BUFFER;
+		}
 		return;
 	}
 
@@ -2429,14 +2565,24 @@ static void PM_Weapon( void ) {
 	if ( pm->ps->eFlags & EF_BLOCKING ) {
 		pm->ps->weaponTime = 0;
 		pm->ps->weaponstate = WEAPON_READY;
+		pm->ps->pm_flags &= ~PMF_SWORD_BUFFER;		// raising guard cancels a queued swing
 		return;
 	}
 
-	// check for fire
-	if ( ! (pm->cmd.buttons & BUTTON_ATTACK) ) {
-		pm->ps->weaponTime = 0;
-		pm->ps->weaponstate = WEAPON_READY;
-		return;
+	// check for fire — a buffered sword swing counts as a press so a queued tap
+	// flows into the next slash even if the button is already up.
+	{
+		qboolean	wantFire = ( pm->cmd.buttons & BUTTON_ATTACK ) != 0;
+
+		if ( pm->ps->weapon == WP_SWORD && ( pm->ps->pm_flags & PMF_SWORD_BUFFER ) ) {
+			wantFire = qtrue;
+		}
+		pm->ps->pm_flags &= ~PMF_SWORD_BUFFER;		// consume the queued swing
+		if ( !wantFire ) {
+			pm->ps->weaponTime = 0;
+			pm->ps->weaponstate = WEAPON_READY;
+			return;
+		}
 	}
 
 	// start the animation even if out of ammo
@@ -2474,25 +2620,35 @@ static void PM_Weapon( void ) {
 	}
 
 	// fire weapon
-	PM_AddEvent( EV_FIRE_WEAPON );
+	if ( pm->ps->weapon == WP_SWORD ) {
+		// STRAFE 64: pick the directional swing (start/end quadrant) from the
+		// movement input and carry it on the fire event so the client renders the
+		// matching arc and the server cuts along the same sweep. parity comes from
+		// the just-set torso anim so neutral swings alternate into a flowing combo.
+		int		startQuad, endQuad, parity;
+
+		parity = ( ( pm->ps->torsoAnim & ~ANIM_TOGGLEBIT ) == TORSO_ATTACK2 ) ? 1 : 0;
+		BG_SwordPickQuads( pm->cmd.forwardmove, pm->cmd.rightmove, parity, &startQuad, &endQuad );
+		PM_AddEventWithParm( EV_FIRE_WEAPON, SWORD_PACK_QUADS( startQuad, endQuad ) );
+	} else {
+		PM_AddEvent( EV_FIRE_WEAPON );
+	}
 
 	// STRAFE 64: the sword lunges forward on each swing so melee feeds the
-	// movement chain instead of stalling it. Capped so it engages but can't
-	// be milked as a speed exploit.
+	// movement chain instead of stalling it. The lunge magnetises onto a nearby
+	// enemy so a swing near a target snaps you onto them ("kill what you fly
+	// through"). Capped so it engages but can't be milked as a speed exploit.
 	if ( pm->ps->weapon == WP_SWORD ) {
-		vec3_t	flatforward;
-		float	speed;
+		vec3_t	lungeDir;
+		float	lungeSpeed, speed;
 
-		flatforward[0] = pml.forward[0];
-		flatforward[1] = pml.forward[1];
-		flatforward[2] = 0;
-		VectorNormalize( flatforward );
+		lungeSpeed = PM_SwordMagnetLunge( lungeDir );		// steered dir + speed
 
 		speed = sqrt( pm->ps->velocity[0] * pm->ps->velocity[0]
 			+ pm->ps->velocity[1] * pm->ps->velocity[1] );
 		if ( speed < 1000 ) {
 			// step into each cut — flow between targets instead of rooting
-			VectorMA( pm->ps->velocity, 120, flatforward, pm->ps->velocity );
+			VectorMA( pm->ps->velocity, lungeSpeed, lungeDir, pm->ps->velocity );
 		}
 	}
 
@@ -2502,7 +2658,19 @@ static void PM_Weapon( void ) {
 		addTime = 400;
 		break;
 	case WP_SWORD:
-		addTime = 230;		// brisk hack-and-slash cadence (not machine-gun fast)
+		{
+			// speed-INVERSE recovery: a standstill swing is committed (long, so a
+			// whiff is punishable), a full-speed pass snaps back fast so the flow
+			// chain never stalls. A connecting hit refunds toward the fast value
+			// server-side (g_swordWhiffScale) — so the MISS is what leaves you open.
+			float	sp = sqrt( pm->ps->velocity[0] * pm->ps->velocity[0]
+				+ pm->ps->velocity[1] * pm->ps->velocity[1] );
+			float	t = sp / 600.0f;			// 0 at rest -> 1 at flow speed
+			if ( t > 1.0f ) {
+				t = 1.0f;
+			}
+			addTime = (int)( pm_swordRecovery - ( pm_swordRecovery - pm_swordRecoveryMin ) * t );
+		}
 		break;
 	case WP_LIGHTNING:
 		addTime = 50;

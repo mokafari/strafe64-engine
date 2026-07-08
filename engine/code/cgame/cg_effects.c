@@ -546,6 +546,7 @@ CG_LaunchGib
 void CG_LaunchGib( vec3_t origin, vec3_t velocity, qhandle_t hModel ) {
 	localEntity_t	*le;
 	refEntity_t		*re;
+	float			spin;
 
 	le = CG_AllocLocalEntity();
 	re = &le->refEntity;
@@ -564,6 +565,21 @@ void CG_LaunchGib( vec3_t origin, vec3_t velocity, qhandle_t hModel ) {
 	le->pos.trTime = cg.time;
 
 	le->bounceFactor = 0.6f;
+
+	// tumble through the air. Stock gibs flew rigid in a fixed orientation
+	// (LEF_TUMBLE was never set) which read as "stuck"/buggy; spin them on all
+	// three axes from a random start pose, with a rate that scales with how hard
+	// the chunk was thrown so fast viscera whips and a lobbed limb lazily rolls.
+	spin = 60.0f + VectorLength( velocity ) * 0.9f;
+	le->angles.trType = TR_LINEAR;
+	le->angles.trTime = cg.time;
+	le->angles.trBase[0] = random() * 360;
+	le->angles.trBase[1] = random() * 360;
+	le->angles.trBase[2] = random() * 360;
+	le->angles.trDelta[0] = crandom() * spin;
+	le->angles.trDelta[1] = crandom() * spin;
+	le->angles.trDelta[2] = crandom() * spin;
+	le->leFlags = LEF_TUMBLE;
 
 	le->leBounceSoundType = LEBS_BLOOD;
 	le->leMarkType = LEMT_BLOOD;

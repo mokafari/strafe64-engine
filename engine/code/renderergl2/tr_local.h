@@ -724,6 +724,11 @@ typedef enum
 
 	UNIFORM_DEPTHOFFIELD,	// STRAFE 64 DoF: focalDist, focalRange, maxBlurPx, autoFocus
 
+	UNIFORM_COLORGRADE,		// STRAFE 64 grade: contrast, saturation, temperature, vignette
+	UNIFORM_COLORGRADEFX,	// STRAFE 64 grade: filmGrain, fxaaEnable, frameSeed, reserved
+
+	UNIFORM_RIMLIGHT,		// STRAFE 64 character rim: rgb = rim color * scale, a = exponent (0 = off)
+
 	UNIFORM_COUNT
 } uniform_t;
 
@@ -1631,6 +1636,8 @@ typedef struct {
 	shaderProgram_t ssaoShader;
 	shaderProgram_t depthBlurShader[4];
 	shaderProgram_t depthOfFieldShader;	// STRAFE 64 cinematic DoF
+	shaderProgram_t colorGradeShader;	// STRAFE 64 FXAA + grade + vignette + grain
+	shaderProgram_t bodycamShader;		// STRAFE 64 bodycam: warp/chroma/crunch/scanline/grain
 	shaderProgram_t testcubeShader;
 	shaderProgram_t greyscaleShader;
 
@@ -1852,7 +1859,31 @@ extern  cvar_t  *r_dofAmount;	// max blur radius in pixels
 extern  cvar_t  *r_dofFocalDist;	// focal plane distance (world units) when autofocus off
 extern  cvar_t  *r_dofFocalRange;	// distance over which sharp->fully blurred
 extern  cvar_t  *r_dofAutoFocus;	// 1 = focus on screen-centre depth each frame
+extern  cvar_t  *r_grade;			// STRAFE 64 photoreal-finish pass master toggle
+extern  cvar_t  *r_fxaa;			// antialias inside the grade pass
+extern  cvar_t  *r_gradeContrast;	// S-curve contrast (1 = neutral)
+extern  cvar_t  *r_gradeSaturation;	// saturation (1 = neutral)
+extern  cvar_t  *r_gradeTemp;		// white balance (+ = warmer)
+extern  cvar_t  *r_vignette;		// edge darkening strength
+extern  cvar_t  *r_filmGrain;		// animated film grain strength
+
+extern  cvar_t  *r_legacySpecular;	// STRAFE 64: scale on legacy alphaGen lightingSpecular gloss passes (0 = remove the blown-out additive shine on models)
+extern  cvar_t  *r_rimLight;		// STRAFE 64: character fresnel rim master toggle (0 = off)
+extern  cvar_t  *r_rimScale;		// rim brightness
+extern  cvar_t  *r_rimExp;			// rim falloff (higher = thinner edge)
+extern  cvar_t  *r_rimColorR;		// rim color red
+extern  cvar_t  *r_rimColorG;		// rim color green
+extern  cvar_t  *r_rimColorB;		// rim color blue
+extern  cvar_t  *r_bodycam;			// STRAFE 64 bodycam finish-pass master toggle
+extern  cvar_t  *r_bodycamWarp;		// barrel distortion strength
+extern  cvar_t  *r_bodycamChroma;	// chromatic aberration (px at edge)
+extern  cvar_t  *r_bodycamCrunch;	// sensor resolution scale (1 = native)
+extern  cvar_t  *r_bodycamScanline;	// rolling-shutter line darkness
+extern  cvar_t  *r_bodycamGrain;	// sensor noise amount
+extern  cvar_t  *r_bodycamVignette;	// bodycam edge darkening
+extern  cvar_t  *r_bodycamClip;		// highlight blow-out lift
 extern  cvar_t  *r_sunShadows;
+extern  cvar_t  *r_shadowSoftness;	// STRAFE 64 soft-shadow penumbra width (PCF kernel scale)
 extern  cvar_t  *r_shadowFilter;
 extern  cvar_t  *r_shadowBlur;
 extern  cvar_t  *r_shadowMapSize;

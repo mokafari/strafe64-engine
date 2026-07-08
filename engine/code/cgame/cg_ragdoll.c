@@ -45,6 +45,11 @@ typedef struct {
 	qboolean	settled;		// all particles at rest -> stop simulating
 	int			cut;			// blade cut tag (entityState.time2): 0 none,
 								// 1 limb, 2 decap, 3 bisect
+	int			airQuietTime;	// when the body first went quiet without ground
+								// support (0 = moving/grounded); drives the
+								// stuck-in-air -> ground-snap recovery
+	float		spin;			// accumulated tumble phase (rad) for severed
+								// pieces; frozen once the body settles
 } cgRagdoll_t;
 
 // indexed by entity number so it covers both live corpses and body-queue bodies
@@ -74,6 +79,9 @@ static const float ragSeedZ[RP_COUNT] = { 2.0f, 24.0f, 40.0f, 52.0f };
 #define RAG_GRAVITY		800.0f		// matches g_gravity feel
 #define RAG_SETTLE_VEL2	1.0f		// squared speed below which a particle is "stopped"
 #define RAG_MAXSTEP		20.0f		// max units a particle may move per step (anti-explode)
+#define RAG_AIRHANG_MS	1500		// quiet + unsupported this long -> a wedged/hung
+									// piece is snapped down onto the floor below it
+#define RAG_SPIN_RATE	5.0f		// rad/s tumble applied to severed pieces
 
 // blade-cut tags (mirrors entityState.time2 = cutType + 1)
 #define RAG_CUT_NONE	0
@@ -407,6 +415,8 @@ static void CG_RagdollSeed( cgRagdoll_t *rag, centity_t *cent, int cut ) {
 	rag->lastTime = cg.time;
 	rag->yaw = cent->lerpAngles[YAW];
 	rag->cut = cut;
+	rag->airQuietTime = 0;
+	rag->spin = 0;
 
 	fwd[0] = cos( DEG2RAD( rag->yaw ) );
 	fwd[1] = sin( DEG2RAD( rag->yaw ) );
@@ -502,6 +512,52 @@ static qboolean CG_RagdollCollide( vec3_t pos, vec3_t prev ) {
 
 /*
 ===============
+CG_RagdollGroundSnap
+
+Recovery for a corpse hung in the air: a severed half flung into a wall can
+wedge a particle solid (CG_RagdollCollide freezes it), and since that particle
+never counts as ground support the body would float there forever. Trace
+straight down from the lowest particle and drop the whole spine so it rests on
+the floor below, killing its velocity. If there's no floor (over a pit) just
+stop it where it is rather than fall through the world.
+===============
+*/
+static void CG_RagdollGroundSnap( cgRagdoll_t *rag ) {
+	int		i, low;
+	float	drop;
+	trace_t	tr;
+	vec3_t	start, end, mins, maxs;
+
+	low = 0;
+	for ( i = 1 ; i < RP_COUNT ; i++ ) {
+		if ( rag->pos[i][2] < rag->pos[low][2] ) {
+			low = i;
+		}
+	}
+
+	VectorSet( mins, -RAG_HALFBOX, -RAG_HALFBOX, -RAG_HALFBOX );
+	VectorSet( maxs,  RAG_HALFBOX,  RAG_HALFBOX,  RAG_HALFBOX );
+
+	VectorCopy( rag->pos[low], start );
+	VectorCopy( rag->pos[low], end );
+	end[2] -= 4096.0f;
+	CG_Trace( &tr, start, mins, maxs, end, -1, CONTENTS_SOLID );
+
+	if ( tr.fraction >= 1.0f || tr.startsolid || tr.allsolid ) {
+		// no floor / buried: freeze in place (kill velocity) instead of floating
+		drop = 0;
+	} else {
+		drop = rag->pos[low][2] - tr.endpos[2];
+	}
+
+	for ( i = 0 ; i < RP_COUNT ; i++ ) {
+		rag->pos[i][2] -= drop;
+		VectorCopy( rag->pos[i], rag->prev[i] );		// zero velocity -> rests
+	}
+}
+
+/*
+===============
 CG_RagdollStep
 
 One Verlet integration + constraint relaxation + collision pass. Uses a clamped
@@ -532,6 +588,11 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 	n = cg_ragdollIterations.integer;
 	if ( n < 1 ) n = 1;
 	if ( n > 16 ) n = 16;
+
+	// advance the tumble phase for severed pieces. This only runs while the
+	// body is live (the step stops once it settles), so the spin freezes at
+	// rest instead of spinning a grounded corpse forever.
+	rag->spin += RAG_SPIN_RATE * dt;
 
 	// integrate
 	for ( i = 0 ; i < RP_COUNT ; i++ ) {
@@ -599,6 +660,21 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 			maxVel2 = v2;
 		}
 	}
+	// stuck-in-air recovery: a piece that has gone quiet WITHOUT ground support
+	// is wedged/hung (e.g. a severed half flung into a wall), not freely falling
+	// -- a free fall is never quiet for long. Require the quiet to persist
+	// (tracked from airQuietTime) so a toss apex, where vertical velocity passes
+	// momentarily through zero, doesn't trip it. Then snap it down to the floor.
+	if ( grounded || maxVel2 >= RAG_SETTLE_VEL2 ) {
+		rag->airQuietTime = 0;
+	} else if ( rag->airQuietTime == 0 ) {
+		rag->airQuietTime = cg.time;
+	} else if ( cg.time - rag->airQuietTime > RAG_AIRHANG_MS ) {
+		CG_RagdollGroundSnap( rag );
+		grounded = qtrue;
+		rag->airQuietTime = 0;
+	}
+
 	if ( grounded && maxVel2 < RAG_SETTLE_VEL2 && cg.time - rag->startTime > 400 ) {
 		rag->settled = qtrue;
 	}
@@ -614,7 +690,7 @@ captured death yaw. originPart anchors the segment's model origin.
 */
 static void CG_RagdollSegment( cgRagdoll_t *rag, qhandle_t model, qhandle_t skin,
 		ragPart_t originPart, ragPart_t fromPart, ragPart_t toPart,
-		centity_t *cent, int renderfx, float shadowPlane ) {
+		centity_t *cent, int renderfx, float shadowPlane, float spin ) {
 	refEntity_t	ent;
 	vec3_t		up, fwd, side;
 
@@ -645,6 +721,21 @@ static void CG_RagdollSegment( cgRagdoll_t *rag, qhandle_t model, qhandle_t skin
 	}
 	CrossProduct( up, fwd, side );
 	VectorNormalize( side );
+
+	// severed pieces tumble: roll the in-plane axes (fwd, side) about the bone
+	// so the detached half visibly spins off rather than sliding rigidly. spin
+	// is frozen once the body settles, so a grounded corpse holds its pose.
+	if ( spin != 0 ) {
+		float	c = cos( spin ), s = sin( spin );
+		vec3_t	nf, ns;
+		int		j;
+		for ( j = 0 ; j < 3 ; j++ ) {
+			nf[j] = fwd[j] * c + side[j] * s;
+			ns[j] = side[j] * c - fwd[j] * s;
+		}
+		VectorCopy( nf, fwd );
+		VectorCopy( ns, side );
+	}
 
 	// MD3 axis: [0]=forward, [1]=left, [2]=up
 	VectorCopy( fwd, ent.axis[0] );
@@ -719,22 +810,22 @@ qboolean CG_RagdollAdd( centity_t *cent, int renderfx, float shadowPlane ) {
 		rag->lastTime = cg.time;	// keep dt sane if it wakes back up
 	}
 
-	// legs always ride the lower spine
-	CG_RagdollSegment( rag, ci->legsModel, ci->legsSkin, RP_FEET, RP_FEET, RP_PELVIS, cent, renderfx, shadowPlane );
+	// legs always ride the lower spine (never spun -- they stay the grounded half)
+	CG_RagdollSegment( rag, ci->legsModel, ci->legsSkin, RP_FEET, RP_FEET, RP_PELVIS, cent, renderfx, shadowPlane, 0 );
 
 	if ( rag->cut == RAG_CUT_BISECT ) {
 		// torso rides the detached upper half (chest -> head), separating from
-		// the legs at the waist
-		CG_RagdollSegment( rag, ci->torsoModel, ci->torsoSkin, RP_CHEST, RP_CHEST, RP_HEAD, cent, renderfx, shadowPlane );
-		CG_RagdollSegment( rag, ci->headModel,  ci->headSkin,  RP_HEAD,  RP_CHEST, RP_HEAD, cent, renderfx, shadowPlane );
+		// the legs at the waist and tumbling as it goes
+		CG_RagdollSegment( rag, ci->torsoModel, ci->torsoSkin, RP_CHEST, RP_CHEST, RP_HEAD, cent, renderfx, shadowPlane, rag->spin );
+		CG_RagdollSegment( rag, ci->headModel,  ci->headSkin,  RP_HEAD,  RP_CHEST, RP_HEAD, cent, renderfx, shadowPlane, rag->spin );
 	} else if ( rag->cut == RAG_CUT_DECAP ) {
 		// torso stays with the body; the head tumbles free (from==to)
-		CG_RagdollSegment( rag, ci->torsoModel, ci->torsoSkin, RP_PELVIS, RP_PELVIS, RP_CHEST, cent, renderfx, shadowPlane );
-		CG_RagdollSegment( rag, ci->headModel,  ci->headSkin,  RP_HEAD,   RP_HEAD,   RP_HEAD,  cent, renderfx, shadowPlane );
+		CG_RagdollSegment( rag, ci->torsoModel, ci->torsoSkin, RP_PELVIS, RP_PELVIS, RP_CHEST, cent, renderfx, shadowPlane, 0 );
+		CG_RagdollSegment( rag, ci->headModel,  ci->headSkin,  RP_HEAD,   RP_HEAD,   RP_HEAD,  cent, renderfx, shadowPlane, rag->spin );
 	} else {
 		// intact spine
-		CG_RagdollSegment( rag, ci->torsoModel, ci->torsoSkin, RP_PELVIS, RP_PELVIS, RP_CHEST, cent, renderfx, shadowPlane );
-		CG_RagdollSegment( rag, ci->headModel,  ci->headSkin,  RP_HEAD,   RP_CHEST,  RP_HEAD,  cent, renderfx, shadowPlane );
+		CG_RagdollSegment( rag, ci->torsoModel, ci->torsoSkin, RP_PELVIS, RP_PELVIS, RP_CHEST, cent, renderfx, shadowPlane, 0 );
+		CG_RagdollSegment( rag, ci->headModel,  ci->headSkin,  RP_HEAD,   RP_CHEST,  RP_HEAD,  cent, renderfx, shadowPlane, 0 );
 	}
 
 	return qtrue;

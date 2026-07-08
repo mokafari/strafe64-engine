@@ -164,6 +164,23 @@ typedef struct {
 	// signed bank from lateral velocity (+ leaning right / - leaning left).
 	float			slide;
 	float			slideLean;
+
+	// STRAFE 64: procedural acrobatic flip — a cosmetic full-body spin kicked off
+	// by a backward air-jump (backflip), so a retreating leap reads ninja-like.
+	// Purely visual: it spins the rendered body about one axis over flipDuration
+	// and never touches physics or the view. (The dash roll and forward somersault
+	// were removed — too disorienting in the forward run.)
+	// flipAxis: 0 = roll (about forward), 1 = pitch (about side).
+	int				flipStartTime;	// cg.time the flip began (0 = none)
+	int				flipDuration;	// ms the spin lasts
+	int				flipAxis;		// which body axis to spin about
+	float			flipDir;		// signed spin direction / turns (e.g. +1, -1)
+
+	// STRAFE 64: melee kick pose (EV_KICK) — a snap roundhouse layered on the
+	// MD3 axes like the poses above. Airborne kicks additionally ride the flip
+	// system for the kung-fu tornado spin.
+	int				kickTime;		// cg.time the kick pose began (0 = none)
+	int				kickFlags;		// EV_KICK eventParm: 1 = airborne, 2 = hit, 4 = ninja launch
 } playerEntity_t;
 
 //=================================================
@@ -215,6 +232,8 @@ typedef struct centity_s {
 	// copy in cg_t). Driven from this entity's own EV_FIRE_WEAPON events.
 	int			swordSwingTime;		// cg.time this entity's current swing started
 	int			swordSwingStep;		// combo index (finisher on every 3rd)
+	int			swordStartQuad;		// directional swing: start quadrant (from the fire event parm)
+	int			swordEndQuad;		// directional swing: end quadrant — the blade sweeps start->end
 	vec3_t		swordTipPath[12];	// world-space blade tip history (newest at 0)
 	vec3_t		swordBasePath[12];	// world-space blade guard history
 	int			swordTrailLastTime;	// cg.time of the last sample (one per frame)
@@ -710,6 +729,12 @@ typedef struct {
 	// STRAFE 64: first-person sword swing animation state (local player only)
 	int			swordSwingTime;		// cg.time the current swing started
 	int			swordSwingStep;		// combo index, drives swing direction / finisher
+	int			swordStartQuad;		// directional swing: start quadrant (from the fire event parm)
+	int			swordEndQuad;		// directional swing: end quadrant — the blade sweeps start->end
+	int			swordHitStopTime;	// cg.time a blade hit froze the swing (hit-stop), 0 = none
+	int			swordHitStopMs;		// duration of the current hit-stop (heavier on finisher / clean parry)
+	int			swordQuiverTime;	// cg.time a hit/parry set the blade quivering, 0 = none
+	float		swordQuiverMag;		// quiver amplitude (heavier on a finisher / parry)
 
 	// STRAFE 64: blade-edge motion trail — world-space history of the blade's
 	// guard and tip, sampled from the actual view-weapon transform each frame
@@ -969,6 +994,8 @@ typedef struct {
 #endif
 	sfxHandle_t	swordHitSound;		// STRAFE 64: meaty blade-on-flesh impact
 	sfxHandle_t	swordHeavySound;	// STRAFE 64: heavier finisher swing whoosh
+	sfxHandle_t	kickWhooshSound;	// STRAFE 64: melee kick swing whoosh (EV_KICK)
+	sfxHandle_t	kickHitSound;		// STRAFE 64: melee kick connect thud
 	qhandle_t	swordSlashShader;	// STRAFE 64: additive FP swing-trail ribbon ($whiteimage)
 	qhandle_t	swordCutShader;		// STRAFE 64: textured kill slash-arc streak (CG_AddSwordCuts)
 	sfxHandle_t	gibSound;
@@ -1221,6 +1248,8 @@ extern	vmCvar_t		cg_centertime;
 extern	vmCvar_t		cg_runpitch;
 extern	vmCvar_t		cg_runroll;
 extern	vmCvar_t		cg_moveKick;
+extern	vmCvar_t		cg_bodycam;			// handheld vest-cam view motion (0 = off)
+extern	vmCvar_t		cg_bodycamScale;	// overall amplitude of the handheld motion
 extern	vmCvar_t		cg_bobup;
 extern	vmCvar_t		cg_bobpitch;
 extern	vmCvar_t		cg_bobroll;
@@ -1234,6 +1263,7 @@ extern	vmCvar_t		cg_draw3dIcons;
 extern	vmCvar_t		cg_drawIcons;
 extern	vmCvar_t		cg_drawAmmoWarning;
 extern	vmCvar_t		cg_drawCrosshair;
+extern	vmCvar_t		cg_swordReticle;	// STRAFE 64: hot-tint the crosshair when an enemy is in katana kill-range
 extern	vmCvar_t		cg_drawCrosshairNames;
 extern	vmCvar_t		cg_drawRewards;
 extern	vmCvar_t		cg_drawTeamOverlay;
@@ -1317,6 +1347,7 @@ extern	vmCvar_t		cg_ragdollIterations;
 extern	vmCvar_t		cg_wallGrip;		// STRAFE 64: procedural wall-grip body lean (0 off)
 extern	vmCvar_t		cg_wallGripScale;	// overall strength multiplier on the grip pose
 extern	vmCvar_t		cg_slidePose;		// STRAFE 64: procedural crouch-slide body recline (0 off)
+extern	vmCvar_t		cg_acrobatics;		// STRAFE 64: cosmetic air-jump/dash flip & roll spins (0 off)
 extern	vmCvar_t		cg_slidePoseScale;	// overall strength multiplier on the slide pose
 extern	vmCvar_t		cg_zoomFov;
 extern	vmCvar_t		cg_thirdPersonRange;
@@ -1365,6 +1396,10 @@ extern	vmCvar_t		cg_oldRail;
 extern	vmCvar_t		cg_oldRocket;
 extern	vmCvar_t		cg_oldPlasma;
 extern	vmCvar_t		cg_trueLightning;
+extern	vmCvar_t		cg_killcam;			// STRAFE 64: cinematic death replay (0 off, 1 on)
+extern	vmCvar_t		cg_killcamStyle;	// 0 = diagnostic dusk (subtle), 1 = full Matrix
+extern	vmCvar_t		cg_killcamTime;		// camera-move duration in ms (then holds until respawn)
+extern	vmCvar_t		cg_killcamShop;		// 0 = no buy menu (killcam is the whole kill screen), 1 = loadout shop
 #ifdef MISSIONPACK
 extern	vmCvar_t		cg_redTeamName;
 extern	vmCvar_t		cg_blueTeamName;
@@ -1424,6 +1459,19 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
 // race layer (cg_view.c)
 void CG_RaceFrame( void );
+
+// cg_killcam.c -- cinematic death replay
+void CG_KillcamNoteObituary( int victim, int attacker, int mod );
+void CG_KillcamPlayerDied( void );
+void CG_KillcamStop( void );
+void CG_KillcamUpdate( void );
+qboolean CG_KillcamActive( void );
+qboolean CG_KillcamHolding( void );
+void CG_KillcamCalcView( void );
+void CG_DrawKillcam( void );
+
+// cg_draw.c
+void CG_DrawMissionReport( void );
 void CG_GhostInit( void );
 int CG_GhostBestMs( void );
 float CG_VoidZ( void );
@@ -1512,6 +1560,17 @@ qhandle_t CG_StatusHandle(int task);
 // cg_player.c
 //
 void CG_Player( centity_t *cent );
+void CG_TriggerAcrobatic( centity_t *cent, int kind );
+void CG_TriggerKick( centity_t *cent, int parm );
+
+// STRAFE 64: sword swing timing/shape, shared between the view weapon (cg_weapons.c)
+// and the third-person body pose (cg_players.c).
+#define SWORD_SWING_MS	250			// swing arc duration (≈ the 230ms fire cadence)
+#define SWORD_RECOVER_MS	130		// follow-through: blade eases back to guard after the strike
+#define SWORD_HITSTOP_MS	55		// blade "sticks" this long on a connect (hit-stop)
+float CG_SwordSwingFactor( float p );		// 0..1 swing progress -> eased strike envelope
+void  CG_SwordSlashAnglesForQuads( int startQuad, int endQuad, float f, qboolean finisher, vec3_t out );
+int   CG_SwordSwingDt( int swingTime );		// elapsed swing ms with hit-stop applied (local player)
 int  CG_GlowPilotCount( void );		// # of ET_PLAYER glow lights this frame (count-clamp)
 void CG_ResetPlayerEntity( centity_t *cent );
 void CG_AddRefEntityWithPowerups( refEntity_t *ent, entityState_t *state, int team );

@@ -163,8 +163,31 @@ cvar_t  *r_dofAmount;
 cvar_t  *r_dofFocalDist;
 cvar_t  *r_dofFocalRange;
 cvar_t  *r_dofAutoFocus;
+cvar_t  *r_grade;
+cvar_t  *r_fxaa;
+cvar_t  *r_gradeContrast;
+cvar_t  *r_gradeSaturation;
+cvar_t  *r_gradeTemp;
+cvar_t  *r_vignette;
+cvar_t  *r_filmGrain;
+cvar_t  *r_legacySpecular;
+cvar_t  *r_rimLight;
+cvar_t  *r_rimScale;
+cvar_t  *r_rimExp;
+cvar_t  *r_rimColorR;
+cvar_t  *r_rimColorG;
+cvar_t  *r_rimColorB;
+cvar_t  *r_bodycam;
+cvar_t  *r_bodycamWarp;
+cvar_t  *r_bodycamChroma;
+cvar_t  *r_bodycamCrunch;
+cvar_t  *r_bodycamScanline;
+cvar_t  *r_bodycamGrain;
+cvar_t  *r_bodycamVignette;
+cvar_t  *r_bodycamClip;
 cvar_t  *r_sunShadows;
 cvar_t  *r_shadowFilter;
+cvar_t  *r_shadowSoftness;
 cvar_t  *r_shadowBlur;
 cvar_t  *r_shadowMapSize;
 cvar_t  *r_shadowCascadeZNear;
@@ -1353,10 +1376,74 @@ void R_Register( void )
 	r_dofFocalDist = ri.Cvar_Get( "r_dofFocalDist", "512", CVAR_ARCHIVE );
 	r_dofFocalRange = ri.Cvar_Get( "r_dofFocalRange", "768", CVAR_ARCHIVE );
 	r_dofAutoFocus = ri.Cvar_Get( "r_dofAutoFocus", "1", CVAR_ARCHIVE );
+
+	// STRAFE 64 photoreal-finish pass: one full-screen shader at the end of the
+	// post chain doing FXAA + cinematic colour grade + vignette + film grain. The
+	// look we're after is "photoreal cinematic finish over a lofi base" -- clean
+	// the jaggies, warm/shape the colour like graded film, then a soft vignette +
+	// a whisper of animated grain for the nostalgic lofi tell. None are latched:
+	// the program is always compiled, so every knob tunes live (r_grade 0 skips the
+	// whole pass). Defaults are deliberately subtle; crank r_vignette/r_filmGrain
+	// for a heavier VHS read.
+	r_grade = ri.Cvar_Get( "r_grade", "1", CVAR_ARCHIVE );
+	r_fxaa = ri.Cvar_Get( "r_fxaa", "1", CVAR_ARCHIVE );
+	r_gradeContrast = ri.Cvar_Get( "r_gradeContrast", "1.06", CVAR_ARCHIVE );
+	r_gradeSaturation = ri.Cvar_Get( "r_gradeSaturation", "1.08", CVAR_ARCHIVE );
+	r_gradeTemp = ri.Cvar_Get( "r_gradeTemp", "0.04", CVAR_ARCHIVE );
+	r_vignette = ri.Cvar_Get( "r_vignette", "0.18", CVAR_ARCHIVE );
+	r_filmGrain = ri.Cvar_Get( "r_filmGrain", "0.03", CVAR_ARCHIVE );
+
+	// STRAFE 64: character look. rend2 doesn't evaluate the old idTech3
+	// `alphaGen lightingSpecular` gloss pass, so OA player shaders re-add their
+	// full lit texture additively -> the blown-out "wet plastic" sheen (worst on
+	// the red team skin, amplified by bloom). r_legacySpecular scales that pass;
+	// 0 removes it for a clean matte read. The rim then gives characters a cool
+	// fresnel edge so they pop against the world without the plastic blowout.
+	// All tune live (the rim uniform is always present; r_rimLight 0 / r_rimScale 0
+	// skips it). Defaults are deliberately subtle.
+	r_legacySpecular = ri.Cvar_Get( "r_legacySpecular", "0", CVAR_ARCHIVE );
+	r_rimLight = ri.Cvar_Get( "r_rimLight", "1", CVAR_ARCHIVE );
+	r_rimScale = ri.Cvar_Get( "r_rimScale", "0.32", CVAR_ARCHIVE );
+	r_rimExp = ri.Cvar_Get( "r_rimExp", "2.7", CVAR_ARCHIVE );
+	r_rimColorR = ri.Cvar_Get( "r_rimColorR", "0.42", CVAR_ARCHIVE );
+	r_rimColorG = ri.Cvar_Get( "r_rimColorG", "0.66", CVAR_ARCHIVE );
+	r_rimColorB = ri.Cvar_Get( "r_rimColorB", "1.0", CVAR_ARCHIVE );
+
+	// STRAFE 64 bodycam finish pass: a real-camera/vest-cam look (wide-lens
+	// barrel warp, light sensor crunch, edge chromatic aberration, a whisper of
+	// rolling-shutter, sensor grain, lens vignette, auto-exposure highlight
+	// blowout). Runs as the present blit after the colour grade. Everything keys
+	// off the output resolution so it reads the same at any res. Always compiled
+	// -> every knob tunes live (r_bodycam 0 skips the whole pass).
+	//
+	// Defaults are tuned for PHOTOREAL handheld footage: scanlines almost off,
+	// near-native sharpness, aberration only as subtle edge fringing -- the lens
+	// (warp + clip + vignette) carries the look, not retro glitch. For the
+	// heavier "Unrecord-strong" / found-footage VHS read, push: chroma ~1.4,
+	// crunch ~0.85, scanline ~0.06, grain ~0.10, vignette ~0.55.
+	r_bodycam = ri.Cvar_Get( "r_bodycam", "0", CVAR_ARCHIVE );
+	r_bodycamWarp = ri.Cvar_Get( "r_bodycamWarp", "0.13", CVAR_ARCHIVE );
+	r_bodycamChroma = ri.Cvar_Get( "r_bodycamChroma", "0.7", CVAR_ARCHIVE );
+	r_bodycamCrunch = ri.Cvar_Get( "r_bodycamCrunch", "0.95", CVAR_ARCHIVE );
+	r_bodycamScanline = ri.Cvar_Get( "r_bodycamScanline", "0.008", CVAR_ARCHIVE );
+	r_bodycamGrain = ri.Cvar_Get( "r_bodycamGrain", "0.07", CVAR_ARCHIVE );
+	r_bodycamVignette = ri.Cvar_Get( "r_bodycamVignette", "0.4", CVAR_ARCHIVE );
+	r_bodycamClip = ri.Cvar_Get( "r_bodycamClip", "0.06", CVAR_ARCHIVE );
+
 	r_sunlightMode = ri.Cvar_Get( "r_sunlightMode", "1", CVAR_ARCHIVE | CVAR_LATCH );
 
 	r_sunShadows = ri.Cvar_Get( "r_sunShadows", "1", CVAR_ARCHIVE | CVAR_LATCH );
+	// STRAFE 64 soft sun shadows. Two independent knobs, both latched (compile-time
+	// #defines, like r_shadowMapSize):
+	//   r_shadowSoftness scales the PCF kernel RADIUS — wider = softer/filmic edge.
+	//     This is FREE: it just spreads the same taps, no extra samples. The cheap win.
+	//   r_shadowFilter picks the TAP COUNT: 1 = 3-tap (default), 2 = 9-tap (smoother
+	//     penumbra but ~3x the shadow samples — a real cost on slow shadow-sampling
+	//     paths like macOS GL-over-Metal, so it stays OPT-IN, not the default).
+	// So by default we get a softer edge for ~nothing; bump r_shadowFilter to 2 for
+	// the high-quality smooth penumbra when the frame budget allows.
 	r_shadowFilter = ri.Cvar_Get( "r_shadowFilter", "1", CVAR_ARCHIVE | CVAR_LATCH );
+	r_shadowSoftness = ri.Cvar_Get( "r_shadowSoftness", "2.0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_shadowBlur = ri.Cvar_Get("r_shadowBlur", "0", CVAR_ARCHIVE | CVAR_LATCH);
 	r_shadowMapSize = ri.Cvar_Get("r_shadowMapSize", "1024", CVAR_ARCHIVE | CVAR_LATCH);
 	r_shadowCascadeZNear = ri.Cvar_Get( "r_shadowCascadeZNear", "8", CVAR_ARCHIVE | CVAR_LATCH );

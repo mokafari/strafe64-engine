@@ -1512,6 +1512,7 @@ static void CG_DrawCrosshair(void)
 	float		f;
 	float		x, y;
 	int			ca;
+	qboolean	swordThreat = qfalse;
 
 	if ( !cg_drawCrosshair.integer ) {
 		return;
@@ -1525,8 +1526,26 @@ static void CG_DrawCrosshair(void)
 		return;
 	}
 
-	// set color based on health
-	if ( cg_crosshairHealth.integer ) {
+	// STRAFE 64 melee threat cue: with the katana out, trace forward to kill-range
+	// and flag when an enemy is inside it. First-person can't judge melee spacing
+	// by eye — this lets you feel the edge of your reach and dance at it.
+	if ( cg_swordReticle.integer && cg.snap->ps.weapon == WP_SWORD ) {
+		trace_t	tr;
+		vec3_t	end;
+
+		VectorMA( cg.refdef.vieworg, 160.0f, cg.refdef.viewaxis[0], end );
+		CG_Trace( &tr, cg.refdef.vieworg, vec3_origin, vec3_origin, end,
+			cg.snap->ps.clientNum, MASK_SHOT );
+		if ( tr.entityNum < MAX_CLIENTS && tr.entityNum != cg.snap->ps.clientNum ) {
+			swordThreat = qtrue;
+		}
+	}
+
+	// set color based on health — a melee threat overrides it with a hot tint
+	if ( swordThreat ) {
+		vec4_t	tcolor = { 1.0f, 0.28f, 0.22f, 1.0f };
+		trap_R_SetColor( tcolor );
+	} else if ( cg_crosshairHealth.integer ) {
 		vec4_t		hcolor;
 
 		CG_ColorForHealth( hcolor );
@@ -1536,6 +1555,10 @@ static void CG_DrawCrosshair(void)
 	}
 
 	w = h = cg_crosshairSize.value;
+	if ( swordThreat ) {
+		w *= 1.3f;		// pulse bigger when a cut would land
+		h *= 1.3f;
+	}
 
 	// pulse the size of the crosshair when picking up items
 	f = cg.time - cg.itemPickupBlendTime;
@@ -3601,7 +3624,7 @@ static const struct { const char *name; int cost; int weapon; } cg_shopItems[] =
 };
 #define CG_SHOP_COUNT ((int)(ARRAY_LEN(cg_shopItems)))
 
-static void CG_DrawMissionReport( void ) {
+void CG_DrawMissionReport( void ) {
 	float		cy;
 	int			i, w, record, peak, style, score, wpns, bestlap;
 	const char	*rank;
@@ -3680,29 +3703,38 @@ static void CG_DrawMissionReport( void ) {
 	CG_DrawMatrixString( 320 - w/2, cy, rank, 2.2f, accent );
 	cy += 34;
 
-	// --- loadout shop: spend the banked score before you respawn ---------
 	Com_sprintf( line, sizeof(line), "SCORE  %i", score );
 	w = CG_MatrixStringWidth( line, 1.5f );
 	CG_DrawMatrixString( 320 - w/2, cy, line, 1.5f, nerv_green );
 	cy += 22;
-	for ( i = 0; i < CG_SHOP_COUNT; i++ ) {
-		qboolean	owned  = ( cg_shopItems[i].weapon != WP_NONE
-						&& ( wpns & ( 1 << cg_shopItems[i].weapon ) ) );
-		qboolean	afford = ( score >= cg_shopItems[i].cost );
-		const float	*col   = owned ? nerv_amber : ( afford ? nerv_green : nerv_dim );
-		if ( owned ) {
-			Com_sprintf( line, sizeof(line), "%-7s OWNED", cg_shopItems[i].name );
-		} else {
-			Com_sprintf( line, sizeof(line), "%-7s %5i", cg_shopItems[i].name,
-				cg_shopItems[i].cost );
+
+	// --- loadout shop: spend the banked score before you respawn ---------
+	// disabled for now (cg_killcamShop 0) -- the killcam kill screen is the
+	// single death experience; flip cg_killcamShop 1 to bring the buy menu back
+	if ( cg_killcamShop.integer ) {
+		for ( i = 0; i < CG_SHOP_COUNT; i++ ) {
+			qboolean	owned  = ( cg_shopItems[i].weapon != WP_NONE
+							&& ( wpns & ( 1 << cg_shopItems[i].weapon ) ) );
+			qboolean	afford = ( score >= cg_shopItems[i].cost );
+			const float	*col   = owned ? nerv_amber : ( afford ? nerv_green : nerv_dim );
+			if ( owned ) {
+				Com_sprintf( line, sizeof(line), "%-7s OWNED", cg_shopItems[i].name );
+			} else {
+				Com_sprintf( line, sizeof(line), "%-7s %5i", cg_shopItems[i].name,
+					cg_shopItems[i].cost );
+			}
+			CG_DrawMatrixString( 320 - 64, cy, line, 1.2f, col );
+			cy += 16;
 		}
-		CG_DrawMatrixString( 320 - 64, cy, line, 1.2f, col );
-		cy += 16;
+		cy += 6;
+		w = CG_MatrixStringWidth( "type buy <item>  -  FIRE TO RUN AGAIN", 1.0f );
+		CG_DrawMatrixString( 320 - w/2, cy, "type buy <item>  -  FIRE TO RUN AGAIN",
+			1.0f, nerv_dim );
+	} else {
+		cy += 6;
+		w = CG_MatrixStringWidth( "FIRE TO RUN AGAIN", 1.0f );
+		CG_DrawMatrixString( 320 - w/2, cy, "FIRE TO RUN AGAIN", 1.0f, nerv_dim );
 	}
-	cy += 6;
-	w = CG_MatrixStringWidth( "type buy <item>  -  FIRE TO RUN AGAIN", 1.0f );
-	CG_DrawMatrixString( 320 - w/2, cy, "type buy <item>  -  FIRE TO RUN AGAIN",
-		1.0f, nerv_dim );
 }
 
 static void CG_Draw2D(stereoFrame_t stereoFrame)
@@ -3719,6 +3751,13 @@ static void CG_Draw2D(stereoFrame_t stereoFrame)
 
 	// FLOW combo: advance the multiplier, run score and juice every frame
 	CG_UpdateCombo();
+
+	// the cinematic killcam owns the whole screen while it runs -- it is its own
+	// presentation, so it draws ahead of (and regardless of) the normal HUD gate
+	if ( CG_KillcamActive() ) {
+		CG_DrawKillcam();
+		return;
+	}
 
 	if ( cg_draw2D.integer == 0 ) {
 		return;
@@ -3827,10 +3866,14 @@ static void CG_Draw2D(stereoFrame_t stereoFrame)
 		CG_DrawCenterString();
 	}
 
-	// STRAFE 64: death ends the run — show the scorecard payoff on top of all
+	// STRAFE 64: death ends the run — show the scorecard payoff on top of all.
+	// When the cinematic killcam is up it owns the whole death screen and draws
+	// the report itself during its hold, so only fall back to the bare report
+	// here when the killcam is off.
 	if ( cg.snap->ps.persistant[PERS_TEAM] != TEAM_SPECTATOR
 		&& cg.snap->ps.pm_type != PM_INTERMISSION
-		&& cg.snap->ps.stats[STAT_HEALTH] <= 0 ) {
+		&& cg.snap->ps.stats[STAT_HEALTH] <= 0
+		&& !CG_KillcamActive() ) {
 		CG_DrawMissionReport();
 	}
 }

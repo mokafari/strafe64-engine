@@ -713,8 +713,16 @@ static void ComputeShaderColors( shaderStage_t *pStage, vec4_t baseColor, vec4_t
 			baseColor[3] = 1.0f;
 			vertColor[3] = -1.0f;
 			break;
-		case AGEN_IDENTITY:
 		case AGEN_LIGHTING_SPECULAR:
+			// rend2 has no real lightingSpecular term, so this legacy idTech3
+			// gloss pass (additive, alpha = specular) would otherwise default to
+			// full opacity and re-add the whole lit texture over itself -> the
+			// blown-out "wet plastic" sheen on OA player models. Scale it by
+			// r_legacySpecular (0 = remove) for a clean matte read.
+			baseColor[3] = r_legacySpecular->value;
+			vertColor[3] = 0.0f;
+			break;
+		case AGEN_IDENTITY:
 		case AGEN_PORTAL:
 			// Done entirely in vertex program
 			baseColor[3] = 1.0f;
@@ -1398,6 +1406,26 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input )
 			}
 
 			GLSL_SetUniformVec4(sp, UNIFORM_SPECULARSCALE, specularScale);
+		}
+
+		{
+			// STRAFE 64 character rim light: a cool fresnel edge on models only
+			// (skip the world and 2D), so characters read as crisp silhouettes
+			// against the level. rgb = color * scale, a = exponent; a == 0 -> off.
+			vec4_t rimLight = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+			if ( r_rimLight->integer && r_rimScale->value > 0.0f
+				&& backEnd.currentEntity
+				&& backEnd.currentEntity != &tr.worldEntity
+				&& backEnd.currentEntity != &backEnd.entity2D )
+			{
+				rimLight[0] = r_rimColorR->value * r_rimScale->value;
+				rimLight[1] = r_rimColorG->value * r_rimScale->value;
+				rimLight[2] = r_rimColorB->value * r_rimScale->value;
+				rimLight[3] = r_rimExp->value;
+			}
+
+			GLSL_SetUniformVec4(sp, UNIFORM_RIMLIGHT, rimLight);
 		}
 
 		//GLSL_SetUniformFloat(sp, UNIFORM_MAPLIGHTSCALE, backEnd.refdef.mapLightScale);

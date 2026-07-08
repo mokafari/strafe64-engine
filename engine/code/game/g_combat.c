@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "g_local.h"
 
 #define	SWORD_PARRY_KICK	280.0f	// ups the attacker is shoved back when their melee is parried
+#define	SWORD_RIPOSTE_LOCK	350		// extra recovery ms piled on a cleanly-parried attacker (open for the riposte)
 
 
 /*
@@ -373,7 +374,8 @@ char	*modNames[] = {
 #endif
 	"MOD_GRAPPLE",
 	"MOD_SWORD",
-	"MOD_LATTICE"
+	"MOD_LATTICE",
+	"MOD_KICK"
 };
 
 #ifdef MISSIONPACK
@@ -999,8 +1001,13 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 	// STRAFE 64: a raised katana guard stops frontal damage. Projectiles are
 	// parried (deflected) earlier in the missile code; this catches the sword,
 	// the gauntlet and explosions that wash over the guard.
+	// guard must be SETTLED to parry: a blade raised only a few ms ago hasn't
+	// formed a real cover yet, so reacting-to-block on the last frame won't save
+	// you — you have to read the swing early. g_swordGuardRaise 0 disables.
 	if ( client && ( client->ps.eFlags & EF_BLOCKING ) && targ != attacker
-			&& dir && !( dflags & DAMAGE_NO_PROTECTION ) ) {
+			&& dir && !( dflags & DAMAGE_NO_PROTECTION )
+			&& ( g_swordGuardRaise.value <= 0.0f
+				|| level.time - client->guardRaiseTime >= (int)g_swordGuardRaise.value ) ) {
 		vec3_t	vf;
 
 		AngleVectors( client->ps.viewangles, vf, NULL, NULL );
@@ -1010,12 +1017,57 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			vec3_t		clashAt;
 
 			if ( mod == MOD_SWORD || mod == MOD_GAUNTLET ) {
-				// CLEAN PARRY: a guarded blade vs blade fully stops the cut and
-				// CLASHES — the attacker is shoved back off the guard, staggered
-				// and open for the riposte. This is what makes the duel read.
-				damage = 0;
-				G_AddEvent( targ, EV_SWORD_HIT, 0 );		// clang on the defender
-				if ( attacker->client ) {
+				// DIRECTIONAL PARRY (OpenJK-style): a sword cut is only fully
+				// stopped if the defender is guarding the LINE it comes in on.
+				// We compare the attacker's swing end-quadrant (mirrored into the
+				// defender's view) against the quadrant the defender is guarding
+				// (from their movement input). On-line = clean parry; a quadrant
+				// off = a glancing block; wrong side = most of the cut lands.
+				// The gauntlet has no blade quadrant, so it stays a full parry.
+				float	blockFrac = 0.0f;	// fraction of the cut that gets through
+
+				if ( mod == MOD_SWORD && attacker->client ) {
+					// mirror map: the attacker's screen-right is the defender's left
+					static const int mirrorQuad[SQ_NUM_QUADS] =
+						{ SQ_T, SQ_TL, SQ_L, SQ_BL, SQ_B, SQ_BR, SQ_R, SQ_TR };
+					int	aQuad, gs, ge, gQuad, qd;
+
+					aQuad = mirrorQuad[ SWORD_END_QUAD( attacker->client->swordSwingParm ) ];
+					BG_SwordPickQuads( client->pers.cmd.forwardmove,
+						client->pers.cmd.rightmove, 0, &gs, &ge );
+					// a neutral guard is a high centre cover; otherwise guard toward input
+					gQuad = ( client->pers.cmd.forwardmove == 0
+						&& client->pers.cmd.rightmove == 0 ) ? SQ_T : ge;
+					qd = BG_SwordQuadDiff( gQuad, aQuad );
+					if ( qd >= 3 ) {
+						blockFrac = 0.85f;	// guarding the wrong line — the cut bites
+					} else if ( qd == 2 ) {
+						blockFrac = 0.40f;	// glancing block — half-soaked
+					} else {
+						blockFrac = 0.0f;	// on the line — clean parry
+					}
+				}
+
+				// GUARD-BREAK heavy (P~S — hold guard, then slash): a cut thrown
+				// right after dropping your OWN guard punches THROUGH the defender's
+				// block, the answer to a turtle. It overrides the quadrant parry so
+				// most of the cut lands (no clean stop, no riposte for the blocker).
+				if ( g_swordGuardBreak.integer && mod == MOD_SWORD && attacker->client
+						&& attacker->client->guardReleaseTime > 0
+						&& level.time - attacker->client->guardReleaseTime <= 250 ) {
+					if ( blockFrac < 0.75f ) {
+						blockFrac = 0.75f;
+					}
+				}
+
+				damage = (int)( damage * blockFrac );
+				// clean parry rings (clank), a glancing block thuds (clunk)
+				G_AddEvent( targ, EV_SWORD_HIT,
+					blockFrac <= 0.0f ? SWORDHIT_PARRY : SWORDHIT_GLANCE );
+
+				// a CLEAN parry (full stop) clashes and shoves the attacker back,
+				// staggered and open for the riposte — this is what makes the duel read
+				if ( blockFrac <= 0.0f && attacker->client ) {
 					vec3_t	push;
 
 					VectorCopy( dir, push );				// blow travel: attacker -> targ
@@ -1025,11 +1077,18 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 						attacker->client->ps.velocity[1] -= push[1] * SWORD_PARRY_KICK;
 						attacker->client->ps.velocity[2] += SWORD_PARRY_KICK * 0.3f;
 					}
-					G_AddEvent( attacker, EV_SWORD_HIT, 0 );	// clang on the attacker too
+					G_AddEvent( attacker, EV_SWORD_HIT, SWORDHIT_STAGGER );	// clang on the attacker too
+
+					// RIPOSTE: lock the parried attacker in a longer recovery and
+					// open a brief window where the defender's counter-cut bites
+					// harder — reading the quadrant and parrying EARNS the kill,
+					// not just a shove (Sekiro posture-break payoff).
+					attacker->client->ps.weaponTime += SWORD_RIPOSTE_LOCK;
+					client->riposteTime = level.time + (int)g_swordRiposte.value;
 				}
 			} else {
 				damage = (int)( damage * 0.2f );			// blast/other: 80% soak, not a full stop
-				G_AddEvent( targ, EV_SWORD_HIT, 0 );
+				G_AddEvent( targ, EV_SWORD_HIT, SWORDHIT_GLANCE );
 			}
 
 			// clash spark: a guard contact (clean parry or soaked blast) throws

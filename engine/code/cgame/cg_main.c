@@ -94,6 +94,8 @@ vmCvar_t	cg_centertime;
 vmCvar_t	cg_runpitch;
 vmCvar_t	cg_runroll;
 vmCvar_t	cg_moveKick;
+vmCvar_t	cg_bodycam;
+vmCvar_t	cg_bodycamScale;
 vmCvar_t	cg_bobup;
 vmCvar_t	cg_bobpitch;
 vmCvar_t	cg_bobroll;
@@ -107,6 +109,7 @@ vmCvar_t	cg_draw3dIcons;
 vmCvar_t	cg_drawIcons;
 vmCvar_t	cg_drawAmmoWarning;
 vmCvar_t	cg_drawCrosshair;
+vmCvar_t	cg_swordReticle;
 vmCvar_t	cg_drawCrosshairNames;
 vmCvar_t	cg_drawRewards;
 vmCvar_t	cg_crosshairSize;
@@ -179,6 +182,7 @@ vmCvar_t	cg_ragdollIterations;	// constraint relaxation passes per frame
 vmCvar_t	cg_wallGrip;			// 1: procedural wall-grip body lean; 0: stock pose
 vmCvar_t	cg_wallGripScale;		// overall strength multiplier on the grip pose
 vmCvar_t	cg_slidePose;			// 1: procedural crouch-slide body recline; 0: stock pose
+vmCvar_t	cg_acrobatics;			// 1: cosmetic air-jump/dash flip & roll spins; 0: off
 vmCvar_t	cg_slidePoseScale;		// overall strength multiplier on the slide pose
 vmCvar_t	au_bass;			// music band envelopes (set by snd_codec_mod), read for reactivity
 vmCvar_t	au_mid;
@@ -239,6 +243,10 @@ vmCvar_t	cg_oldRail;
 vmCvar_t	cg_oldRocket;
 vmCvar_t	cg_oldPlasma;
 vmCvar_t	cg_trueLightning;
+vmCvar_t	cg_killcam;			// STRAFE 64: cinematic death replay
+vmCvar_t	cg_killcamStyle;	// 0 = diagnostic dusk (subtle), 1 = full Matrix
+vmCvar_t	cg_killcamTime;		// camera-move duration in ms (then holds)
+vmCvar_t	cg_killcamShop;		// 0 = no buy menu, 1 = loadout shop on the kill screen
 
 vmCvar_t	cg_slideDust;
 vmCvar_t	cg_bhopTick;		// STRAFE 64: rising audio tick on bhop chain (0 = off)
@@ -299,6 +307,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_wallGrip, "cg_wallGrip", "1", CVAR_ARCHIVE },
 	{ &cg_wallGripScale, "cg_wallGripScale", "1", CVAR_ARCHIVE },
 	{ &cg_slidePose, "cg_slidePose", "1", CVAR_ARCHIVE },
+	{ &cg_acrobatics, "cg_acrobatics", "1", CVAR_ARCHIVE },
 	{ &cg_slidePoseScale, "cg_slidePoseScale", "1", CVAR_ARCHIVE },
 	{ &au_bass, "au_bass", "0", 0 },
 	{ &au_mid, "au_mid", "0", 0 },
@@ -321,6 +330,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_drawAmmoWarning, "cg_drawAmmoWarning", "1", CVAR_ARCHIVE  },
 	{ &cg_drawAttacker, "cg_drawAttacker", "1", CVAR_ARCHIVE  },
 	{ &cg_drawCrosshair, "cg_drawCrosshair", "4", CVAR_ARCHIVE },
+	{ &cg_swordReticle, "cg_swordReticle", "1", CVAR_ARCHIVE },
 	{ &cg_drawCrosshairNames, "cg_drawCrosshairNames", "1", CVAR_ARCHIVE },
 	{ &cg_drawRewards, "cg_drawRewards", "1", CVAR_ARCHIVE },
 	{ &cg_crosshairSize, "cg_crosshairSize", "24", CVAR_ARCHIVE },
@@ -351,6 +361,8 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_runpitch, "cg_runpitch", "0.002", CVAR_ARCHIVE},
 	{ &cg_runroll, "cg_runroll", "0.005", CVAR_ARCHIVE },
 	{ &cg_moveKick, "cg_moveKick", "1.0", CVAR_ARCHIVE },
+	{ &cg_bodycam, "cg_bodycam", "0", CVAR_ARCHIVE },
+	{ &cg_bodycamScale, "cg_bodycamScale", "1.0", CVAR_ARCHIVE },
 	{ &cg_bobup , "cg_bobup", "0.005", CVAR_CHEAT },
 	{ &cg_bobpitch, "cg_bobpitch", "0.002", CVAR_ARCHIVE },
 	{ &cg_bobroll, "cg_bobroll", "0.002", CVAR_ARCHIVE },
@@ -435,7 +447,11 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_oldRail, "cg_oldRail", "1", CVAR_ARCHIVE},
 	{ &cg_oldRocket, "cg_oldRocket", "1", CVAR_ARCHIVE},
 	{ &cg_oldPlasma, "cg_oldPlasma", "1", CVAR_ARCHIVE},
-	{ &cg_trueLightning, "cg_trueLightning", "0.0", CVAR_ARCHIVE}
+	{ &cg_trueLightning, "cg_trueLightning", "0.0", CVAR_ARCHIVE},
+	{ &cg_killcam, "cg_killcam", "1", CVAR_ARCHIVE},
+	{ &cg_killcamStyle, "cg_killcamStyle", "0", CVAR_ARCHIVE},
+	{ &cg_killcamTime, "cg_killcamTime", "8000", CVAR_ARCHIVE},
+	{ &cg_killcamShop, "cg_killcamShop", "0", CVAR_ARCHIVE}
 //	{ &cg_pmove_fixed, "cg_pmove_fixed", "0", CVAR_USERINFO | CVAR_ARCHIVE }
 };
 
@@ -731,6 +747,11 @@ static void CG_RegisterSounds( void ) {
 	cgs.media.wearOffSound = trap_S_RegisterSound( "sound/items/wearoff.wav", qfalse );
 	cgs.media.useNothingSound = trap_S_RegisterSound( "sound/items/use_nothing.wav", qfalse );
 	cgs.media.gibSound = trap_S_RegisterSound( "sound/player/gibsplt1.wav", qfalse );
+	// STRAFE 64: melee kick (EV_KICK) — registered here, not with WP_SWORD, so
+	// the kick still sounds right when the sword was never registered (vectorgun
+	// arena loadouts)
+	cgs.media.kickWhooshSound = trap_S_RegisterSound( "sound/weapons/sword/heavy.wav", qfalse );
+	cgs.media.kickHitSound = trap_S_RegisterSound( "sound/weapons/sword/hit2.wav", qfalse );
 	cgs.media.gibBounce1Sound = trap_S_RegisterSound( "sound/player/gibimp1.wav", qfalse );
 	cgs.media.gibBounce2Sound = trap_S_RegisterSound( "sound/player/gibimp2.wav", qfalse );
 	cgs.media.gibBounce3Sound = trap_S_RegisterSound( "sound/player/gibimp3.wav", qfalse );
@@ -2187,6 +2208,12 @@ Called before every level change or subsystem restart
 =================
 */
 void CG_Shutdown( void ) {
+	// if we're quitting / changing level mid-killcam, hand the world clock and
+	// the grade/DoF/rim overrides back BEFORE the engine archives cvars --
+	// otherwise the killcam's temporary CVAR_ARCHIVE values get baked into the
+	// config and the "filter" would be stuck on across restarts.
+	CG_KillcamStop();
+
 	// some mods may need to do cleanup work here,
 	// like closing files or archiving session data
 }

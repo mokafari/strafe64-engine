@@ -2414,6 +2414,227 @@ static void CG_WallGripPose( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 
 /*
 ===============
+CG_TriggerAcrobatic
+
+STRAFE 64: kick off a cosmetic full-body flip. Purely visual — it spins the
+rendered body, never the physics or the view. Only a BACKWARD air-jump
+backflips: the dash no longer rolls and a forward/neutral air-jump stays flat
+(both read as disorienting in the forward run). Kept narrow on purpose, easy to
+re-broaden later.
+
+kind: 0 = air-jump
+===============
+*/
+void CG_TriggerAcrobatic( centity_t *cent, int kind ) {
+	vec3_t	fwd, vel, ang;
+	float	fdot, sp;
+
+	if ( !cg_acrobatics.integer ) {
+		return;
+	}
+
+	VectorCopy( cent->currentState.pos.trDelta, vel );
+	vel[2] = 0;
+	sp = VectorNormalize( vel );
+
+	VectorClear( ang );
+	ang[YAW] = cent->lerpAngles[YAW];
+	AngleVectors( ang, fwd, NULL, NULL );
+	fdot = ( sp > 1.0f ) ? DotProduct( vel, fwd ) : 1.0f;
+
+	// only a clear back-pedalling air-jump backflips; forward / neutral jumps and
+	// the dash do nothing
+	if ( kind != 0 || fdot >= -0.2f ) {
+		return;
+	}
+	cent->pe.flipAxis = 1;			// somersault about the side axis
+	cent->pe.flipDir  = -1.0f;		// backflip (rotate the body backward, heels over head)
+	cent->pe.flipDuration = 600;
+	cent->pe.flipStartTime = cg.time;
+}
+
+/*
+===============
+CG_AcrobaticPose
+
+Apply the active flip / roll: a full 360 spin of the whole body about one axis
+over flipDuration, eased so it accelerates off the move and lands cleanly back
+at neutral. Rolling the LEGS axis spins everything — torso and head hang off the
+legs tag and inherit the rotation. Layered on the MD3 axes exactly like the
+wall-grip and slide poses.
+===============
+*/
+static void CG_AcrobaticPose( centity_t *cent, vec3_t legs[3] ) {
+	int		dt;
+	float	p, e, deg;
+
+	if ( !cent->pe.flipStartTime ) {
+		return;
+	}
+	dt = cg.time - cent->pe.flipStartTime;
+	if ( dt < 0 || dt >= cent->pe.flipDuration ) {
+		cent->pe.flipStartTime = 0;				// done — back to neutral
+		return;
+	}
+
+	p = (float)dt / (float)cent->pe.flipDuration;	// 0..1
+	e = p * p * ( 3.0f - 2.0f * p );				// smoothstep: at p=1, e=1 -> full 360 = neutral
+	deg = 360.0f * cent->pe.flipDir * e;
+	CG_AxisRoll( legs, cent->pe.flipAxis, deg );
+}
+
+/*
+===============
+CG_TriggerKick
+
+STRAFE 64: kick off the melee-kick body animation (EV_KICK). Grounded it's the
+snap-roundhouse pose (CG_KickPose) layered on the forced LEGS_JUMP/TORSO_ATTACK2
+frames the game set; airborne it ALSO rides the acrobatic flip system for a full
+kung-fu tornado spin about the body's up axis, spinning INTO the kick and landing
+back at neutral. parm = EV_KICK eventParm (1 airborne, 2 hit, 4 ninja).
+===============
+*/
+void CG_TriggerKick( centity_t *cent, int parm ) {
+	cent->pe.kickTime  = cg.time;
+	cent->pe.kickFlags = parm;
+
+	if ( parm & 1 ) {
+		cent->pe.flipAxis = 2;			// tornado: spin about the body's up axis
+		// spin through the kicking side — alternate by client so a crowd of
+		// kicking assassins doesn't pirouette in lockstep
+		cent->pe.flipDir  = ( cent->currentState.number & 1 ) ? -1.0f : 1.0f;
+		cent->pe.flipDuration = 450;
+		cent->pe.flipStartTime = cg.time;
+	}
+}
+
+/*
+===============
+CG_KickPose
+
+STRAFE 64: the kick itself, on the body. Grounded: a snap roundhouse — hips whip
+through the target, torso counter-rotates square, lean back off the raised leg,
+head stays locked on the mark. Airborne: the tornado spin (flip system) does the
+turning, this just lays the body back into the flying-kick line. Strike envelope
+snaps out in the first third and eases home, matching the 350ms server anim
+commit. Same axis-overlay approach as the other poses.
+===============
+*/
+#define KICK_POSE_MS	350
+static void CG_KickPose( centity_t *cent, vec3_t legs[3], vec3_t torso[3], vec3_t head[3] ) {
+	int		dt;
+	float	f, amt;
+
+	if ( !cent->pe.kickTime ) {
+		return;
+	}
+	dt = cg.time - cent->pe.kickTime;
+	if ( dt < 0 || dt >= KICK_POSE_MS ) {
+		cent->pe.kickTime = 0;					// done — back to neutral
+		return;
+	}
+
+	f = (float)dt / (float)KICK_POSE_MS;
+	// strike envelope: snap out over the first third, ease back home
+	amt = ( f < 0.32f ) ? ( f / 0.32f ) : ( 1.0f - ( f - 0.32f ) / 0.68f );
+	amt = amt * amt * ( 3.0f - 2.0f * amt );	// smooth both ends
+
+	if ( cent->pe.kickFlags & 1 ) {
+		// flying kick: lay the body back so the boots lead the spin
+		CG_AxisRoll( legs,  1, -22.0f * amt );
+		CG_AxisRoll( torso, 1, -10.0f * amt );
+		return;
+	}
+
+	// grounded snap roundhouse
+	CG_AxisRoll( legs,  2, -38.0f * amt );		// hips whip through the target
+	CG_AxisRoll( legs,  1, -14.0f * amt );		// lean back off the raised leg
+	CG_AxisRoll( torso, 2,  26.0f * amt );		// counter-twist keeps the chest square
+	CG_AxisRoll( head,  2,  10.0f * amt );		// eyes stay on the victim
+}
+
+/*
+===============
+CG_SwordSwingPose
+
+STRAFE 64: drive the WHOLE BODY through a sword swing, not just the weapon. The
+stock TORSO_ATTACK frame is a flat arm poke; layered on top of it we twist the
+torso through the swing's quadrant arc, lean into vertical cuts, plant the hips
+and lunge the legs into the strike, and lead the gaze with the head — a
+wound-spring that uncoils along the same start->end line the blade cuts. Holding
+block instead settles the body into a guard stance leaning toward the threat.
+Same axis-overlay approach as the wall-grip / slide poses.
+===============
+*/
+static void CG_SwordSwingPose( centity_t *cent, vec3_t legs[3], vec3_t torso[3], vec3_t head[3] ) {
+	int		dt;
+	float	f, amt, r, u, sr, su, er, eu;
+	float	twist, pitch, lunge;
+
+	if ( cent->currentState.weapon != WP_SWORD ) {
+		return;
+	}
+
+	// --- guard stance: hunch into the block and twist toward the side you're
+	// covering (from lateral velocity), so a held guard reads braced, not idle ---
+	if ( cent->currentState.eFlags & EF_BLOCKING ) {
+		vec3_t	vel, right, ang;
+		float	side;
+
+		if ( cent->currentState.number == cg.snap->ps.clientNum ) {
+			VectorCopy( cg.predictedPlayerState.velocity, vel );
+		} else {
+			VectorCopy( cent->currentState.pos.trDelta, vel );
+		}
+		VectorClear( ang );
+		ang[YAW] = cent->lerpAngles[YAW];
+		AngleVectors( ang, NULL, right, NULL );
+		side = DotProduct( vel, right ) * 0.02f;
+		if ( side > 12.0f )  side = 12.0f;
+		if ( side < -12.0f ) side = -12.0f;
+
+		CG_AxisRoll( torso, 2, side );		// twist toward the defended side
+		CG_AxisRoll( torso, 1, 8.0f );		// hunch forward into the guard
+		CG_AxisRoll( legs,  1, 5.0f );
+		CG_AxisRoll( head,  1, -6.0f );		// keep the gaze up over the blade
+		return;
+	}
+
+	dt = cg.time - cent->swordSwingTime;
+	if ( dt < 0 || dt >= SWORD_SWING_MS + SWORD_RECOVER_MS ) {
+		return;
+	}
+
+	if ( dt < SWORD_SWING_MS ) {
+		f   = CG_SwordSwingFactor( dt / (float)SWORD_SWING_MS );
+		amt = 1.0f;
+	} else {
+		// follow-through: hold the end pose and ease the body back to neutral
+		float rf = ( dt - SWORD_SWING_MS ) / (float)SWORD_RECOVER_MS;
+		f   = 1.0f;
+		amt = ( 1.0f - rf ) * ( 1.0f - rf );
+	}
+
+	BG_SwordQuadDir( cent->swordStartQuad, &sr, &su );
+	BG_SwordQuadDir( cent->swordEndQuad,   &er, &eu );
+	r = sr + ( er - sr ) * f;		// screen-space blade position along the arc
+	u = su + ( eu - su ) * f;
+
+	twist = 46.0f * r * amt;				// torso yaw through a horizontal sweep
+	pitch = 22.0f * ( -u ) * amt;			// back at wind-up, forward through a vertical cut
+	lunge = 12.0f * amt * ( f > 0.0f ? f : 0.0f );	// step the legs into the strike
+
+	// wound-spring: hips plant + lunge, torso carries the twist, head leads the gaze
+	CG_AxisRoll( legs,  1, lunge );
+	CG_AxisRoll( legs,  2, -0.25f * twist );
+	CG_AxisRoll( torso, 2, twist );
+	CG_AxisRoll( torso, 1, pitch );
+	CG_AxisRoll( head,  2, -0.30f * twist );
+	CG_AxisRoll( head,  1, -0.50f * pitch );
+}
+
+/*
+===============
 CG_SlidePose
 
 STRAFE 64: throw the whole body into a ground slide, the slide counterpart of
@@ -2676,6 +2897,18 @@ void CG_Player( centity_t *cent ) {
 
 	// STRAFE 64: procedural crouch-slide recline, same axis-overlay approach.
 	CG_SlidePose( cent, legs.axis, torso.axis, head.axis );
+
+	// STRAFE 64: cosmetic acrobatic flip / roll spin (air-jump somersault, dash
+	// roll). Rolls the legs axis so the whole body spins through the tag chain.
+	CG_AcrobaticPose( cent, legs.axis );
+
+	// STRAFE 64: whole-body sword swing — twist/lean/lunge through the swing arc
+	// (and guard-stance lean while blocking), on top of the MD3 attack frame.
+	CG_SwordSwingPose( cent, legs.axis, torso.axis, head.axis );
+
+	// STRAFE 64: melee-kick roundhouse / flying-kick lean (the tornado spin
+	// itself rides the acrobatic flip above).
+	CG_KickPose( cent, legs.axis, torso.axis, head.axis );
 
 	// get the animation state (after rotation, to allow feet shuffle)
 	CG_PlayerAnimation( cent, &legs.oldframe, &legs.frame, &legs.backlerp,

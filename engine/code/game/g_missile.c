@@ -296,6 +296,52 @@ static qboolean G_DeflectMissile( gentity_t *ent, gentity_t *blocker ) {
 	// the impact point becomes the new launch point
 	BG_EvaluateTrajectory( &ent->s.pos, level.time, origin );
 
+	// GUIDED RETURN-TO-SENDER (OpenJK-style): a skilled parry doesn't just bat
+	// the bolt away — if an enemy sits in the blocker's front arc, the deflection
+	// bends toward them. Default to the look direction when no target is in view.
+	{
+		gentity_t	*best = NULL;
+		float		bestDot = 0.55f;	// must be reasonably in front to home
+		vec3_t		to, aim;
+		int			i;
+
+		VectorCopy( forward, aim );
+		for ( i = 0 ; i < level.maxclients ; i++ ) {
+			gentity_t *cl = &g_entities[i];
+
+			if ( cl == blocker || !cl->inuse || !cl->client ) {
+				continue;
+			}
+			if ( cl->health <= 0 || ( cl->flags & FL_NOTARGET ) ) {
+				continue;
+			}
+			if ( OnSameTeam( blocker, cl ) ) {
+				continue;			// don't return a bolt into a team-mate
+			}
+			VectorSubtract( cl->r.currentOrigin, origin, to );
+			if ( VectorNormalize( to ) < 1.0f ) {
+				continue;
+			}
+			if ( DotProduct( to, forward ) > bestDot ) {
+				bestDot = DotProduct( to, forward );
+				best = cl;
+				VectorCopy( to, aim );
+			}
+		}
+		// spread scales with chaos: tight when calmly guarding, looser if the
+		// blocker is mid-swing (weapon hot). Vary per shot so it never feels robotic.
+		{
+			float spread = ( blocker->client->ps.weaponTime > 0 ) ? 0.06f : 0.02f;
+			vec3_t up2, right2;
+
+			MakeNormalVectors( aim, right2, up2 );
+			VectorMA( aim, spread * crandom(), right2, forward );
+			VectorMA( forward, spread * crandom(), up2, forward );
+			VectorNormalize( forward );
+		}
+		(void)best;
+	}
+
 	// hand the projectile to the blocker, aimed where they look, a touch faster
 	ent->r.ownerNum = blocker->s.number;
 	ent->parent = blocker;

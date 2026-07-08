@@ -162,6 +162,7 @@ typedef enum {
 #define PMF_FOLLOW			4096	// spectate following another player
 #define PMF_SCOREBOARD		8192	// spectate as a scoreboard
 #define PMF_INVULEXPAND		16384	// invulnerability sphere set to full size
+#define PMF_SWORD_BUFFER	32768	// STRAFE 64: a sword swing was queued during recovery (input buffer)
 
 #define	PMF_ALL_TIMES	(PMF_TIME_WATERJUMP|PMF_TIME_LAND|PMF_TIME_KNOCKBACK)
 
@@ -222,6 +223,19 @@ extern float	pm_wishSpeedClamp;
 extern float	pm_airaccelerate;
 extern float	pm_airStopAccelerate;
 extern float	pm_airControlAmount;
+
+// STRAFE 64 sword flow assist — the predicted lunge steers toward a nearby enemy
+// so a swing near a target snaps you onto them ("kill what you fly through"). Both
+// values are driven from cvars in g_active.c before each Pmove so prediction stays
+// in sync. pm_swordMagnet 0 disables the steer (raw forward lunge only).
+extern float	pm_swordMagnet;			// 0..1 strength of the lunge steer toward a target
+extern float	pm_swordMagnetRange;	// detection reach for the magnet (units)
+
+// STRAFE 64 sword neutral game — swing recovery is speed-INVERSE: a standstill
+// swing is committed (long recovery, punishable if it whiffs), at flow speed it
+// snaps back fast so the chain never stalls. Predicted; bridged both sides.
+extern float	pm_swordRecovery;		// recovery ms at a standstill (the committed value)
+extern float	pm_swordRecoveryMin;	// recovery ms at full flow speed (the snappy value)
 
 // shared pure-A/D air-strafe optimum (defined in bg_pmove.c). The HUD strafe
 // meter and the bots both read these so the displayed optimum and the angle the
@@ -509,7 +523,9 @@ typedef enum {
 	EV_SWORD_HIT,			// STRAFE 64: blade connected (fired on attacker) — eventParm = finisher flag
 	EV_DOUBLE_JUMP,			// STRAFE 64: mid-air double jump (air-dash kick-off) — jump sound + ground-burst puff
 	EV_DASH,				// STRAFE 64: SHIFT revector dash (G_ClientDash) — chromatic-ghost strobe trail
-	EV_WALLJUMP				// STRAFE 64: wall kick-off — eventParm = DirToByte(wall normal) for the dust puff
+	EV_WALLJUMP,			// STRAFE 64: wall kick-off — eventParm = DirToByte(wall normal) for the dust puff
+	EV_KICK					// STRAFE 64: melee kick (G_ClientKick) — eventParm bits: 1 = airborne
+							// kung-fu, 2 = connected, 4 = ninja launch (kicked at speed)
 
 } entity_event_t;
 
@@ -664,7 +680,8 @@ typedef enum {
 #endif
 	MOD_GRAPPLE,
 	MOD_SWORD,				// STRAFE 64: blade kill — triggers dismemberment
-	MOD_LATTICE				// STRAFE 64: caught in a pilot's speed-trail lattice
+	MOD_LATTICE,			// STRAFE 64: caught in a pilot's speed-trail lattice
+	MOD_KICK				// STRAFE 64: booted by the melee kick (ninja launch included)
 } meansOfDeath_t;
 
 
@@ -770,6 +787,52 @@ void	BG_PlayerStateToEntityState( playerState_t *ps, entityState_t *s, qboolean 
 void	BG_PlayerStateToEntityStateExtraPolate( playerState_t *ps, entityState_t *s, int time, qboolean snap );
 
 qboolean	BG_PlayerTouchesItem( playerState_t *ps, entityState_t *item, int atTime );
+
+// ==========================================================================
+// STRAFE 64 — directional sword combat (OpenJK-inspired quadrant system).
+//
+// Every katana swing is a discrete MOVE that travels the blade from a start
+// "quadrant" to an end "quadrant" across an 8-direction screen-space compass.
+// The same two quadrants drive: the procedural swing arc (client), the swept
+// trace volume + cut direction (server), and directional blocking (parry).
+// The chosen move is computed in pmove from the player's movement input, packed
+// into the EV_FIRE_WEAPON event parm, and so is predicted locally + networked to
+// every other client and read back authoritatively by the server.
+// ==========================================================================
+typedef enum {
+	SQ_T,			// top      (overhead)
+	SQ_TR,			// top-right
+	SQ_R,			// right    (horizontal)
+	SQ_BR,			// bottom-right
+	SQ_B,			// bottom   (uppercut)
+	SQ_BL,			// bottom-left
+	SQ_L,			// left     (horizontal)
+	SQ_TL,			// top-left
+	SQ_NUM_QUADS
+} swordQuad_t;
+
+// pack a (start,end) move into a single byte for the fire event parm
+#define SWORD_PACK_QUADS(s,e)	( ( (s) & 7 ) | ( ( (e) & 7 ) << 3 ) )
+#define SWORD_START_QUAD(p)		( (p) & 7 )
+#define SWORD_END_QUAD(p)		( ( (p) >> 3 ) & 7 )
+
+// EV_SWORD_HIT eventParm — the KIND of contact, so the client picks the matching
+// punch / hit-stop / clank-vs-clunk feedback.
+#define SWORDHIT_NORMAL		0	// ordinary flesh cut
+#define SWORDHIT_FINISHER	1	// heavy 3rd-swing finisher (weightier everything)
+#define SWORDHIT_PARRY		2	// clean directional parry — bright layered clank
+#define SWORDHIT_GLANCE		3	// glancing / soaked block — dull single clunk
+#define SWORDHIT_STAGGER	4	// attacker shoved back after being cleanly parried
+
+// pick the swing's start/end quadrants from movement input. parity (0/1) only
+// matters when the input is neutral — it alternates the default cross-cut so a
+// held attack reads as a flowing combo. Shared by pmove and (for guard dir) the
+// combat code so client and server always agree.
+void	BG_SwordPickQuads( int forwardmove, int rightmove, int parity, int *startQuad, int *endQuad );
+// screen-space unit direction (right axis -> x, up axis -> y) of a quadrant
+void	BG_SwordQuadDir( int quad, float *outRight, float *outUp );
+// circular distance between two quadrants, 0 (same) .. 4 (opposite)
+int		BG_SwordQuadDiff( int a, int b );
 
 
 #define ARENAS_PER_TIER		4

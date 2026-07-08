@@ -1238,6 +1238,8 @@ typedef struct playerState_s {
 											// deflect (bit 12 -> bind to +button12)
 #define	BUTTON_DASH			8192			// STRAFE 64: dash that revectors toward
 											// enemies (bit 13 -> bind to +button13)
+#define	BUTTON_KICK			16384			// STRAFE 64: melee kick — knockback scales
+											// with your speed (bit 14 -> bind to +button14)
 
 #define	MOVE_RUN			120			// if forwardmove or rightmove are >= MOVE_RUN,
 										// then BUTTON_WALKING should be set

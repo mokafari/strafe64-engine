@@ -1212,9 +1212,10 @@ static void CG_SwordSlashTrailEx( const refEntity_t *gun, int swingTime,
 // STRAFE 64: shared sword swing timing/envelope. Declared here (defined further
 // down with the view weapon) so the third-person blade arc in CG_AddPlayerWeapon
 // reads the SAME motion as the first-person slash in CG_AddViewWeapon.
-#define	SWORD_SWING_MS	250		// swing arc duration (≈ the 230ms fire cadence)
+// SWORD_SWING_MS + the swing-shape helpers live in cg_local.h (shared with the
+// third-person body pose in cg_players.c).
 #define	LERPF(a,b,f)	( (a) + ( (b) - (a) ) * (f) )
-static float CG_SwordSwingFactor( float p );
+#define	SWORD_QUIVER_MS	150		// blade shudder duration after a hit / parry clang
 
 /*
 =============
@@ -1317,24 +1318,14 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 			int		dt = cg.time - cent->swordSwingTime;
 
 			if ( dt >= 0 && dt < SWORD_SWING_MS ) {
-				float	p = dt / (float)SWORD_SWING_MS;
-				float	f = CG_SwordSwingFactor( p );
-				int		step = cent->swordSwingStep % 3;
-				float	dir = ( cent->swordSwingStep & 1 ) ? -1.0f : 1.0f;
-				vec3_t	slashAng;
+				float		p = dt / (float)SWORD_SWING_MS;
+				float		f = CG_SwordSwingFactor( p );
+				qboolean	finisher = ( ( cent->swordSwingStep % 3 ) == 2 );
+				vec3_t		slashAng;
 
-				if ( step == 2 ) {
-					// overhead finisher: big vertical chop down through the target
-					slashAng[PITCH] = LERPF( -82.0f, 72.0f, f );
-					slashAng[YAW]   = LERPF(  12.0f * dir, -10.0f * dir, f );
-					slashAng[ROLL]  = LERPF(  14.0f * dir, -10.0f * dir, f );
-				} else {
-					// diagonal cross-slash (kesa-giri): rear back to one side, then
-					// sweep across and down to the opposite hip, alternating each swing
-					slashAng[PITCH] = LERPF( -52.0f, 64.0f, f );
-					slashAng[YAW]   = LERPF(  88.0f * dir, -82.0f * dir, f );
-					slashAng[ROLL]  = LERPF( -44.0f * dir, 38.0f * dir, f );
-				}
+				// directional swing: sweep the blade along the chosen start->end arc
+				CG_SwordSlashAnglesForQuads( cent->swordStartQuad, cent->swordEndQuad,
+					f, finisher, slashAng );
 				AnglesToAxis( slashAng, rot );
 				MatrixMultiply( rot, gun.axis, posed );
 				AxisCopy( posed, gun.axis );
@@ -1485,7 +1476,7 @@ strike with a touch of easeOutBack overshoot (f > 1), settling to f = 1.
 Shared so the blade and the slash trail read the same motion.
 ==============
 */
-static float CG_SwordSwingFactor( float p ) {
+float CG_SwordSwingFactor( float p ) {
 	float	r, c1, eb;
 
 	if ( p < 0.18f ) {
@@ -1495,6 +1486,63 @@ static float CG_SwordSwingFactor( float p ) {
 	c1 = 2.0f;													// overshoot strength
 	eb = 1.0 + ( c1 + 1.0 ) * pow( r - 1.0, 3 ) + c1 * pow( r - 1.0, 2 );
 	return -0.16f + ( 1.0f + 0.16f ) * eb;						// -0.16 -> ~1.1 -> 1
+}
+
+/*
+==============
+CG_SwordSlashAnglesForQuads
+
+Directional swing pose (OpenJK-inspired). The swing travels the blade across an
+8-way screen-space compass from a start quadrant to an end quadrant; at swing
+fraction f (already eased by CG_SwordSwingFactor) we lerp the blade's screen
+position along that line and turn it into PITCH/YAW/ROLL. This is what makes an
+overhead chop cut top-to-bottom, a kesa-giri cut on the diagonal and a horizontal
+slash sweep side-to-side — all from the same two quadrants the server cut with.
+==============
+*/
+/*
+==============
+CG_SwordSwingDt
+
+Elapsed swing time (ms) for the LOCAL player, with hit-stop applied: when a blade
+connects, the swing progress freezes for SWORD_HITSTOP_MS so the cut visibly
+"sticks" on impact before following through — the core of melee weight.
+==============
+*/
+int CG_SwordSwingDt( int swingTime ) {
+	int	dt = cg.time - swingTime;
+
+	if ( cg.swordHitStopTime ) {
+		int	since = cg.time - cg.swordHitStopTime;
+		int	holdMs = cg.swordHitStopMs > 0 ? cg.swordHitStopMs : SWORD_HITSTOP_MS;
+		if ( since >= 0 && since < holdMs ) {
+			int held = cg.swordHitStopTime - swingTime;		// freeze at the impact frame
+			if ( held >= 0 && held < dt ) {
+				dt = held;
+			}
+		}
+	}
+	return dt;
+}
+
+void CG_SwordSlashAnglesForQuads( int startQuad, int endQuad, float f, qboolean finisher, vec3_t out ) {
+	float	sr, su, er, eu, r, u;
+	float	pitchAmp, yawAmp, rollAmp;
+
+	BG_SwordQuadDir( startQuad, &sr, &su );
+	BG_SwordQuadDir( endQuad,   &er, &eu );
+
+	r = sr + ( er - sr ) * f;		// screen-space blade position along the arc
+	u = su + ( eu - su ) * f;
+
+	// finisher commits more to a vertical, overhead-heavy chop
+	pitchAmp = finisher ? 95.0f : 78.0f;
+	yawAmp   = finisher ? 34.0f : 86.0f;
+	rollAmp  = 22.0f;
+
+	out[PITCH] = -pitchAmp * u;				// up on screen -> tip raised (negative pitch)
+	out[YAW]   =  yawAmp   * r;				// right on screen -> blade swung right
+	out[ROLL]  =  rollAmp  * ( er - sr );	// cant the edge along the sweep for wrist curl
 }
 
 /*
@@ -1670,27 +1718,69 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 	// rotating). Cross-slashes alternate side; every 3rd swing is an overhead
 	// finisher. A slash-arc ribbon is swept along the same motion.
 	if ( ps->weapon == WP_SWORD ) {
-		int		dt = cg.time - cg.swordSwingTime;
+		int			dt = CG_SwordSwingDt( cg.swordSwingTime );	// hit-stop freezes this
+		qboolean	finisher = ( ( cg.swordSwingStep % 3 ) == 2 );
+		qboolean	blocking = ( cg.predictedPlayerState.eFlags & EF_BLOCKING ) != 0;
 
 		if ( dt >= 0 && dt < SWORD_SWING_MS ) {
+			// --- the strike ---
 			float	p = dt / (float)SWORD_SWING_MS;
 			float	f = CG_SwordSwingFactor( p );
-			int		step = cg.swordSwingStep % 3;
-			float	dir = ( cg.swordSwingStep & 1 ) ? -1.0f : 1.0f;
+			vec3_t	slashAng;
+			float	sr, su, er, eu, r, u;
 
-			if ( step == 2 ) {
-				// overhead finisher: big vertical chop + the hilt drives forward
-				angles[PITCH] += LERPF( -44.0f, 40.0f, f );
-				angles[ROLL]  += LERPF(  8.0f * dir, -4.0f * dir, f );
-				VectorMA( hand.origin, LERPF( -3.0f, 5.0f, f ), cg.refdef.viewaxis[0], hand.origin );
-				VectorMA( hand.origin, LERPF(  3.5f, -2.5f, f ), cg.refdef.viewaxis[2], hand.origin );
-			} else {
-				// diagonal cross-slash: rear back to one side, sweep across
-				angles[YAW]   += LERPF(  46.0f * dir, -42.0f * dir, f );
-				angles[PITCH] += LERPF( -24.0f, 30.0f, f );
-				angles[ROLL]  += LERPF( -28.0f * dir, 22.0f * dir, f );
-				VectorMA( hand.origin, LERPF( -3.0f, 5.0f, f ), cg.refdef.viewaxis[0], hand.origin );
-				VectorMA( hand.origin, LERPF(  4.0f * dir, -3.5f * dir, f ), cg.refdef.viewaxis[1], hand.origin );
+			// directional swing: the same start->end arc the server cut along and
+			// the third-person body shows, scaled down for the in-your-face view.
+			CG_SwordSlashAnglesForQuads( cg.swordStartQuad, cg.swordEndQuad,
+				f, finisher, slashAng );
+			BG_SwordQuadDir( cg.swordStartQuad, &sr, &su );
+			BG_SwordQuadDir( cg.swordEndQuad,   &er, &eu );
+			r = sr + ( er - sr ) * f;
+			u = su + ( eu - su ) * f;
+
+			angles[PITCH] += slashAng[PITCH] * 0.45f;
+			angles[YAW]   += slashAng[YAW]   * 0.45f;
+			angles[ROLL]  += slashAng[ROLL]  * 0.90f;
+			// finisher figure-8 flourish: a wrist curl that swirls the blade through
+			// the heavy closer instead of a flat chop
+			if ( finisher ) {
+				angles[ROLL] += sin( p * M_PI * 2.0f ) * 11.0f;
+				angles[YAW]  += sin( p * M_PI ) * 6.0f;
+			}
+			// the blade also TRAVELS through space: lunge forward on the strike and
+			// track the hilt along the screen-space sweep so the cut reads as motion
+			VectorMA( hand.origin, LERPF( -3.0f, 5.0f, f ), cg.refdef.viewaxis[0], hand.origin );
+			VectorMA( hand.origin, 4.0f * r, cg.refdef.viewaxis[1], hand.origin );
+			VectorMA( hand.origin, 4.0f * u, cg.refdef.viewaxis[2], hand.origin );
+		} else if ( dt >= SWORD_SWING_MS && dt < SWORD_SWING_MS + SWORD_RECOVER_MS ) {
+			// --- follow-through: ease the end-of-strike pose back to neutral instead
+			// of snapping, so the blade recovers to guard with weight ---
+			float	rf = ( dt - SWORD_SWING_MS ) / (float)SWORD_RECOVER_MS;	// 0..1
+			float	k  = ( 1.0f - rf ) * ( 1.0f - rf );						// ease-out residue
+			vec3_t	slashAng;
+
+			CG_SwordSlashAnglesForQuads( cg.swordStartQuad, cg.swordEndQuad,
+				1.0f, finisher, slashAng );
+			angles[PITCH] += slashAng[PITCH] * 0.45f * k;
+			angles[YAW]   += slashAng[YAW]   * 0.45f * k;
+			angles[ROLL]  += slashAng[ROLL]  * 0.90f * k;
+			VectorMA( hand.origin, 5.0f * k, cg.refdef.viewaxis[0], hand.origin );
+		} else if ( !blocking ) {
+			// --- idle: a slow breathing sway so a held katana reads alive, not frozen ---
+			float	t = cg.time * 0.0016f;
+			angles[PITCH] += sin( t )          * 0.8f;
+			angles[YAW]   += sin( t * 0.73f )  * 1.1f;
+			angles[ROLL]  += sin( t * 1.27f )  * 0.6f;
+		}
+
+		// --- blade quiver: a fast decaying shudder after a hit / parry clang ---
+		if ( cg.swordQuiverTime ) {
+			int	q = cg.time - cg.swordQuiverTime;
+			if ( q >= 0 && q < SWORD_QUIVER_MS ) {
+				float	decay = 1.0f - q / (float)SWORD_QUIVER_MS;
+				float	osc = sin( q * 0.06f ) * cg.swordQuiverMag * decay;
+				angles[ROLL]  += osc;
+				angles[PITCH] += osc * 0.5f;
 			}
 		}
 	}
@@ -2015,9 +2105,18 @@ void CG_FireWeapon( centity_t *cent ) {
 		}
 		cent->swordSwingTime = cg.time;
 
+		// directional swing: the fire event carries the packed start|end quadrant
+		// (chosen in pmove from the player's movement input). This drives the
+		// procedural arc so the blade sweeps along the chosen line — predicted for
+		// the local pilot, networked for every other swordsman.
+		cent->swordStartQuad = SWORD_START_QUAD( ent->eventParm );
+		cent->swordEndQuad   = SWORD_END_QUAD( ent->eventParm );
+
 		if ( local ) {
 			cg.swordSwingStep = cent->swordSwingStep;
 			cg.swordSwingTime = cent->swordSwingTime;
+			cg.swordStartQuad = cent->swordStartQuad;
+			cg.swordEndQuad   = cent->swordEndQuad;
 		}
 
 		if ( ( cent->swordSwingStep % 3 ) == 2 && cgs.media.swordHeavySound ) {

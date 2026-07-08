@@ -41,10 +41,17 @@ float random( const vec2 p )
   return mod( 123456789., 1e-7 + 256. * dot(p,r) );  
 }
 
+// STRAFE 64: penumbra width. r_shadowSoftness scales the PCF kernel radius so the
+// sun shadow edge reads soft/filmic instead of stair-stepped. Falls back to 1.0
+// (stock-tight edge) if the engine didn't inject the constant.
+#ifndef r_shadowSoftness
+#define r_shadowSoftness 1.0
+#endif
+
 float PCF(const sampler2DShadow shadowmap, const vec2 st, const float dist)
 {
 	float mult;
-	float scale = 2.0 / r_shadowMapSize;
+	float scale = (2.0 * r_shadowSoftness) / r_shadowMapSize;
 
 #if 0
 	// from http://http.developer.nvidia.com/GPUGems/gpugems_ch11.html

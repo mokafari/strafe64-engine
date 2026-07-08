@@ -529,6 +529,61 @@ static void CG_OffsetFirstPersonView( void ) {
 		angles[ROLL]  += crandom() * cg.viewShake * 0.5f;
 	}
 
+	// STRAFE 64 bodycam: handheld vest-cam motion -- what sells "held by a person"
+	// on top of the post-process look. Kept deliberately SUBTLE so it layers with
+	// the move-kicks / leans / bob rather than fighting them:
+	//   * a faint idle breathing+drift (detuned incommensurate sines so it never
+	//     visibly loops -> "human", not "machine"),
+	//   * a ground-only footstep bounce that doubles as a SPEED CONFIRMATION for
+	//     the moveset -- harder the faster you run, but the speed ref is capped so
+	//     the strafe game's 600-1000ups runs can't blow the camera out, and the
+	//     cadence is clamped so fast runs read as steps, not a buzz.
+	// No landing jolt here on purpose: CG_MoveKicks already punches the view on
+	// land / walljump / airjump / speed-burst, so those moveset events are its job
+	// (this layer would just double them). Amplitude eases down with the world
+	// timescale so deep bullet-time stays cinematic and smooth, not jittery, while
+	// a real-time clock keeps the operator gently breathing even when frozen.
+	if ( cg_bodycam.integer ) {
+		float	t    = trap_Milliseconds() * 0.001f;
+		float	ts   = cg_timescale.value;			// bullet-time damp (1 = full speed)
+		float	amp  = cg_bodycamScale.value;
+		float	gain, spd, sref, bcPitch, bcYaw, bcRoll;
+		qboolean onGround = cg.predictedPlayerState.groundEntityNum != ENTITYNUM_NONE;
+
+		if ( ts > 1.0f ) ts = 1.0f; else if ( ts < 0.0f ) ts = 0.0f;
+		gain = amp * ( 0.3f + 0.7f * ts );			// calm toward slow-mo, never fully dead
+
+		// idle breathing + irregular drift (faint, always present)
+		bcPitch = sin( t * 0.55f * M_PI * 2.0f ) * 0.14f
+				+ sin( t * 0.83f + 1.7f ) * 0.08f
+				+ sin( t * 1.91f + 4.2f ) * 0.04f;
+		bcYaw   = cos( t * 0.55f * M_PI * 1.7f ) * 0.10f
+				+ sin( t * 0.71f + 3.3f ) * 0.08f
+				+ sin( t * 1.63f + 0.9f ) * 0.04f;
+		bcRoll  = sin( t * 0.47f + 2.1f ) * 0.09f;
+
+		// footstep bounce -- ground only (no footfalls in the air; airborne moveset
+		// feedback is CG_MoveKicks' job). Speed ref capped at run speed, cadence
+		// clamped to a believable ~1-2 steps/sec.
+		if ( onGround ) {
+			float	cadence, stepPhase;
+
+			spd  = sqrt( cg.predictedPlayerState.velocity[0] * cg.predictedPlayerState.velocity[0]
+					   + cg.predictedPlayerState.velocity[1] * cg.predictedPlayerState.velocity[1] );
+			sref = spd / 520.0f;
+			if ( sref > 1.0f ) sref = 1.0f;
+
+			cadence   = 6.0f + sref * 7.0f;
+			stepPhase = sin( t * cadence );
+			bcPitch  += fabs( stepPhase ) * sref * 0.45f;
+			bcRoll   += stepPhase * sref * 0.35f;
+		}
+
+		angles[PITCH] += bcPitch * gain;
+		angles[YAW]   += bcYaw   * gain;
+		angles[ROLL]  += bcRoll  * gain;
+	}
+
 //===================================
 
 	// add view height
@@ -801,6 +856,14 @@ static int CG_CalcViewValues( void ) {
 	CG_CalcVrect();
 
 	ps = &cg.predictedPlayerState;
+
+	// STRAFE 64: the cinematic killcam owns the camera while it runs. It flies a
+	// director rig on the real clock through the (time-bind-frozen) death moment.
+	if ( CG_KillcamActive() ) {
+		CG_KillcamCalcView();	// sets vieworg, angles AND fov (its own framing)
+		AnglesToAxis( cg.refdefViewAngles, cg.refdef.viewaxis );
+		return qfalse;
+	}
 /*
 	if (cg.cameraMode) {
 		vec3_t origin, angles;
@@ -1587,6 +1650,10 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	// decide on third person view
 	cg.renderingThirdPerson = cg.snap->ps.persistant[PERS_TEAM] != TEAM_SPECTATOR
 							&& (cg_thirdPerson.integer || (cg.snap->ps.stats[STAT_HEALTH] <= 0));
+
+	// advance/expire the cinematic killcam (drives rack-focus + bloom, restores
+	// the look on respawn or timeout) before the view is built
+	CG_KillcamUpdate();
 
 	// build cg.refdef
 	inwater = CG_CalcViewValues();

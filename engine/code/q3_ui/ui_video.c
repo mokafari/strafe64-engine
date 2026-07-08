@@ -274,6 +274,7 @@ typedef struct {
 	menulist_s  	geometry;
 	menulist_s  	filter;
 	menulist_s  	dof;			// STRAFE 64: cinematic depth of field on/off
+	menulist_s  	bodycam;		// STRAFE 64: bodycam camera look on/off
 	menutext_s		driverinfo;
 
 	menubitmap_s	apply;
@@ -291,6 +292,7 @@ typedef struct
 	int geometry;
 	int filter;
 	int dof;
+	int bodycam;
 	int driver;
 	qboolean extensions;
 } InitialVideoOptions_s;
@@ -481,6 +483,7 @@ static void GraphicsOptions_GetInitialVideo( void )
 	s_ivo.geometry    = s_graphicsoptions.geometry.curvalue;
 	s_ivo.filter      = s_graphicsoptions.filter.curvalue;
 	s_ivo.dof         = s_graphicsoptions.dof.curvalue;
+	s_ivo.bodycam     = s_graphicsoptions.bodycam.curvalue;
 	s_ivo.texturebits = s_graphicsoptions.texturebits.curvalue;
 }
 
@@ -647,6 +650,10 @@ static void GraphicsOptions_UpdateMenuItems( void )
 	{
 		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
+	if ( s_ivo.bodycam != s_graphicsoptions.bodycam.curvalue )
+	{
+		s_graphicsoptions.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
+	}
 
 	GraphicsOptions_CheckConfig();
 }	
@@ -722,6 +729,8 @@ static void GraphicsOptions_ApplyChanges( void *unused, int notification )
 	}
 	trap_Cvar_SetValue( "r_vertexLight", s_graphicsoptions.lighting.curvalue );
 	trap_Cvar_SetValue( "r_dof", s_graphicsoptions.dof.curvalue );
+	trap_Cvar_SetValue( "r_bodycam", s_graphicsoptions.bodycam.curvalue );
+	trap_Cvar_SetValue( "cg_bodycam", s_graphicsoptions.bodycam.curvalue );
 
 	if ( s_graphicsoptions.geometry.curvalue == 2 )
 	{
@@ -905,6 +914,7 @@ static void GraphicsOptions_SetMenuItems( void )
 
 	s_graphicsoptions.lighting.curvalue = trap_Cvar_VariableValue( "r_vertexLight" ) != 0;
 	s_graphicsoptions.dof.curvalue = trap_Cvar_VariableValue( "r_dof" ) != 0;
+	s_graphicsoptions.bodycam.curvalue = trap_Cvar_VariableValue( "r_bodycam" ) != 0;
 	switch ( ( int ) trap_Cvar_VariableValue( "r_texturebits" ) )
 	{
 	default:
@@ -1113,7 +1123,11 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.network.style				= UI_RIGHT;
 	s_graphicsoptions.network.color				= color_red;
 
-	y = 240 - 7 * (BIGCHAR_HEIGHT + 2);
+	// Centered for the row count: STRAFE 64 adds two rows (Depth of Field +
+	// Bodycam Camera) below the stock set, so the block is anchored one row
+	// higher than stock to keep it vertically balanced and clear of the
+	// Back/Apply buttons at y=480-64.
+	y = 240 - 8 * (BIGCHAR_HEIGHT + 2);
 	s_graphicsoptions.list.generic.type     = MTYPE_SPINCONTROL;
 	s_graphicsoptions.list.generic.name     = "Graphics Settings:";
 	s_graphicsoptions.list.generic.flags    = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
@@ -1235,6 +1249,15 @@ void GraphicsOptions_MenuInit( void )
 	s_graphicsoptions.dof.generic.x	        = 400;
 	s_graphicsoptions.dof.generic.y	        = y;
 	s_graphicsoptions.dof.itemnames         = enabled_names;
+	y += BIGCHAR_HEIGHT+2;
+
+	// references/modifies "r_bodycam" + "cg_bodycam" (STRAFE 64 bodycam look)
+	s_graphicsoptions.bodycam.generic.type   = MTYPE_SPINCONTROL;
+	s_graphicsoptions.bodycam.generic.name	 = "Bodycam Camera:";
+	s_graphicsoptions.bodycam.generic.flags	 = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_graphicsoptions.bodycam.generic.x	     = 400;
+	s_graphicsoptions.bodycam.generic.y	     = y;
+	s_graphicsoptions.bodycam.itemnames      = enabled_names;
 	y += 2*BIGCHAR_HEIGHT;
 
 	s_graphicsoptions.driverinfo.generic.type     = MTYPE_PTEXT;
@@ -1290,6 +1313,7 @@ void GraphicsOptions_MenuInit( void )
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.texturebits );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.filter );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.dof );
+	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.bodycam );
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.driverinfo );
 
 	Menu_AddItem( &s_graphicsoptions.menu, ( void * ) &s_graphicsoptions.back );

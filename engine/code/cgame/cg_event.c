@@ -95,6 +95,9 @@ static void CG_Obituary( entityState_t *ent ) {
 	attacker = ent->otherEntityNum2;
 	mod = ent->eventParm;
 
+	// remember who killed us, so the killcam can frame the attacker
+	CG_KillcamNoteObituary( target, attacker, mod );
+
 	if ( target < 0 || target >= MAX_CLIENTS ) {
 		CG_Error( "CG_Obituary: target out of range" );
 	}
@@ -324,6 +327,9 @@ static void CG_Obituary( entityState_t *ent ) {
 		case MOD_LATTICE:
 			message = "was caught in";
 			message2 = "'s lattice";
+			break;
+		case MOD_KICK:
+			message = "ate a flying kick from";
 			break;
 		default:
 			message = "was killed by";
@@ -692,6 +698,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		// Also stamp the dash time so CG_Player smears a chromatic-ghost glitch
 		// trail off the kick (digital eye-candy on the key movement).
 		cent->dashGlitchTime = cg.time;
+		CG_TriggerAcrobatic( cent, 0 );		// somersault off the air-jump
 		trap_S_StartSound (NULL, es->number, CHAN_VOICE, CG_CustomSound( es->number, "*jump1.wav" ) );
 		{
 			vec3_t	feet, down = {0, 0, -1};
@@ -735,6 +742,37 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		// STRAFE 64: SHIFT revector dash — same chromatic-ghost strobe trail as the
 		// air-dash, no sound (the dash is its own silent lunge).
 		cent->dashGlitchTime = cg.time;
+		break;
+
+	case EV_KICK:
+		DEBUGNAME("EV_KICK");
+		// STRAFE 64: melee kick — whoosh + the body pose / kung-fu spin
+		// (CG_TriggerKick); a connect adds the meaty thud, and a ninja launch
+		// smears the same chromatic ghost as the dash (you kicked out of the blur).
+		trap_S_StartSound( NULL, es->number, CHAN_WEAPON, cgs.media.kickWhooshSound );
+		CG_TriggerKick( cent, es->eventParm );
+		if ( es->eventParm & 2 ) {
+			trap_S_StartSound( NULL, es->number, CHAN_AUTO, cgs.media.kickHitSound );
+		}
+		if ( es->eventParm & 4 ) {
+			cent->dashGlitchTime = cg.time;
+		}
+		if ( es->number == cg.snap->ps.clientNum ) {
+			float	mag = ( es->eventParm & 4 ) ? 1.7f : 1.0f;	// a ninja launch lands heavier
+
+			// first-person kick choreography: the leg you can't see reads
+			// through the camera — a sharp snap up-and-across that settles
+			// over ~180ms (CG_OffsetFirstPersonView), scaled by cg_moveKick
+			cg.moveKickTime  = cg.time;
+			cg.moveKickPitch = -3.4f * mag * cg_moveKick.value;
+			cg.moveKickRoll  = -2.6f * mag * cg_moveKick.value;
+			if ( es->eventParm & 2 ) {
+				// impact: shove the viewmodel aside so the hit has weight
+				cg.weaponKickTime  = cg.time;
+				cg.weaponKickPitch = 3.0f * mag;
+				cg.weaponKickRoll  = -2.4f * mag;
+			}
+		}
 		break;
 
 	case EV_TAUNT:
@@ -1294,14 +1332,34 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 
 	case EV_SWORD_HIT:
 		DEBUGNAME("EV_SWORD_HIT");
-		// blade connected: meaty impact "chunk" + a short view punch for the
-		// attacker so hacking lands with weight. eventParm != 0 = finisher.
-		trap_S_StartSound( NULL, es->number, CHAN_AUTO, cgs.media.swordHitSound );
-		if ( es->number == cg.snap->ps.clientNum ) {
-			float	mag = es->eventParm ? 1.8f : 1.0f;
-			cg.weaponKickTime = cg.time;
-			cg.weaponKickPitch = 2.6f * mag;					// brief downward bite
-			cg.weaponKickRoll = ( ( cg.swordSwingStep & 1 ) ? -1.0f : 1.0f ) * 1.8f * mag;
+		// blade contact: meaty impact "chunk" + a short view punch so a connect
+		// lands with weight. eventParm (SWORDHIT_*) says what kind of contact so a
+		// clean parry rings and a glance thuds.
+		{
+			int			hittype = es->eventParm;
+			qboolean	heavy = ( hittype == SWORDHIT_FINISHER
+				|| hittype == SWORDHIT_PARRY || hittype == SWORDHIT_STAGGER );
+
+			trap_S_StartSound( NULL, es->number, CHAN_AUTO, cgs.media.swordHitSound );
+			// CLANK vs CLUNK: a clean parry (or the attacker's stagger clang) layers
+			// the heavier steel ring on top; a glancing block stays the dull single
+			// hit. Reuses the finisher whoosh asset as the metallic clash.
+			if ( ( hittype == SWORDHIT_PARRY || hittype == SWORDHIT_STAGGER )
+					&& cgs.media.swordHeavySound ) {
+				trap_S_StartSound( NULL, es->number, CHAN_WEAPON, cgs.media.swordHeavySound );
+			}
+			if ( es->number == cg.snap->ps.clientNum ) {
+				float	mag = heavy ? 1.8f : 1.0f;
+				cg.weaponKickTime = cg.time;
+				cg.weaponKickPitch = 2.6f * mag;					// brief downward bite
+				cg.weaponKickRoll = ( ( cg.swordSwingStep & 1 ) ? -1.0f : 1.0f ) * 1.8f * mag;
+				// the cut BITES: the blade sticks for a beat (hit-stop) then shudders.
+				// A finisher / clean parry freezes longer so it reads as decisive.
+				cg.swordHitStopTime = cg.time;
+				cg.swordHitStopMs   = heavy ? 90 : SWORD_HITSTOP_MS;
+				cg.swordQuiverTime  = cg.time;
+				cg.swordQuiverMag   = heavy ? 8.0f : 5.0f;			// heavier on a finisher/parry
+			}
 		}
 		break;
 

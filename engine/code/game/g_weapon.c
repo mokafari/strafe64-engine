@@ -156,14 +156,67 @@ rewards staying in the movement chain. A lethal blow triggers dismemberment.
 #define	SWORD_KILL_SPEED	140.0f	// forward kick per clean kill — routing THROUGH is the fast line
 #define	SWORD_CLEAVE_KICK	340.0f	// base launch (ups) flung along the cut when a swing catches
 									// 2+ bodies, or on a finisher — scaled by g_swordKnockback
+#define	SWORD_CHAIN_RANGE	700.0f	// how far the on-kill kick looks for the next body to flow toward
+
+/*
+================
+G_SwordFindTarget
+
+STRAFE 64 sword flow assist. Find the best enemy body in a cone: a living entity
+that takes damage (a client, or a slice gate), within `range` of `from` and within
+`cosHalf` of `axis`. With byAngle set, the best-*aligned* target wins — used for
+aim-snap, bending the cut onto a near-miss. Otherwise the *nearest* wins — used for
+the kill-to-kill redirect, kicking toward the next body. NULL when the cone is
+empty. `self` is always skipped.
+================
+*/
+static gentity_t *G_SwordFindTarget( gentity_t *self, const vec3_t from,
+		const vec3_t axis, float range, float cosHalf, qboolean byAngle ) {
+	gentity_t	*t, *best;
+	vec3_t		delta, dir;
+	float		dist, dot, score, bestScore;
+	int			i;
+
+	best = NULL;
+	bestScore = byAngle ? cosHalf : range;		// must beat the cone/range to count
+
+	for ( i = 0 ; i < level.num_entities ; i++ ) {
+		t = &g_entities[i];
+		if ( t == self || !t->inuse || !t->takedamage || t->health <= 0 ) {
+			continue;
+		}
+		if ( !t->client && !( t->flags & FL_SLICE_GATE ) ) {
+			continue;
+		}
+		VectorSubtract( t->r.currentOrigin, from, delta );
+		dist = VectorLength( delta );
+		if ( dist < 1.0f || dist > range ) {
+			continue;
+		}
+		VectorScale( delta, 1.0f / dist, dir );
+		dot = DotProduct( dir, axis );
+		if ( dot < cosHalf ) {
+			continue;							// outside the cone
+		}
+		score = byAngle ? dot : dist;
+		if ( byAngle ? ( score > bestScore ) : ( score < bestScore ) ) {
+			bestScore = score;
+			best = t;
+		}
+	}
+	return best;
+}
 
 void Weapon_Sword( gentity_t *ent ) {
 	int			i, t;
 	int			damage;
-	float		speed, frac, arc, combomul, range, blend;
+	float		speed, frac, arc, combomul, range, blend, spread;
 	int			ntraces, step;
+	int			startQuad, endQuad;
+	float		sr, su, er, eu;
 	qboolean	finisher;
-	vec3_t		angles, dir, end, sliceAngles, velDir, viewDir, axis;
+	vec3_t		dir, end, sliceAngles, velDir, viewDir, axis;
+	vec3_t		swFwd, swRight, swUp;
 	trace_t		tr;
 	gentity_t	*traceEnt, *tent;
 	int			hit[ SWORD_NUM_TRACES * 2 ];	// entities already damaged this swing
@@ -179,6 +232,10 @@ void Weapon_Sword( gentity_t *ent ) {
 	ent->client->swordComboTime = level.time;
 	step = ent->client->swordComboStep % 3;
 	finisher = ( step == 2 );
+
+	// this swing's COMMIT window: an enemy who cuts us while we're still inside it
+	// lands a COUNTER-HIT (Tekken — catching a committed attacker rewards the read).
+	ent->client->swordWindupUntil = level.time + 200;
 
 	combomul = 1.0f + 0.15f * step;			// +0,15,30% across the 3-hit chain
 	arc = SWORD_ARC;
@@ -197,6 +254,14 @@ void Weapon_Sword( gentity_t *ent ) {
 		speed = SWORD_SPEED_CAP;
 	}
 	frac = speed / SWORD_SPEED_CAP;
+
+	// clean-parry RIPOSTE: a counter-cut thrown inside the window (set in
+	// g_combat.c when this player cleanly parried) bites noticeably harder.
+	if ( ent->client->riposteTime > level.time ) {
+		combomul += 0.5f;
+		ent->client->riposteTime = 0;			// consume the window
+	}
+
 	damage = (int)( ( SWORD_DMG_MIN + frac * ( SWORD_DMG_MAX - SWORD_DMG_MIN ) ) * combomul );
 	damage *= s_quadFactor;
 
@@ -219,19 +284,52 @@ void Weapon_Sword( gentity_t *ent ) {
 	if ( VectorNormalize( axis ) == 0.0f ) {
 		VectorCopy( viewDir, axis );
 	}
+
+	// --- AIM-SNAP: bend the cut onto a near-miss enemy so slightly-off aim still
+	// connects clean. Only assists misses within g_swordAimSnap degrees of the cut
+	// line — never a hard turn — and nudges the blade, not the camera. ---
+	if ( g_swordAimSnap.value > 0.0f ) {
+		float		snapCos = cos( DEG2RAD( g_swordAimSnap.value ) );
+		float		reach = SWORD_RANGE + SWORD_RANGE_BONUS;
+		gentity_t	*snap = G_SwordFindTarget( ent, muzzle, axis, reach, snapCos, qtrue );
+		if ( snap ) {
+			VectorSubtract( snap->r.currentOrigin, muzzle, axis );
+			if ( VectorNormalize( axis ) == 0.0f ) {
+				VectorCopy( viewDir, axis );
+			}
+		}
+	}
+
 	vectoangles( axis, sliceAngles );
 
 	// reach grows with speed so a fast fly-by still connects the cut
 	range = SWORD_RANGE + frac * SWORD_RANGE_BONUS;
 
-	// sweep the arc, one trace per step, sharing the same muzzle origin
+	// --- DIRECTIONAL SWEEP (OpenJK-style): the swing is a discrete move that
+	// travels the blade from a start quadrant to an end quadrant. We sample the
+	// blade along that screen-space arc, so a diagonal kesa-giri cuts on the
+	// diagonal and an overhead cuts top-to-bottom — not just a flat yaw fan. The
+	// samples cover the swept volume, so a fast swing can't slip between traces. ---
+	startQuad = SWORD_START_QUAD( ent->client->swordSwingParm );
+	endQuad   = SWORD_END_QUAD( ent->client->swordSwingParm );
+	BG_SwordQuadDir( startQuad, &sr, &su );
+	BG_SwordQuadDir( endQuad,   &er, &eu );
+
+	// basis: forward = the slice/flight axis, right/up span the swing plane
+	AngleVectors( sliceAngles, swFwd, swRight, swUp );
+	// how far off the forward axis the blade tip swings (tangent of the arc half-angle)
+	spread = tan( DEG2RAD( arc ) );
+
+	// sweep the blade across the start->end screen line, one trace per step
 	for ( t = 0 ; t < ntraces ; t++ ) {
-		VectorCopy( sliceAngles, angles );
-		// fan yaw from -arc to +arc around the flight line
-		if ( ntraces > 1 ) {
-			angles[YAW] += -arc + ( 2.0f * arc * t ) / ( ntraces - 1 );
+		float	a = ( ntraces > 1 ) ? (float)t / ( ntraces - 1 ) : 0.5f;
+		float	dx = sr + ( er - sr ) * a;		// screen-space pos along the arc
+		float	dy = su + ( eu - su ) * a;
+
+		for ( i = 0 ; i < 3 ; i++ ) {
+			dir[i] = swFwd[i] + spread * ( swRight[i] * dx + swUp[i] * dy );
 		}
-		AngleVectors( angles, dir, NULL, NULL );
+		VectorNormalize( dir );
 		VectorMA( muzzle, range, dir, end );
 
 		trap_Trace( &tr, muzzle, NULL, NULL, end, ent->s.number, MASK_SHOT );
@@ -247,6 +345,15 @@ void Weapon_Sword( gentity_t *ent ) {
 
 		traceEnt = &g_entities[ tr.entityNum ];
 		if ( !traceEnt->takedamage ) {
+			continue;
+		}
+
+		// MIN-RANGE: too close to get the blade moving — a cut needs room, so an
+		// enemy in your face whiffs and you must step to distance (kills the
+		// occupy-the-same-voxel ram). Speed-gated: a fast fly-by ignores it, since
+		// at flow speed you're passing through, not standing on them.
+		if ( g_swordMinRange.value > 0.0f && speed < SWORD_VEL_ALIGN
+				&& tr.fraction * range < g_swordMinRange.value ) {
 			continue;
 		}
 
@@ -270,9 +377,20 @@ void Weapon_Sword( gentity_t *ent ) {
 			tent->s.weapon = ent->s.weapon;
 		}
 
-		// drive the knockback along the cut so victims are flung off the blade
-		G_Damage( traceEnt, ent, ent, dir, tr.endpos,
-			damage, 0, MOD_SWORD );
+		// COUNTER-HIT: catching an enemy still committed to their own swing bites
+		// harder and pops them — the neutral-game payoff for winning the read.
+		{
+			int	dmg = damage;
+
+			if ( g_swordCounterHit.integer && traceEnt->client
+					&& traceEnt->client->swordWindupUntil > level.time ) {
+				dmg = (int)( dmg * 1.5f );
+				traceEnt->client->ps.velocity[2] += 220.0f;		// small pop off a counter
+			}
+			// drive the knockback along the cut so victims are flung off the blade
+			G_Damage( traceEnt, ent, ent, dir, tr.endpos,
+				dmg, 0, MOD_SWORD );
+		}
 
 		// a clean kill on an enemy you flew through is a momentum waypoint —
 		// player or slice gate, either feeds the chain below
@@ -287,7 +405,20 @@ void Weapon_Sword( gentity_t *ent ) {
 	// air moves let a mid-air slice stay airborne to chain into the next space —
 	// so routing THROUGH the cluster is the fast line, not an interruption. ---
 	if ( kills > 0 && speed > 1.0f ) {
-		VectorCopy( ent->client->ps.velocity, velDir );
+		gentity_t	*nextTgt = NULL;
+
+		// aim the kick at the NEXT nearest body so clearing a cluster reads as one
+		// flowing line instead of a shove straight ahead; fall back to the flight
+		// line when the room is empty.
+		if ( g_swordChainRedirect.integer ) {
+			nextTgt = G_SwordFindTarget( ent, ent->r.currentOrigin, axis,
+				SWORD_CHAIN_RANGE, -1.0f, qfalse );
+		}
+		if ( nextTgt ) {
+			VectorSubtract( nextTgt->r.currentOrigin, ent->r.currentOrigin, velDir );
+		} else {
+			VectorCopy( ent->client->ps.velocity, velDir );
+		}
 		velDir[2] = 0;
 		if ( VectorNormalize( velDir ) > 0.0f ) {
 			float add = SWORD_KILL_SPEED * kills * frac;	// gated by entry speed
@@ -332,10 +463,54 @@ void Weapon_Sword( gentity_t *ent ) {
 		}
 	}
 
+	// --- DIRECTIONAL ENDER + JUGGLE (Tekken layer): the swing's END quadrant picks
+	// how caught bodies travel vertically — an UP-cut LAUNCHES them airborne (and
+	// re-lofts a victim who's already up, so slashes keep a juggle alive; in
+	// bullet-time the air-time is readable and stylish), a DOWN-cut SPIKES them into
+	// the floor. Side cuts keep the horizontal carry the cleave already gave. ---
+	if ( g_swordJuggle.integer && numHit > 0 ) {
+		qboolean	upCut   = ( endQuad == SQ_T || endQuad == SQ_TL || endQuad == SQ_TR );
+		qboolean	downCut = ( endQuad == SQ_B || endQuad == SQ_BL || endQuad == SQ_BR );
+
+		if ( upCut || downCut ) {
+			for ( i = 0 ; i < numHit ; i++ ) {
+				gentity_t *vic = &g_entities[ hit[i] ];
+				if ( !vic->client ) {
+					continue;
+				}
+				if ( upCut ) {
+					// float juggle: re-loft an airborne victim less so they hang, not rocket
+					float pop = ( vic->client->ps.groundEntityNum == ENTITYNUM_NONE )
+						? 200.0f : 300.0f;
+					if ( vic->client->ps.velocity[2] < pop ) {
+						vic->client->ps.velocity[2] = pop;
+					}
+				} else {
+					vic->client->ps.velocity[2] -= 250.0f;		// spike down
+				}
+			}
+		}
+	}
+
 	// blade connected: tell the attacker so the client lands an impact "chunk"
 	// + view punch (heavier on a finisher). This is what makes hacking bite.
 	if ( numHit > 0 ) {
-		G_AddEvent( ent, EV_SWORD_HIT, finisher ? 1 : 0 );
+		G_AddEvent( ent, EV_SWORD_HIT, finisher ? SWORDHIT_FINISHER : SWORDHIT_NORMAL );
+
+		// WHIFF PUNISH: a CONNECTING hit refunds recovery toward the fast value, so
+		// a landed cut flows straight into the next while a MISS eats the full
+		// committed recovery pmove set. This is what makes whiffing the exposed
+		// choice — the core of the neutral game. g_swordWhiffScale 0 disables.
+		if ( g_swordWhiffScale.value > 0.0f ) {
+			int	floorT = (int)pm_swordRecoveryMin;
+			int	refund = (int)( ( pm_swordRecovery - pm_swordRecoveryMin ) * g_swordWhiffScale.value );
+
+			if ( ent->client->ps.weaponTime - refund > floorT ) {
+				ent->client->ps.weaponTime -= refund;
+			} else if ( ent->client->ps.weaponTime > floorT ) {
+				ent->client->ps.weaponTime = floorT;
+			}
+		}
 	}
 }
 

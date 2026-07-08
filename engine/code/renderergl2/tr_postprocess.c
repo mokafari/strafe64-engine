@@ -628,3 +628,185 @@ void RB_DepthOfField(FBO_t *srcFbo, ivec4_t srcBox)
 	// pass 2: copy the focused result back over the source for the rest of the chain
 	FBO_FastBlit(tr.screenScratchFbo, srcBox, srcFbo, srcBox, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 }
+
+
+/*
+=============
+RB_ColorGrade
+
+STRAFE 64 photoreal-finish pass. The closing move of the post chain: one
+full-screen shader on the tonemapped LDR scene doing FXAA + cinematic colour
+grade + vignette + film grain. "Photoreal cinematic finish over a lofi base" --
+melt the low-poly jaggies, warm/shape the colour like graded film, then vignette
++ a whisper of animated grain for the nostalgic tell.
+
+Fullscreen NDC quad with an identity MVP, sampling the tonemapped scene and
+writing the graded result straight into dstFbo. dstFbo == NULL means the default
+framebuffer (the screen), in which case this pass doubles as the present blit --
+no scratch FBO and no blit-back. No-ops cleanly when r_grade is off or the source
+has no colour texture. The program is always compiled, so every knob is live (no
+vid_restart, no depth texture needed).
+=============
+*/
+void RB_ColorGrade(FBO_t *srcFbo, FBO_t *dstFbo)
+{
+	vec4_t viewInfo, grade, gradeFx;
+	vec4_t quadVerts[4];
+	vec2_t texCoords[4];
+	mat4_t mvp;
+	float  width, height;
+	int    dstW, dstH;
+
+	if (!r_grade->integer)
+		return;
+
+	if (!srcFbo || !srcFbo->colorImage[0])
+		return;
+
+	width  = (float)srcFbo->width;
+	height = (float)srcFbo->height;
+
+	// x,y unused; zw = rcpFrame for FXAA neighbour taps (source texel size)
+	VectorSet4(viewInfo, 0.0f, 0.0f, 1.0f / width, 1.0f / height);
+	VectorSet4(grade,
+	           r_gradeContrast->value,
+	           r_gradeSaturation->value,
+	           r_gradeTemp->value,
+	           r_vignette->value);
+	VectorSet4(gradeFx,
+	           r_filmGrain->value,
+	           r_fxaa->integer ? 1.0f : 0.0f,
+	           (float)(tr.frameCount % 1024) * 0.137f,   // animate the grain
+	           0.0f);
+
+	VectorSet4(quadVerts[0], -1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[1],  1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[2],  1.0f, -1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[3], -1.0f, -1.0f, 0.0f, 1.0f);
+
+	texCoords[0][0] = 0.0f; texCoords[0][1] = 1.0f;
+	texCoords[1][0] = 1.0f; texCoords[1][1] = 1.0f;
+	texCoords[2][0] = 1.0f; texCoords[2][1] = 0.0f;
+	texCoords[3][0] = 0.0f; texCoords[3][1] = 0.0f;
+
+	// grade straight into the destination (NULL == screen). No scratch, no
+	// blit-back: each FBO transition we drop is a tile flush saved on TBDR GPUs.
+	if (dstFbo)
+	{
+		dstW = dstFbo->width;
+		dstH = dstFbo->height;
+	}
+	else
+	{
+		dstW = glConfig.vidWidth;
+		dstH = glConfig.vidHeight;
+	}
+
+	FBO_Bind(dstFbo);
+	qglViewport(0, 0, dstW, dstH);
+	qglScissor (0, 0, dstW, dstH);
+
+	GL_State(GLS_DEPTHTEST_DISABLE);
+
+	Mat4Identity(mvp);
+
+	GLSL_BindProgram(&tr.colorGradeShader);
+	GLSL_SetUniformMat4(&tr.colorGradeShader, UNIFORM_MODELVIEWPROJECTIONMATRIX, mvp);
+	GL_BindToTMU(srcFbo->colorImage[0], TB_COLORMAP);
+	GLSL_SetUniformVec4(&tr.colorGradeShader, UNIFORM_VIEWINFO,     viewInfo);
+	GLSL_SetUniformVec4(&tr.colorGradeShader, UNIFORM_COLORGRADE,   grade);
+	GLSL_SetUniformVec4(&tr.colorGradeShader, UNIFORM_COLORGRADEFX, gradeFx);
+	RB_InstantQuad2(quadVerts, texCoords);
+}
+
+
+/*
+=============
+RB_Bodycam
+
+STRAFE 64 bodycam finish pass. The cheap-vest-cam look layered onto the
+tonemapped LDR scene as the present blit: barrel warp, low-res sensor crunch,
+chromatic aberration, rolling-shutter scanlines, animated sensor grain, heavy
+vignette and blown highlights. Runs after RB_ColorGrade (when both are on) so
+the artifacts sit on final display values.
+
+Same shape as RB_ColorGrade: a fullscreen NDC quad with an identity MVP,
+sampling the source scene and writing straight into dstFbo (NULL == the default
+framebuffer / screen), so this pass doubles as the present blit -- no scratch
+round-trip. Everything is keyed off the output resolution (no hardcoded pixel
+sizes), reusing the colour-grade uniform slots:
+  u_ViewInfo     = resW, resH, time(sec), -
+  u_ColorGrade   = warp, chroma, crunch, scanline
+  u_ColorGradeFx = grain, vignette, highlight-clip, -
+No-ops cleanly when r_bodycam is off or the source has no colour texture.
+=============
+*/
+void RB_Bodycam(FBO_t *srcFbo, FBO_t *dstFbo)
+{
+	vec4_t viewInfo, params0, params1;
+	vec4_t quadVerts[4];
+	vec2_t texCoords[4];
+	mat4_t mvp;
+	int    dstW, dstH;
+
+	if (!r_bodycam->integer)
+		return;
+
+	if (!srcFbo || !srcFbo->colorImage[0])
+		return;
+
+	// resolution drives crunch/aberration/scanline/grain (native or dynamic);
+	// floatTime gives the grain/scanline drift a real-time second clock.
+	VectorSet4(viewInfo,
+	           (float)glConfig.vidWidth,
+	           (float)glConfig.vidHeight,
+	           backEnd.refdef.floatTime,
+	           0.0f);
+	VectorSet4(params0,
+	           r_bodycamWarp->value,
+	           r_bodycamChroma->value,
+	           r_bodycamCrunch->value,
+	           r_bodycamScanline->value);
+	VectorSet4(params1,
+	           r_bodycamGrain->value,
+	           r_bodycamVignette->value,
+	           r_bodycamClip->value,
+	           0.0f);
+
+	VectorSet4(quadVerts[0], -1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[1],  1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[2],  1.0f, -1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[3], -1.0f, -1.0f, 0.0f, 1.0f);
+
+	texCoords[0][0] = 0.0f; texCoords[0][1] = 1.0f;
+	texCoords[1][0] = 1.0f; texCoords[1][1] = 1.0f;
+	texCoords[2][0] = 1.0f; texCoords[2][1] = 0.0f;
+	texCoords[3][0] = 0.0f; texCoords[3][1] = 0.0f;
+
+	if (dstFbo)
+	{
+		dstW = dstFbo->width;
+		dstH = dstFbo->height;
+	}
+	else
+	{
+		dstW = glConfig.vidWidth;
+		dstH = glConfig.vidHeight;
+	}
+
+	FBO_Bind(dstFbo);
+	qglViewport(0, 0, dstW, dstH);
+	qglScissor (0, 0, dstW, dstH);
+
+	GL_State(GLS_DEPTHTEST_DISABLE);
+
+	Mat4Identity(mvp);
+
+	GLSL_BindProgram(&tr.bodycamShader);
+	GLSL_SetUniformMat4(&tr.bodycamShader, UNIFORM_MODELVIEWPROJECTIONMATRIX, mvp);
+	GL_BindToTMU(srcFbo->colorImage[0], TB_COLORMAP);
+	GLSL_SetUniformVec4(&tr.bodycamShader, UNIFORM_VIEWINFO,     viewInfo);
+	GLSL_SetUniformVec4(&tr.bodycamShader, UNIFORM_COLORGRADE,   params0);
+	GLSL_SetUniformVec4(&tr.bodycamShader, UNIFORM_COLORGRADEFX, params1);
+	RB_InstantQuad2(quadVerts, texCoords);
+}

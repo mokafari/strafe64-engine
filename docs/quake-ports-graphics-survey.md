@@ -95,6 +95,83 @@ should serve readability and cinematic bullet-time, not photoreal clutter. The c
 katana/bolts) will read as a bigger upgrade than chasing path-traced GI — and won't fight
 the framerate budget our DoF/bloom/baked stack already spends (~5–7ms).
 
+## 3b. Phase 1 — IMPLEMENTED & benchmarked (branch `feature/photoreal-grade`)
+
+Built the priority-1 item: a single full-screen **photoreal-finish pass** at the end of
+the rend2 post chain (`RB_ColorGrade` in `tr_postprocess.c`, GLSL in
+`glsl/colorgrade_*.glsl`), doing **FXAA + cinematic colour grade + vignette + film grain**.
+Reuses the existing DoF FBO/scratch plumbing; one new GLSL program; all knobs live (not
+latched — `r_grade 0` skips the whole pass). This is the "photoreal finish over a lofi
+base" look: clean the low-poly jaggies, warm/shape the colour like graded film, then a
+soft vignette + a whisper of animated grain for the nostalgic tell.
+
+**Cvars** (all `CVAR_ARCHIVE`, live):
+
+| cvar | default | meaning |
+|------|---------|---------|
+| `r_grade` | 1 | master toggle for the whole pass |
+| `r_fxaa` | 1 | edge antialias inside the pass |
+| `r_gradeContrast` | 1.06 | S-curve contrast (1 = neutral) |
+| `r_gradeSaturation` | 1.08 | saturation (1 = neutral) |
+| `r_gradeTemp` | 0.04 | white balance (+ warmer / − cooler) |
+| `r_vignette` | 0.18 | edge darkening |
+| `r_filmGrain` | 0.03 | animated grain strength (crank for VHS) |
+
+**Benchmark** — `timedemo` (120 deterministic frames), 2560×1440, uncapped, full post
+stack live (HDR/tonemap/DoF/bloom/sun-shadows). GPU: **Apple M3 Pro via OpenGL 4.1
+(Metal-88)** — i.e. the rend2 GL2 path running through Apple's deprecated GL→Metal
+translation layer.
+
+| Config | fps | avg ms | min ms (GPU floor) |
+|--------|-----|--------|--------------------|
+| grade OFF | 65.6 | 15.2 | 8.0 |
+| grade ON, FXAA off (grade+vignette+grain) | 64.1 | 15.6 | 9.0 |
+| grade ON, full (incl. FXAA) | 63.6 | 15.7 | 9.0 |
+
+**Cost of the full pass: ~0.5 ms/frame average, ~1.0 ms at the GPU-bound floor — ~3% at
+65 fps.** FXAA adds only ~0.1 ms on top of the grade math here (the base pass — FBO bind +
+fullscreen quad + grain hash + blit-back — dominates). Scales ~linearly with pixel count,
+so ~0.3 ms at 1080p.
+
+Two caveats worth remembering:
+- The absolute **65 fps at 1440p on an M3 Pro is the macOS GL-over-Metal penalty**, not the
+  GPU and not this pass — it reinforces the survey's core point that *the renderer path is
+  the real perf bottleneck on Mac*. On a native GL/Vulkan renderer the headroom is far
+  larger and this pass is even cheaper in relative terms.
+- Run-to-run noise is ~±0.2–0.3 ms, so the grade-math-vs-FXAA split sits near the noise
+  floor; treat it as "whole pass ≈ 0.5–1 ms, FXAA is the cheap part."
+
+Verdict: cheap enough to ship on by default; it does not meaningfully dent the frame budget
+that DoF/bloom/HDR already spend. Next candidates from §2: soft sun shadows (XreaL EVSM),
+then a few shadowed dynamic lights for the katana/bolts.
+
+## 3c. Phase 2 — soft sun shadows (branch `feature/photoreal-grade`)
+
+Priority-2 from §2. rend2's sun-shadow PCF used a fixed ~2-texel kernel, so edges read
+stair-stepped. Change (`shadowmask_fp.glsl` + `tr_glsl.c` + `tr_init.c`): **decouple
+penumbra width from tap count.**
+
+- `r_shadowSoftness` (new, default **2.0**, latched) scales the PCF kernel *radius*. This
+  is **free** — it spreads the *same* taps wider, no extra samples — so the default now
+  gives a softer, filmic edge for ~nothing.
+- `r_shadowFilter` (default left at **1** = 3-tap) selects *tap count*. 2 = 9-tap = a
+  smoother penumbra but ~3× the shadow samples. Kept **opt-in**, not defaulted.
+
+**Why filter stays opt-in — and a benchmarking caveat worth recording.** I tried to
+timedemo hard-vs-soft but the numbers were **contaminated** and I'm not reporting them as
+clean: (a) back-to-back uncapped 1440p timedemos **thermally throttle** the M3 Pro (the
+first cold run read ~49 fps, every subsequent run ~35 regardless of settings), and (b) the
+**autonomous daemon attaches to the shared engine instance** and changed resolution
+(snuck in a 640×360 run) and drove gameplay mid-measurement. The one thing that *did*
+replicate: cost tracks **tap count** (3→9), not kernel width — consistent with the theory
+that widening offsets is free and extra `shadow2D` samples are not. So the safe call is
+softness-by-default (free), 9-tap opt-in (unquantified but real).
+
+**Lesson for future perf work:** use a *dedicated* instance the daemon isn't driving,
+interleave A/B/A/B to cancel thermal drift, and let the GPU idle between runs — or measure
+on a desktop GPU without GL-over-Metal throttling. The grade-pass numbers in §3b were taken
+early (cold, fewer back-to-back runs) and are the more trustworthy of the two.
+
 ## 4. Sources
 - ET:XreaL — https://github.com/QuakeEngines/ET-XreaL
 - Daemon engine (Unvanquished) — https://wiki.unvanquished.net/wiki/Engine ; https://www.phoronix.com/news/Unvanquished-0.56
