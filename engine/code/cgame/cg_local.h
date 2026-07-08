@@ -175,6 +175,12 @@ typedef struct {
 	int				flipDuration;	// ms the spin lasts
 	int				flipAxis;		// which body axis to spin about
 	float			flipDir;		// signed spin direction / turns (e.g. +1, -1)
+
+	// STRAFE 64: melee kick pose (EV_KICK) — a snap roundhouse layered on the
+	// MD3 axes like the poses above. Airborne kicks additionally ride the flip
+	// system for the kung-fu tornado spin.
+	int				kickTime;		// cg.time the kick pose began (0 = none)
+	int				kickFlags;		// EV_KICK eventParm: 1 = airborne, 2 = hit, 4 = ninja launch
 } playerEntity_t;
 
 //=================================================
@@ -988,6 +994,8 @@ typedef struct {
 #endif
 	sfxHandle_t	swordHitSound;		// STRAFE 64: meaty blade-on-flesh impact
 	sfxHandle_t	swordHeavySound;	// STRAFE 64: heavier finisher swing whoosh
+	sfxHandle_t	kickWhooshSound;	// STRAFE 64: melee kick swing whoosh (EV_KICK)
+	sfxHandle_t	kickHitSound;		// STRAFE 64: melee kick connect thud
 	qhandle_t	swordSlashShader;	// STRAFE 64: additive FP swing-trail ribbon ($whiteimage)
 	qhandle_t	swordCutShader;		// STRAFE 64: textured kill slash-arc streak (CG_AddSwordCuts)
 	sfxHandle_t	gibSound;
@@ -1547,6 +1555,7 @@ qhandle_t CG_StatusHandle(int task);
 //
 void CG_Player( centity_t *cent );
 void CG_TriggerAcrobatic( centity_t *cent, int kind );
+void CG_TriggerKick( centity_t *cent, int parm );
 
 // STRAFE 64: sword swing timing/shape, shared between the view weapon (cg_weapons.c)
 // and the third-person body pose (cg_players.c).

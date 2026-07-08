@@ -328,6 +328,9 @@ static void CG_Obituary( entityState_t *ent ) {
 			message = "was caught in";
 			message2 = "'s lattice";
 			break;
+		case MOD_KICK:
+			message = "ate a flying kick from";
+			break;
 		default:
 			message = "was killed by";
 			break;
@@ -717,6 +720,37 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		// STRAFE 64: SHIFT revector dash — same chromatic-ghost strobe trail as the
 		// air-dash, no sound (the dash is its own silent lunge).
 		cent->dashGlitchTime = cg.time;
+		break;
+
+	case EV_KICK:
+		DEBUGNAME("EV_KICK");
+		// STRAFE 64: melee kick — whoosh + the body pose / kung-fu spin
+		// (CG_TriggerKick); a connect adds the meaty thud, and a ninja launch
+		// smears the same chromatic ghost as the dash (you kicked out of the blur).
+		trap_S_StartSound( NULL, es->number, CHAN_WEAPON, cgs.media.kickWhooshSound );
+		CG_TriggerKick( cent, es->eventParm );
+		if ( es->eventParm & 2 ) {
+			trap_S_StartSound( NULL, es->number, CHAN_AUTO, cgs.media.kickHitSound );
+		}
+		if ( es->eventParm & 4 ) {
+			cent->dashGlitchTime = cg.time;
+		}
+		if ( es->number == cg.snap->ps.clientNum ) {
+			float	mag = ( es->eventParm & 4 ) ? 1.7f : 1.0f;	// a ninja launch lands heavier
+
+			// first-person kick choreography: the leg you can't see reads
+			// through the camera — a sharp snap up-and-across that settles
+			// over ~180ms (CG_OffsetFirstPersonView), scaled by cg_moveKick
+			cg.moveKickTime  = cg.time;
+			cg.moveKickPitch = -3.4f * mag * cg_moveKick.value;
+			cg.moveKickRoll  = -2.6f * mag * cg_moveKick.value;
+			if ( es->eventParm & 2 ) {
+				// impact: shove the viewmodel aside so the hit has weight
+				cg.weaponKickTime  = cg.time;
+				cg.weaponKickPitch = 3.0f * mag;
+				cg.weaponKickRoll  = -2.4f * mag;
+			}
+		}
 		break;
 
 	case EV_TAUNT:

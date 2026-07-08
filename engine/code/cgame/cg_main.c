@@ -743,6 +743,11 @@ static void CG_RegisterSounds( void ) {
 	cgs.media.wearOffSound = trap_S_RegisterSound( "sound/items/wearoff.wav", qfalse );
 	cgs.media.useNothingSound = trap_S_RegisterSound( "sound/items/use_nothing.wav", qfalse );
 	cgs.media.gibSound = trap_S_RegisterSound( "sound/player/gibsplt1.wav", qfalse );
+	// STRAFE 64: melee kick (EV_KICK) — registered here, not with WP_SWORD, so
+	// the kick still sounds right when the sword was never registered (vectorgun
+	// arena loadouts)
+	cgs.media.kickWhooshSound = trap_S_RegisterSound( "sound/weapons/sword/heavy.wav", qfalse );
+	cgs.media.kickHitSound = trap_S_RegisterSound( "sound/weapons/sword/hit2.wav", qfalse );
 	cgs.media.gibBounce1Sound = trap_S_RegisterSound( "sound/player/gibimp1.wav", qfalse );
 	cgs.media.gibBounce2Sound = trap_S_RegisterSound( "sound/player/gibimp2.wav", qfalse );
 	cgs.media.gibBounce3Sound = trap_S_RegisterSound( "sound/player/gibimp3.wav", qfalse );

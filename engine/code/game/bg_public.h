@@ -522,7 +522,9 @@ typedef enum {
 	EV_DISMEMBER,			// STRAFE 64: sword sever — origin2 = cut direction, eventParm = cut type
 	EV_SWORD_HIT,			// STRAFE 64: blade connected (fired on attacker) — eventParm = finisher flag
 	EV_DOUBLE_JUMP,			// STRAFE 64: mid-air double jump (air-dash kick-off) — jump sound + ground-burst puff
-	EV_DASH					// STRAFE 64: SHIFT revector dash (G_ClientDash) — chromatic-ghost strobe trail
+	EV_DASH,				// STRAFE 64: SHIFT revector dash (G_ClientDash) — chromatic-ghost strobe trail
+	EV_KICK					// STRAFE 64: melee kick (G_ClientKick) — eventParm bits: 1 = airborne
+							// kung-fu, 2 = connected, 4 = ninja launch (kicked at speed)
 
 } entity_event_t;
 
@@ -677,7 +679,8 @@ typedef enum {
 #endif
 	MOD_GRAPPLE,
 	MOD_SWORD,				// STRAFE 64: blade kill — triggers dismemberment
-	MOD_LATTICE				// STRAFE 64: caught in a pilot's speed-trail lattice
+	MOD_LATTICE,			// STRAFE 64: caught in a pilot's speed-trail lattice
+	MOD_KICK				// STRAFE 64: booted by the melee kick (ninja launch included)
 } meansOfDeath_t;
 
 

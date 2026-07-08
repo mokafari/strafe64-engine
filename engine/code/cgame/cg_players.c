@@ -2485,6 +2485,76 @@ static void CG_AcrobaticPose( centity_t *cent, vec3_t legs[3] ) {
 
 /*
 ===============
+CG_TriggerKick
+
+STRAFE 64: kick off the melee-kick body animation (EV_KICK). Grounded it's the
+snap-roundhouse pose (CG_KickPose) layered on the forced LEGS_JUMP/TORSO_ATTACK2
+frames the game set; airborne it ALSO rides the acrobatic flip system for a full
+kung-fu tornado spin about the body's up axis, spinning INTO the kick and landing
+back at neutral. parm = EV_KICK eventParm (1 airborne, 2 hit, 4 ninja).
+===============
+*/
+void CG_TriggerKick( centity_t *cent, int parm ) {
+	cent->pe.kickTime  = cg.time;
+	cent->pe.kickFlags = parm;
+
+	if ( parm & 1 ) {
+		cent->pe.flipAxis = 2;			// tornado: spin about the body's up axis
+		// spin through the kicking side — alternate by client so a crowd of
+		// kicking assassins doesn't pirouette in lockstep
+		cent->pe.flipDir  = ( cent->currentState.number & 1 ) ? -1.0f : 1.0f;
+		cent->pe.flipDuration = 450;
+		cent->pe.flipStartTime = cg.time;
+	}
+}
+
+/*
+===============
+CG_KickPose
+
+STRAFE 64: the kick itself, on the body. Grounded: a snap roundhouse — hips whip
+through the target, torso counter-rotates square, lean back off the raised leg,
+head stays locked on the mark. Airborne: the tornado spin (flip system) does the
+turning, this just lays the body back into the flying-kick line. Strike envelope
+snaps out in the first third and eases home, matching the 350ms server anim
+commit. Same axis-overlay approach as the other poses.
+===============
+*/
+#define KICK_POSE_MS	350
+static void CG_KickPose( centity_t *cent, vec3_t legs[3], vec3_t torso[3], vec3_t head[3] ) {
+	int		dt;
+	float	f, amt;
+
+	if ( !cent->pe.kickTime ) {
+		return;
+	}
+	dt = cg.time - cent->pe.kickTime;
+	if ( dt < 0 || dt >= KICK_POSE_MS ) {
+		cent->pe.kickTime = 0;					// done — back to neutral
+		return;
+	}
+
+	f = (float)dt / (float)KICK_POSE_MS;
+	// strike envelope: snap out over the first third, ease back home
+	amt = ( f < 0.32f ) ? ( f / 0.32f ) : ( 1.0f - ( f - 0.32f ) / 0.68f );
+	amt = amt * amt * ( 3.0f - 2.0f * amt );	// smooth both ends
+
+	if ( cent->pe.kickFlags & 1 ) {
+		// flying kick: lay the body back so the boots lead the spin
+		CG_AxisRoll( legs,  1, -22.0f * amt );
+		CG_AxisRoll( torso, 1, -10.0f * amt );
+		return;
+	}
+
+	// grounded snap roundhouse
+	CG_AxisRoll( legs,  2, -38.0f * amt );		// hips whip through the target
+	CG_AxisRoll( legs,  1, -14.0f * amt );		// lean back off the raised leg
+	CG_AxisRoll( torso, 2,  26.0f * amt );		// counter-twist keeps the chest square
+	CG_AxisRoll( head,  2,  10.0f * amt );		// eyes stay on the victim
+}
+
+/*
+===============
 CG_SwordSwingPose
 
 STRAFE 64: drive the WHOLE BODY through a sword swing, not just the weapon. The
@@ -2835,6 +2905,10 @@ void CG_Player( centity_t *cent ) {
 	// STRAFE 64: whole-body sword swing — twist/lean/lunge through the swing arc
 	// (and guard-stance lean while blocking), on top of the MD3 attack frame.
 	CG_SwordSwingPose( cent, legs.axis, torso.axis, head.axis );
+
+	// STRAFE 64: melee-kick roundhouse / flying-kick lean (the tornado spin
+	// itself rides the acrobatic flip above).
+	CG_KickPose( cent, legs.axis, torso.axis, head.axis );
 
 	// get the animation state (after rotation, to allow feet shuffle)
 	CG_PlayerAnimation( cent, &legs.oldframe, &legs.frame, &legs.backlerp,
