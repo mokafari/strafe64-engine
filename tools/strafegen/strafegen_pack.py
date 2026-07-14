@@ -108,9 +108,12 @@ def find_bspc():
     if cand and os.path.isfile(cand):
         return cand
     here = os.path.dirname(os.path.abspath(__file__))
-    local = os.path.join(here, "bspc")
-    if os.path.isfile(local):
-        return local
+    # prefer a platform-native binary sitting next to strafegen. bspc.exe first so
+    # Windows doesn't pick up the committed macOS "bspc" (which can't exec here).
+    for name in ("bspc.exe", "bspc"):
+        local = os.path.join(here, name)
+        if os.path.isfile(local):
+            return local
     import shutil
     return shutil.which("bspc")
 
@@ -128,10 +131,18 @@ def compile_aas(bsp_path):
     # bot as able to jump anywhere; combined with the enhanced moveset that
     # over-optimism navigates better than a realistic model. So: no -cfg.
     # (dojo_runs.jsonl iter2/iter3 — hypothesis rejected by no-regression.)
-    r = subprocess.run(
-        [bspc, "-forcesidesvisible", "-bsp2aas",
-         os.path.abspath(bsp_path), "-output", out_dir],
-        capture_output=True, text=True, cwd=out_dir)
+    try:
+        r = subprocess.run(
+            [bspc, "-forcesidesvisible", "-bsp2aas",
+             os.path.abspath(bsp_path), "-output", out_dir],
+            capture_output=True, text=True, cwd=out_dir)
+    except OSError as e:
+        # bspc isn't runnable on this host (e.g. the committed binary is built
+        # for another OS/arch — WinError 193 on Windows). Degrade gracefully:
+        # the .bsp still loads and plays, only bot navigation is unavailable.
+        sys.stderr.write(f"warning: bspc not runnable here ({e}); "
+                         f"map built without a bot navmesh (.aas)\n")
+        return None
     aas = os.path.splitext(bsp_path)[0] + ".aas"
     if r.returncode != 0 or not os.path.isfile(aas):
         sys.stderr.write(f"warning: bspc failed, no bot support\n"
