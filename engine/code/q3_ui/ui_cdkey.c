@@ -73,9 +73,11 @@ static licenseMenuInfo_t	licenseMenuInfo;
 ===============
 UI_License_Submit
 
-Persist the typed/pasted key and ask the engine to verify it. We cannot use
-EXEC_NOW from the UI, so the result lands on com_licensed a few frames later;
-the draw routine polls for it.
+Ask the engine to verify the typed/pasted key. We cannot use EXEC_NOW from the
+UI, so the result lands on com_licensed a few frames later; the draw routine
+polls for it. The "license" command persists the key itself (on success only),
+so we must NOT set cl_licenseKey here -- doing so would both store an
+unverified key and, being a restricted VM write, drop the engine.
 ===============
 */
 static void UI_License_Submit( void ) {
@@ -86,7 +88,6 @@ static void UI_License_Submit( void ) {
 		return;
 	}
 
-	trap_Cvar_Set( "cl_licenseKey", key );
 	Com_sprintf( cmd, sizeof( cmd ), "license %s\n", key );
 	trap_Cmd_ExecuteText( EXEC_APPEND, cmd );
 

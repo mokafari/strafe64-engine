@@ -285,7 +285,13 @@ read and cl_licenseKey is populated).
 void Com_InitLicense( void ) {
 	com_licensed     = Cvar_Get( "com_licensed", "0", CVAR_ROM );
 	com_licenseTier  = Cvar_Get( "com_licenseTier", "0", CVAR_ROM );
-	cl_licenseKey    = Cvar_Get( "cl_licenseKey", "", CVAR_ARCHIVE | CVAR_PROTECTED );
+	/* NOT CVAR_PROTECTED: the key must round-trip through the archived config
+	   and be set by the console command / registration menu. Those are all
+	   "restricted" write sources that CVAR_PROTECTED would Com_Error(ERR_DROP)
+	   on. It needs no protection anyway -- the gameplay gate is com_licensed
+	   (CVAR_ROM), which is only ever set by Com_ApplyLicense after the Ed25519
+	   signature verifies, so a forged cl_licenseKey grants nothing. */
+	cl_licenseKey    = Cvar_Get( "cl_licenseKey", "", CVAR_ARCHIVE );
 
 	Cmd_AddCommand( "license", Com_License_f );
 
