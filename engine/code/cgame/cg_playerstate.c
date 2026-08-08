@@ -295,6 +295,35 @@ void CG_CheckChangedPredictableEvents( playerState_t *ps ) {
 
 /*
 ==================
+CG_RewardVoiceOK
+
+STRAFE 64: the stock announcer rewards (Excellent / Denied / lead changes)
+were tuned for railgun DM; in flow-kill bullet-time they trigger near-
+continuously and read as spam. cg_rewardVoice: 0 = announcer VO off,
+1 = stock Q3 firehose, 2 (default) = throttled to one line per 8s of REAL
+time (the world clock dilates, so cg.time would throttle wrong in slow-mo).
+Medals, HUD sprites and scoring are untouched — this gates only the voice.
+==================
+*/
+qboolean CG_RewardVoiceOK( void ) {
+	int now;
+
+	if ( cg_rewardVoice.integer <= 0 ) {
+		return qfalse;
+	}
+	if ( cg_rewardVoice.integer == 1 ) {
+		return qtrue;
+	}
+	now = trap_Milliseconds();
+	if ( cg.rewardVoiceReal && now - cg.rewardVoiceReal < 8000 ) {
+		return qfalse;
+	}
+	cg.rewardVoiceReal = now;
+	return qtrue;
+}
+
+/*
+==================
 pushReward
 ==================
 */
@@ -434,15 +463,21 @@ void CG_CheckLocalSounds( playerState_t *ps, playerState_t *ops ) {
 	if (ps->persistant[PERS_PLAYEREVENTS] != ops->persistant[PERS_PLAYEREVENTS]) {
 		if ((ps->persistant[PERS_PLAYEREVENTS] & PLAYEREVENT_DENIEDREWARD) !=
 				(ops->persistant[PERS_PLAYEREVENTS] & PLAYEREVENT_DENIEDREWARD)) {
-			trap_S_StartLocalSound( cgs.media.deniedSound, CHAN_ANNOUNCER );
+			if ( CG_RewardVoiceOK() ) {
+				trap_S_StartLocalSound( cgs.media.deniedSound, CHAN_ANNOUNCER );
+			}
 		}
 		else if ((ps->persistant[PERS_PLAYEREVENTS] & PLAYEREVENT_GAUNTLETREWARD) !=
 				(ops->persistant[PERS_PLAYEREVENTS] & PLAYEREVENT_GAUNTLETREWARD)) {
-			trap_S_StartLocalSound( cgs.media.humiliationSound, CHAN_ANNOUNCER );
+			if ( CG_RewardVoiceOK() ) {
+				trap_S_StartLocalSound( cgs.media.humiliationSound, CHAN_ANNOUNCER );
+			}
 		}
 		else if ((ps->persistant[PERS_PLAYEREVENTS] & PLAYEREVENT_HOLYSHIT) !=
 				(ops->persistant[PERS_PLAYEREVENTS] & PLAYEREVENT_HOLYSHIT)) {
-			trap_S_StartLocalSound( cgs.media.holyShitSound, CHAN_ANNOUNCER );
+			if ( CG_RewardVoiceOK() ) {
+				trap_S_StartLocalSound( cgs.media.holyShitSound, CHAN_ANNOUNCER );
+			}
 		}
 		reward = qtrue;
 	}
@@ -465,11 +500,11 @@ void CG_CheckLocalSounds( playerState_t *ps, playerState_t *ops ) {
 			if ( ps->persistant[PERS_RANK] != ops->persistant[PERS_RANK] ) {
 				if ( cgs.gametype < GT_TEAM) {
 					if (  ps->persistant[PERS_RANK] == 0 ) {
-						CG_AddBufferedSound(cgs.media.takenLeadSound);
+						if ( CG_RewardVoiceOK() ) CG_AddBufferedSound(cgs.media.takenLeadSound);
 					} else if ( ps->persistant[PERS_RANK] == RANK_TIED_FLAG ) {
-						CG_AddBufferedSound(cgs.media.tiedLeadSound);
+						if ( CG_RewardVoiceOK() ) CG_AddBufferedSound(cgs.media.tiedLeadSound);
 					} else if ( ( ops->persistant[PERS_RANK] & ~RANK_TIED_FLAG ) == 0 ) {
-						CG_AddBufferedSound(cgs.media.lostLeadSound);
+						if ( CG_RewardVoiceOK() ) CG_AddBufferedSound(cgs.media.lostLeadSound);
 					}
 				}
 			}
