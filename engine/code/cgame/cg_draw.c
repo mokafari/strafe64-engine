@@ -3200,15 +3200,20 @@ static void CG_UpdateCombo( void ) {
 		cg.lifeStylePeak = (int)cg.styleScore;	// this run's style for the report
 	}
 
-	// announcer at each whole multiplier milestone
+	// announcer at each whole multiplier milestone — through the shared VO
+	// throttle (cg_rewardVoice): every fresh chain re-crosses x3, which read
+	// as spam in playtests. The milestone still LATCHES so the meter/HUD side
+	// is untouched; only the voice is rate-limited.
 	if ( (int)cg.comboMult > cg.comboMilestone && (int)cg.comboMult >= 3 ) {
 		cg.comboMilestone = (int)cg.comboMult;
-		if ( cg.comboMilestone >= 7 ) {
-			trap_S_StartLocalSound( cgs.media.holyShitSound, CHAN_ANNOUNCER );
-		} else if ( cg.comboMilestone >= 5 ) {
-			trap_S_StartLocalSound( cgs.media.excellentSound, CHAN_ANNOUNCER );
-		} else {
-			trap_S_StartLocalSound( cgs.media.impressiveSound, CHAN_ANNOUNCER );
+		if ( CG_RewardVoiceOK() ) {
+			if ( cg.comboMilestone >= 7 ) {
+				trap_S_StartLocalSound( cgs.media.holyShitSound, CHAN_ANNOUNCER );
+			} else if ( cg.comboMilestone >= 5 ) {
+				trap_S_StartLocalSound( cgs.media.excellentSound, CHAN_ANNOUNCER );
+			} else {
+				trap_S_StartLocalSound( cgs.media.impressiveSound, CHAN_ANNOUNCER );
+			}
 		}
 	}
 
@@ -3318,12 +3323,16 @@ static void CG_DrawSpeedMeter( void ) {
 		if ( tier > cg.speedTier ) {
 			cg.speedTier = tier;
 			CG_CenterPrint( va( "%i UPS!", tier * 100 ), 120, BIGCHAR_WIDTH );
-			if ( tier >= 10 ) {
-				trap_S_StartLocalSound( cgs.media.holyShitSound, CHAN_ANNOUNCER );
-			} else if ( tier >= 7 ) {
-				trap_S_StartLocalSound( cgs.media.excellentSound, CHAN_ANNOUNCER );
-			} else {
-				trap_S_StartLocalSound( cgs.media.impressiveSound, CHAN_ANNOUNCER );
+			// speed ladder VO through the shared throttle: a fast run climbs
+			// several tiers back-to-back and announced every one of them
+			if ( CG_RewardVoiceOK() ) {
+				if ( tier >= 10 ) {
+					trap_S_StartLocalSound( cgs.media.holyShitSound, CHAN_ANNOUNCER );
+				} else if ( tier >= 7 ) {
+					trap_S_StartLocalSound( cgs.media.excellentSound, CHAN_ANNOUNCER );
+				} else {
+					trap_S_StartLocalSound( cgs.media.impressiveSound, CHAN_ANNOUNCER );
+				}
 			}
 		}
 	}
