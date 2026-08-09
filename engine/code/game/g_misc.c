@@ -109,7 +109,7 @@ void TeleportPlayer( gentity_t *player, vec3_t origin, vec3_t angles ) {
 	player->client->ps.eFlags ^= EF_TELEPORT_BIT;
 	// kill anything at the destination
 	if ( player->client->sess.sessionTeam != TEAM_SPECTATOR ) {
-		G_KillBox (player);
+		G_ShoveBox (player);
 	}
 
 	// save results of pmove

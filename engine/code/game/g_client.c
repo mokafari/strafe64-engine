@@ -1294,7 +1294,7 @@ void ClientSpawn(gentity_t *ent) {
 
 	if (!level.intermissiontime) {
 		if (ent->client->sess.sessionTeam != TEAM_SPECTATOR) {
-			G_KillBox(ent);
+			G_ShoveBox(ent);
 			// force the base weapon up
 			client->ps.weapon = G_VECTORGUN_ON ? WP_RAILGUN : WP_MACHINEGUN;
 			client->ps.weaponstate = WEAPON_READY;
