@@ -1,5 +1,12 @@
 # Performance tuning — measured post-stack costs
 
+> **Superseded for GPU costs by [render-perf-audit.md](render-perf-audit.md)
+> (2026-10-25).** The deltas below came from `com_speeds` in a windowed,
+> compositor-paced client, which can't see renderer cost on macOS. The
+> launcher also passed more than 32 `+set`s, so later overrides were silently
+> dropped. Use `r_gpuTimers` + `tools/gpubench/` instead. GPU-timed: 4096
+> shadows = +3 ms, sun shadows ≈ 1.3 ms, bloom ≈ 2 ms, DoF ≈ 2.1 ms, HUD ≈ 2.8 ms.
+
 Measured 2026-07-02 on the M3 Pro at 2560x1080 (windowed harness, strafe64dm_1337,
 GL2 showcase beauty set, com_speeds medians over ~100 frames per config, fresh
 boot per config; `scratch/bench/run_bench.sh` methodology). Frames were
