@@ -493,65 +493,85 @@ STRAFE 64 neon bloom. The scene is dark with bright vertex-colored neon and a
 luminous sky, so a cheap soft-knee bloom reads beautifully: downsample, square
 the colour for a soft bright-pass (dark midtones collapse toward black, bright
 highlights survive — no dedicated threshold shader needed), separable-blur the
-survivors to a wide glow, then add it back over the scene. Built entirely from
-the existing FBO blit + blur primitives, so it needs no new GLSL program and is
-live-tunable (r_bloom intensity / r_bloomBlur spread, neither latched).
+survivors to a wide glow, then add it back over the scene. Runs as four
+passes of the small bloom GLSL program, all at quarter res except the
+composite, and stays live-tunable (r_bloom intensity / r_bloomBlur spread, neither latched).
 =============
 */
+static void RB_BloomPass(FBO_t *src, FBO_t *dst, ivec4_t dstBox, float dx, float dy, float mode, float intensity, int blend)
+{
+	vec4_t viewInfo;
+	vec4_t quadVerts[4];
+	vec2_t texCoords[4];
+	mat4_t mvp;
+
+	VectorSet4(viewInfo, dx, dy, mode, intensity);
+
+	VectorSet4(quadVerts[0], -1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[1],  1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[2],  1.0f, -1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[3], -1.0f, -1.0f, 0.0f, 1.0f);
+
+	texCoords[0][0] = 0.0f; texCoords[0][1] = 1.0f;
+	texCoords[1][0] = 1.0f; texCoords[1][1] = 1.0f;
+	texCoords[2][0] = 1.0f; texCoords[2][1] = 0.0f;
+	texCoords[3][0] = 0.0f; texCoords[3][1] = 0.0f;
+
+	FBO_Bind(dst);
+	if (dstBox)
+	{
+		qglViewport(dstBox[0], dstBox[1], dstBox[2], dstBox[3]);
+		qglScissor (dstBox[0], dstBox[1], dstBox[2], dstBox[3]);
+	}
+	else
+	{
+		qglViewport(0, 0, dst->width, dst->height);
+		qglScissor (0, 0, dst->width, dst->height);
+	}
+
+	GL_State(GLS_DEPTHTEST_DISABLE | blend);
+
+	Mat4Identity(mvp);
+
+	GLSL_BindProgram(&tr.bloomShader);
+	GLSL_SetUniformMat4(&tr.bloomShader, UNIFORM_MODELVIEWPROJECTIONMATRIX, mvp);
+	GLSL_SetUniformVec4(&tr.bloomShader, UNIFORM_VIEWINFO, viewInfo);
+	GL_BindToTMU(src->colorImage[0], TB_COLORMAP);
+	RB_InstantQuad2(quadVerts, texCoords);
+}
+
 void RB_Bloom(FBO_t *srcFbo, ivec4_t srcBox)
 {
-	// CRITICAL: the whole chain below relies on an EVEN count of FBO_Blit
-	// (Y-flipping) blits so the glow composites right-side-up. Do not swap any
-	// FBO_Blit here for FBO_FastBlit (or vice versa) without re-counting the
-	// flips — see the parity note on the downsample step below.
-	vec4_t color;
+	// Four programmable passes (was ~25 FBO_Blits: a single-tap downsample, four
+	// multiplicative self-blits for the c^4 knee and 2x(H+V) five-blit blurs).
+	// Every pass draws the same non-flipping NDC quad, so orientation is
+	// preserved end to end -- no Y-flip parity to keep balanced any more.
 	float intensity = r_bloom->value;
 	float blur = r_bloomBlur->value;
-	int i;
+	float qw, qh;
 
-	if (!glRefConfig.framebufferObject || intensity <= 0.0f)
+	if (!glRefConfig.framebufferObject || intensity <= 0.0f || !srcFbo->colorImage[0])
 		return;
 
 	if (blur < 0.0f)
 		blur = 0.0f;
 
-	// 1. downsample the (tonemapped) scene into the quarter buffer: [0] = c
-	//    Use FBO_Blit (a flipping textured-quad blit), NOT FBO_FastBlit
-	//    (glBlitFramebuffer, which preserves Y). The whole bright-pass + blur
-	//    chain below is built from FBO_Blit and the final additive composite
-	//    (step 4) is a single FBO_Blit = one net vertical flip. Capturing the
-	//    scene here with the same flipping primitive makes the flip count EVEN,
-	//    so the glow lands right-side-up. With FastBlit the parity was odd and
-	//    the bloom was added back upside-down — bright floors/ramps ghosting up
-	//    into the sky.
-	FBO_Blit(srcFbo, srcBox, NULL, tr.quarterFbo[0], NULL, NULL, NULL, 0);
+	// one H+V pass with the taps stretched by sqrt(2) matches the spread of the
+	// old two back-to-back passes (gaussian sigmas add in quadrature)
+	blur *= 1.41421356f;
 
-	// 2. bright-pass by raising the colour to the 4th power, done with two
-	//    multiplicative self-blits (dst*src). c^4 is a hard soft-knee: only
-	//    near-white neon / luminous highlights survive, while the medium-bright
-	//    sky and walls collapse toward black so they don't haze. No threshold
-	//    shader needed.
-	//    [1] = c ; [1] *= [0]  ->  c^2
-	FBO_Blit(tr.quarterFbo[0], NULL, NULL, tr.quarterFbo[1], NULL, NULL, NULL, 0);
-	FBO_Blit(tr.quarterFbo[0], NULL, NULL, tr.quarterFbo[1], NULL, NULL, NULL,
-	         GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO);
-	//    [0] = c^2 ; [0] *= [1] ->  c^4
-	FBO_Blit(tr.quarterFbo[1], NULL, NULL, tr.quarterFbo[0], NULL, NULL, NULL, 0);
-	FBO_Blit(tr.quarterFbo[1], NULL, NULL, tr.quarterFbo[0], NULL, NULL, NULL,
-	         GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO);
+	qw = (float)tr.quarterFbo[0]->width;
+	qh = (float)tr.quarterFbo[0]->height;
 
-	// 3. separable gaussian blur, ping-ponging the quarter buffers; highlights
-	//    start in [0], two passes widen and smooth the glow, result back in [0]
-	for (i = 0; i < 2; i++)
-	{
-		RB_HBlur(tr.quarterFbo[0], tr.quarterFbo[1], blur);
-		RB_VBlur(tr.quarterFbo[1], tr.quarterFbo[0], blur);
-	}
+	// 1. bright-pass downsample: scene -> [0] (c^4, 16 source texels per pixel)
+	RB_BloomPass(srcFbo, tr.quarterFbo[0], NULL, 1.0f / srcFbo->width, 1.0f / srcFbo->height, 0.0f, 0.0f, 0);
 
-	// 4. add the blurred highlights back over the scene
-	VectorSet4(color, intensity, intensity, intensity, 1.0f);
-	FBO_Blit(tr.quarterFbo[0], NULL, NULL, srcFbo, srcBox, NULL, color,
-	         GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE);
+	// 2. separable gaussian [0] -> [1] -> [0]
+	RB_BloomPass(tr.quarterFbo[0], tr.quarterFbo[1], NULL, blur / qw, 0.0f, 1.0f, 0.0f, 0);
+	RB_BloomPass(tr.quarterFbo[1], tr.quarterFbo[0], NULL, 0.0f, blur / qh, 1.0f, 0.0f, 0);
+
+	// 3. add the glow back over the scene
+	RB_BloomPass(tr.quarterFbo[0], srcFbo, srcBox, 0.0f, 0.0f, 2.0f, intensity, GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE);
 }
 
 

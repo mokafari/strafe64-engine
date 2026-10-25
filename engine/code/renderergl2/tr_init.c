@@ -212,6 +212,7 @@ cvar_t	*r_shadows;
 cvar_t	*r_flares;
 cvar_t	*r_mode;
 cvar_t	*r_nobind;
+cvar_t	*r_gpuTimers;
 cvar_t	*r_singleShader;
 cvar_t	*r_roundImagesDown;
 cvar_t	*r_colorMipLevels;
@@ -1459,6 +1460,8 @@ void R_Register( void )
 	r_fullbright = ri.Cvar_Get ("r_fullbright", "0", CVAR_LATCH|CVAR_CHEAT );
 	r_mapOverBrightBits = ri.Cvar_Get ("r_mapOverBrightBits", "2", CVAR_LATCH );
 	r_intensity = ri.Cvar_Get ("r_intensity", "1", CVAR_LATCH );
+	r_gpuTimers = ri.Cvar_Get ("r_gpuTimers", "0", CVAR_TEMP );
+	ri.Cvar_SetDescription( r_gpuTimers, "STRAFE 64: print average GPU time per render pass every N frames (0 = off)" );
 	r_singleShader = ri.Cvar_Get ("r_singleShader", "0", CVAR_CHEAT | CVAR_LATCH );
 
 	//
@@ -1721,6 +1724,7 @@ void RE_Shutdown( qboolean destroyWindow ) {
 		if (glRefConfig.framebufferObject)
 			FBO_Shutdown();
 		R_DeleteTextures();
+		R_GpuTimerShutdown();
 		R_ShutdownVaos();
 		GLSL_ShutdownGPUShaders();
 	}

@@ -30,6 +30,8 @@ extern const char *fallbackShader_depthoffield_vp;
 extern const char *fallbackShader_depthoffield_fp;
 extern const char *fallbackShader_colorgrade_vp;
 extern const char *fallbackShader_colorgrade_fp;
+extern const char *fallbackShader_bloom_vp;
+extern const char *fallbackShader_bloom_fp;
 extern const char *fallbackShader_bodycam_vp;
 extern const char *fallbackShader_bodycam_fp;
 extern const char *fallbackShader_calclevels4x_vp;
@@ -1570,6 +1572,21 @@ void GLSL_InitGPUShaders(void)
 
 	numEtcShaders++;
 
+	// STRAFE 64 bloom: bright-pass downsample / separable blur / composite
+	attribs = ATTR_POSITION | ATTR_TEXCOORD;
+	extradefines[0] = '\0';
+
+	if (!GLSL_InitGPUShader(&tr.bloomShader, "bloom", attribs, qtrue, extradefines, qtrue, fallbackShader_bloom_vp, fallbackShader_bloom_fp))
+	{
+		ri.Error(ERR_FATAL, "Could not load bloom shader!");
+	}
+
+	GLSL_InitUniforms(&tr.bloomShader);
+	GLSL_SetUniformInt(&tr.bloomShader, UNIFORM_SCREENIMAGEMAP, TB_COLORMAP);
+	GLSL_FinishGPUShader(&tr.bloomShader);
+
+	numEtcShaders++;
+
 	// STRAFE 64 bodycam finish pass: warp + crunch + chroma + scanline + grain
 	attribs = ATTR_POSITION | ATTR_TEXCOORD;
 	extradefines[0] = '\0';
@@ -1655,6 +1672,7 @@ void GLSL_ShutdownGPUShaders(void)
 
 	GLSL_DeleteGPUShader(&tr.depthOfFieldShader);
 	GLSL_DeleteGPUShader(&tr.colorGradeShader);
+	GLSL_DeleteGPUShader(&tr.bloomShader);
 	GLSL_DeleteGPUShader(&tr.bodycamShader);
 }
 
