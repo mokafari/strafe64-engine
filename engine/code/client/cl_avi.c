@@ -41,6 +41,7 @@ typedef struct audioFormat_s
 typedef struct aviFileData_s
 {
   qboolean      fileOpen;
+  FILE          *pipe;        // non-NULL: streaming to an ffmpeg encoder (video-pipe)
   fileHandle_t  f;
   char          fileName[ MAX_QPATH ];
   int           fileSize;
@@ -81,8 +82,51 @@ SafeFS_Write
 */
 static ID_INLINE void SafeFS_Write( const void *buf, int len, fileHandle_t f )
 {
+  // in pipe mode only the stream is written (no index file)
+  if( afd.pipe )
+  {
+    if( fwrite( buf, 1, len, afd.pipe ) < (size_t)len )
+    {
+      // ffmpeg most likely died; drop the pipe first so the error path
+      // doesn't recurse into another write
+      CL_CloseAVI( );
+      Com_Error( ERR_DROP, "Failed to write avi stream to ffmpeg" );
+    }
+    return;
+  }
+
   if( FS_Write( buf, len, f ) < len )
     Com_Error( ERR_DROP, "Failed to write avi file" );
+}
+
+/*
+===============
+CL_ValidatePipeFormat
+
+cl_aviPipeFormat is spliced into a shell command line, so only allow the
+characters ffmpeg options need (no ; ` $ > & quotes or backslashes).
+A single '|' may separate the options from the output file extension.
+===============
+*/
+qboolean CL_ValidatePipeFormat( const char *s )
+{
+  int bars = 0;
+
+  for( ; *s; s++ )
+  {
+    if( *s == '|' )
+    {
+      if( ++bars > 1 )
+        return qfalse;
+      continue;
+    }
+    if( *s == '.' && s[1] == '.' )
+      return qfalse;
+    if( !( ( *s >= 'a' && *s <= 'z' ) || ( *s >= 'A' && *s <= 'Z' ) ||
+           ( *s >= '0' && *s <= '9' ) || strchr( " +-_:.,=/", *s ) ) )
+      return qfalse;
+  }
+  return qtrue;
 }
 
 /*
@@ -318,10 +362,14 @@ void CL_WriteAVIHeader( void )
 CL_OpenAVIForWriting
 
 Creates an AVI file and gets it into a state where
-writing the actual data can begin
+writing the actual data can begin.
+
+If pipeFormat is non-NULL the AVI stream is piped into ffmpeg instead
+(ported from Quake3e's video-pipe): ffmpeg encodes it to fileName with
+pipeFormat as its output options, logging to <fileName>-log.txt.
 ===============
 */
-qboolean CL_OpenAVIForWriting( const char *fileName )
+qboolean CL_OpenAVIForWriting( const char *fileName, const char *pipeFormat )
 {
   if( afd.fileOpen )
     return qfalse;
@@ -335,14 +383,47 @@ qboolean CL_OpenAVIForWriting( const char *fileName )
     return qfalse;
   }
 
-  if( ( afd.f = FS_FOpenFileWrite_HomeData( fileName ) ) <= 0 )
-    return qfalse;
-
-  if( ( afd.idxF = FS_FOpenFileWrite_HomeData(
-          va( "%s" INDEX_FILE_EXTENSION, fileName ) ) ) <= 0 )
+  if( pipeFormat )
   {
-    FS_FCloseFile( afd.f );
-    return qfalse;
+    char        ospath[ MAX_OSPATH ];
+    char        cmd[ MAX_OSPATH * 3 + MAX_CVAR_VALUE_STRING ];
+    const char  *p = FS_HomeDataOSPathForWrite( fileName );
+
+    if( !p )
+      return qfalse;
+    Q_strncpyz( ospath, p, sizeof( ospath ) );
+
+#ifdef _WIN32
+    Com_sprintf( cmd, sizeof( cmd ),
+        "ffmpeg -threads 0 -f avi -i - -y %s \"%s\" 2> \"%s-log.txt\"",
+        pipeFormat, ospath, ospath );
+    afd.pipe = _popen( cmd, "wb" );
+#else
+    // an app launched from Finder doesn't inherit the shell PATH, so add
+    // the usual Homebrew/MacPorts install dirs for ffmpeg
+    Com_sprintf( cmd, sizeof( cmd ),
+        "PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:/opt/local/bin\" "
+        "ffmpeg -threads 0 -f avi -i - -y %s \"%s\" 2> \"%s-log.txt\"",
+        pipeFormat, ospath, ospath );
+    afd.pipe = popen( cmd, "w" );
+#endif
+    if( !afd.pipe )
+    {
+      Com_Printf( S_COLOR_RED "ERROR: couldn't start ffmpeg for %s\n", fileName );
+      return qfalse;
+    }
+  }
+  else
+  {
+    if( ( afd.f = FS_FOpenFileWrite_HomeData( fileName ) ) <= 0 )
+      return qfalse;
+
+    if( ( afd.idxF = FS_FOpenFileWrite_HomeData(
+            va( "%s" INDEX_FILE_EXTENSION, fileName ) ) ) <= 0 )
+    {
+      FS_FCloseFile( afd.f );
+      return qfalse;
+    }
   }
 
   Q_strncpyz( afd.fileName, fileName, MAX_QPATH );
@@ -352,7 +433,8 @@ qboolean CL_OpenAVIForWriting( const char *fileName )
   afd.width = cls.glconfig.vidWidth;
   afd.height = cls.glconfig.vidHeight;
 
-  if( cl_aviMotionJpeg->integer )
+  // ffmpeg gets raw frames: re-encoding MJPEG would only lose quality
+  if( cl_aviMotionJpeg->integer && !afd.pipe )
     afd.motionJpeg = qtrue;
   else
     afd.motionJpeg = qfalse;
@@ -415,9 +497,12 @@ qboolean CL_OpenAVIForWriting( const char *fileName )
   SafeFS_Write( buffer, bufIndex, afd.f );
   afd.fileSize = bufIndex;
 
-  bufIndex = 0;
-  START_CHUNK( "idx1" );
-  SafeFS_Write( buffer, bufIndex, afd.idxF );
+  if( !afd.pipe )
+  {
+    bufIndex = 0;
+    START_CHUNK( "idx1" );
+    SafeFS_Write( buffer, bufIndex, afd.idxF );
+  }
 
   afd.moviSize = 4; // For the "movi"
   afd.fileOpen = qtrue;
@@ -434,6 +519,10 @@ static qboolean CL_CheckFileSize( int bytesToAdd )
 {
   unsigned int newFileSize;
 
+  // a pipe has no file to split; ffmpeg handles the size
+  if( afd.pipe )
+    return qfalse;
+
   newFileSize =
     afd.fileSize +                // Current file size
     bytesToAdd +                  // What we want to add
@@ -448,7 +537,7 @@ static qboolean CL_CheckFileSize( int bytesToAdd )
     CL_CloseAVI( );
 
     // ...And open a new one
-    CL_OpenAVIForWriting( va( "%s_", afd.fileName ) );
+    CL_OpenAVIForWriting( va( "%s_", afd.fileName ), NULL );
 
     return qtrue;
   }
@@ -489,6 +578,9 @@ void CL_WriteAVIVideoFrame( const byte *imageBuffer, int size )
 
   if( size > afd.maxRecordSize )
     afd.maxRecordSize = size;
+
+  if( afd.pipe )
+    return;
 
   // Index
   bufIndex = 0;
@@ -555,15 +647,18 @@ void CL_WriteAVIAudioFrame( const byte *pcmBuffer, int size )
     afd.moviSize += ( chunkSize + paddingSize );
     afd.a.totalBytes += bytesInBuffer;
 
-    // Index
-    bufIndex = 0;
-    WRITE_STRING( "01wb" );           //dwIdentifier
-    WRITE_4BYTES( 0 );                //dwFlags
-    WRITE_4BYTES( chunkOffset );      //dwOffset
-    WRITE_4BYTES( bytesInBuffer );    //dwLength
-    SafeFS_Write( buffer, 16, afd.idxF );
+    if( !afd.pipe )
+    {
+      // Index
+      bufIndex = 0;
+      WRITE_STRING( "01wb" );           //dwIdentifier
+      WRITE_4BYTES( 0 );                //dwFlags
+      WRITE_4BYTES( chunkOffset );      //dwOffset
+      WRITE_4BYTES( bytesInBuffer );    //dwLength
+      SafeFS_Write( buffer, 16, afd.idxF );
 
-    afd.numIndices++;
+      afd.numIndices++;
+    }
 
     bytesInBuffer = 0;
   }
@@ -602,6 +697,22 @@ qboolean CL_CloseAVI( void )
     return qfalse;
 
   afd.fileOpen = qfalse;
+
+  if( afd.pipe )
+  {
+    // closing stdin lets ffmpeg finish the file; pclose waits for it
+#ifdef _WIN32
+    _pclose( afd.pipe );
+#else
+    pclose( afd.pipe );
+#endif
+    afd.pipe = NULL;
+    Z_Free( afd.cBuffer );
+    Z_Free( afd.eBuffer );
+    Com_Printf( "Wrote %d:%d frames to %s via ffmpeg\n",
+        afd.numVideoFrames, afd.numAudioFrames, afd.fileName );
+    return qtrue;
+  }
 
   FS_Seek( afd.idxF, 4, FS_SEEK_SET );
   bufIndex = 0;

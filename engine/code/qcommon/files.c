@@ -878,6 +878,31 @@ fileHandle_t FS_FOpenFileWrite_HomeData( const char *filename ) {
 
 /*
 ===========
+FS_HomeDataOSPathForWrite
+
+Resolves a qpath to its home-data OS path and creates the parent directories,
+for writers that open the file themselves (e.g. the ffmpeg video pipe).
+Returns NULL if the directories can't be created.
+===========
+*/
+const char *FS_HomeDataOSPathForWrite( const char *filename ) {
+	char *ospath;
+
+	if ( !fs_searchpaths ) {
+		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
+	}
+
+	ospath = FS_BuildOSPath( fs_homedatapath->string, fs_gamedir, filename );
+	FS_CheckFilenameIsMutable( ospath, __func__ );
+
+	if ( FS_CreatePath( ospath ) ) {
+		return NULL;
+	}
+	return ospath;
+}
+
+/*
+===========
 FS_FOpenFileWrite_HomeState
 ===========
 */
