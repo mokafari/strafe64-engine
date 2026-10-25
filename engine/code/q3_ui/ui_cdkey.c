@@ -149,7 +149,7 @@ static void UI_License_DrawKey( void *self ) {
 	if( f->field.buffer[0] ) {
 		MField_Draw( &f->field, FIELD_X, FIELD_Y, style, *color );
 	} else if( !focus ) {
-		UI_DrawString( FIELD_X, FIELD_Y, "S64-XXXXXX-XXXXXX- ...  paste your key here",
+		UI_DrawString( FIELD_X, FIELD_Y, "S64-XXXXXX-XXXXXX- ...  PASTE YOUR KEY HERE",
 			UI_SMALLFONT, lic_dim );
 	} else {
 		MField_Draw( &f->field, FIELD_X, FIELD_Y, style, *color );
@@ -183,9 +183,9 @@ static void UI_License_MenuDraw( void ) {
 	UI_FillRect( 70, 150, 500, 1, lic_grid );
 	UI_DrawString( 76, 154, "[  ENTER LICENSE  ]", UI_LEFT|UI_SMALLFONT, lic_green );
 
-	UI_DrawString( 320, 188, "Paste the key from your purchase e-mail.",
+	UI_DrawString( 320, 188, "PASTE THE KEY FROM YOUR PURCHASE E-MAIL",
 		UI_CENTER|UI_SMALLFONT, lic_dim );
-	UI_DrawString( 320, 206, "CTRL+V  or  SHIFT+INS  to paste,  or click  PASTE.",
+	UI_DrawString( 320, 206, "CTRL+V  OR  SHIFT+INS  TO PASTE  -  OR CLICK  PASTE",
 		UI_CENTER|UI_SMALLFONT, lic_dim );
 
 	// live status line, polled from the engine verifier
