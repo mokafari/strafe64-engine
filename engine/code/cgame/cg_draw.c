@@ -952,8 +952,19 @@ static int CG_DrawPickupItem( int y ) {
 		if ( fadeColor ) {
 			CG_RegisterItemVisuals( value );
 			trap_R_SetColor( fadeColor );
-			CG_DrawPic( 8, y, ICON_SIZE, ICON_SIZE, cg_items[ value ].icon );
-			CG_DrawBigString( ICON_SIZE + 16, y + (ICON_SIZE/2 - BIGCHAR_HEIGHT/2), bg_itemlist[ value ].pickup_name, fadeColor[0] );
+			// NERV: compact icon + matrix-font tag, matching the rest of the HUD
+			// (the stock BIGCHAR string letter-spaced into "5 0  H e a l t h")
+			{
+				char	tag[64];
+				vec4_t	tc = { 0.32f, 0.86f, 1.00f, 1.00f };
+
+				Q_strncpyz( tag, bg_itemlist[ value ].pickup_name, sizeof( tag ) );
+				Q_strupr( tag );
+				tc[3] = fadeColor[3];
+				CG_DrawPic( 8, y + ICON_SIZE / 4, ICON_SIZE / 2, ICON_SIZE / 2, cg_items[ value ].icon );
+				trap_R_SetColor( NULL );
+				CG_DrawMatrixString( 8 + ICON_SIZE / 2 + 8, y + ICON_SIZE / 2 - 7, tag, 1.4f, tc );
+			}
 			trap_R_SetColor( NULL );
 		}
 	}
