@@ -54,6 +54,8 @@ vmCvar_t	g_flowRegen;
 vmCvar_t	g_speedKnockback;
 vmCvar_t	g_grapple;
 vmCvar_t	g_grappleInstant;	// 1 = instant trace-attach (movement tool), 0 = fly-out projectile
+vmCvar_t	g_truckRamp;		// func_truck: seconds per stage (speed/gap/enemies ramp each stage)
+vmCvar_t	g_truckBest;		// func_truck: best survival time (s)
 vmCvar_t	g_grappleRange;		// max latch distance, units (instant mode)
 vmCvar_t	g_grappleSpeed;		// projectile travel speed, ups (projectile mode only)
 vmCvar_t	g_vectorgun;
@@ -204,6 +206,8 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_speedKnockback, "g_speedKnockback", "1", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_grapple, "g_grapple", "1", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_grappleInstant, "g_grappleInstant", "1", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_truckRamp, "g_truckRamp", "30", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_truckBest, "g_truckBest", "0", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_grappleRange, "g_grappleRange", "4000", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_grappleSpeed, "g_grappleSpeed", "1500", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_vectorgun, "g_vectorgun", "0", CVAR_SERVERINFO | CVAR_ARCHIVE | CVAR_LATCH, 0, qfalse  },

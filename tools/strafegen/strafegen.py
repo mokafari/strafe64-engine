@@ -45,6 +45,7 @@ from strafegen_bsp import *
 from strafegen_course import *
 from strafegen_arena import *
 from strafegen_killbox import *
+from strafegen_trucks import *
 from strafegen_surf import *
 from strafegen_pack import *
 
@@ -56,7 +57,7 @@ GFX = cfg.GFX
 def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
              arena=False, name=None, void=True, voidrise=None,
              voiddelay=None, dojo=None, surf=False, killbox=False,
-             latticearena=False, combat=False, archetype=None,
+             latticearena=False, combat=False, archetype=None, trucks=False,
              item_trail=False, standalone=False, backup=False,
              bake=False, bake_bounce=3,
              vscale=1.0, hscale=1.0, density=1.0, sections=None,
@@ -70,6 +71,9 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
         base = "lattice_arena_lite" if lite else "lattice_arena"
         name = name or (f"{base}_{seed}" if seed else base)
         course = LatticeArena(seed, weapons=not lite).build()  # 16-pilot heat arena
+    elif trucks:
+        name = name or (f"strafe64tr_{seed}" + ("" if difficulty == 1 else f"_d{difficulty}"))
+        course = Trucks(seed, difficulty).build()
     elif killbox:
         if not name:
             base = f"strafe64kb_{archetype}" if archetype else "strafe64kb"
@@ -232,6 +236,8 @@ def main():
     ap.add_argument("--arena", action="store_true",
                     help="deathmatch arena with a velodrome ring instead "
                          "of a linear run")
+    ap.add_argument("--trucks", action="store_true",
+                    help="endless Clustertruck treadmill (func_truck fleet, ramps with time)")
     ap.add_argument("--killbox", action="store_true",
                     help="futuristic vertical melee arena: wall-jump columns, "
                          "a central spire and momentum portals for the "
@@ -405,7 +411,7 @@ def main():
     if args.seed is None:
         ap.error("a seed is required (or use --daily / --check / --selftest)")
     generate(args.seed, args.difficulty, length, args.out,
-             args.map, args.pk3, arena=args.arena, killbox=args.killbox,
+             args.map, args.pk3, arena=args.arena, killbox=args.killbox, trucks=args.trucks,
              combat=args.combat, archetype=args.arch,
              name=args.name or name, void=not args.no_void,
              voidrise=args.voidrise, voiddelay=args.voiddelay,

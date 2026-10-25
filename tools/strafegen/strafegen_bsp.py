@@ -430,11 +430,15 @@ class BspWriter:
         movers = getattr(c, "movers", [])
         n_trig = len(c.triggers)
         for mi, (mb, ent) in enumerate(movers):
+            # a mover may be one brush or a list (multi-part func_truck)
+            parts = mb if isinstance(mb, (list, tuple)) else [mb]
             first = len(self.brushes)
             first_surf = len(self.surfaces)
-            surf_ids = self.emit_brush(mb)
+            n_surf = sum(len(self.emit_brush(b)) for b in parts)
+            mmins = [min(b.mins[i] for b in parts) for i in range(3)]
+            mmaxs = [max(b.maxs[i] for b in parts) for i in range(3)]
             self.models.append(struct.pack(
-                "<6f4i", *mb.mins, *mb.maxs, first_surf, len(surf_ids), first, 1))
+                "<6f4i", *mmins, *mmaxs, first_surf, n_surf, first, len(parts)))
             ent["model"] = f"*{n_trig + mi + 1}"
 
         ent_text = ""
@@ -536,7 +540,8 @@ def write_map(course, path):
             for k, v in ent.items():
                 if k != "model":
                     fh.write(f'"{k}" "{v}"\n')
-            fh.write(brush_text(mb))
+            for b in (mb if isinstance(mb, (list, tuple)) else [mb]):
+                fh.write(brush_text(b))
             fh.write("}\n")
 
 

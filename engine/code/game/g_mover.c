@@ -1631,3 +1631,307 @@ void SP_func_pendulum(gentity_t *ent) {
 	ent->s.apos.trType = TR_SINE;
 	ent->s.apos.trDelta[2] = speed;
 }
+
+
+
+/*
+===============================================================================
+
+TRUCK
+
+Clustertruck treadmill: a fleet of drawn brush trucks drives down the road
+toward the runner (-x) and is recycled to the back of the queue when it passes
+"killx", so a static BSP plays as an endless stream.
+
+The run is staged: every g_truckRamp seconds the stage rises, which speeds up
+the whole fleet at once (so trucks never overtake each other), widens the gap
+and lateral jog between consecutive trucks, and raises the odds that a
+recycled truck carries an enemy rider — a sword slice-gate early, a gunner
+that throws deflectable bolts later. A human (re)spawn ends the run, reports
+time + stage against the best (g_truckBest), and resets the fleet to stage 1.
+
+===============================================================================
+*/
+
+#define TRUCK_RIDER_GATE	1
+#define TRUCK_RIDER_GUNNER	2
+
+static int			truckRunStart;		// level.time the current run began
+static int			truckStage;
+static gentity_t	*truckTail;			// last truck launched = back of the queue
+static int			truckMapStart = -1;	// level.startTime these statics belong to
+static qboolean		truckRunHuman;		// a human has run since the last reset
+
+static int Truck_StageNow( void ) {
+	int	len;
+
+	len = (int)( ( g_truckRamp.value > 1 ? g_truckRamp.value : 1 ) * 1000 );
+	return 1 + ( level.time - truckRunStart ) / len;
+}
+
+static float Truck_Speed( gentity_t *ent ) {
+	float	mul;
+
+	mul = 1.0f + 0.2f * ( truckStage - 1 );
+	return ent->speed * ( mul > 2.6f ? 2.6f : mul );
+}
+
+static void TruckRider_Die( gentity_t *self, gentity_t *inflictor,
+		gentity_t *attacker, int damage, int mod ) {
+	// flow reward is paid by Weapon_Sword via FL_SLICE_GATE; just clear it
+	self->takedamage = qfalse;
+	self->r.contents = 0;
+	self->s.eFlags |= EF_NODRAW;
+	trap_UnlinkEntity( self );
+}
+
+// re-roll the truck's rider for a fresh pass down the road
+static void Truck_RollRider( gentity_t *truck ) {
+	gentity_t	*rider = truck->target_ent;
+	float		chance, gunner;
+
+	if ( !rider ) {
+		return;
+	}
+	chance = 0.15f * ( truckStage - 1 );
+	gunner = 0.2f * ( truckStage - 2 );
+	if ( random() >= ( chance > 0.7f ? 0.7f : chance ) ) {
+		TruckRider_Die( rider, NULL, NULL, 0, 0 );
+		rider->count = 0;
+		return;
+	}
+	rider->count = random() < ( gunner > 0.6f ? 0.6f : gunner )
+		? TRUCK_RIDER_GUNNER : TRUCK_RIDER_GATE;
+	rider->health = 1;
+	rider->takedamage = qtrue;
+	rider->r.contents = CONTENTS_CORPSE;
+	rider->s.eFlags &= ~EF_NODRAW;
+	rider->timestamp = level.time + 1500;	// grace before the first shot
+	trap_LinkEntity( rider );
+}
+
+// keep the rider glued to its truck (same trajectory, so it lerps smoothly)
+static void Truck_MoveRider( gentity_t *truck ) {
+	gentity_t	*rider = truck->target_ent;
+
+	if ( !rider ) {
+		return;
+	}
+	rider->s.pos = truck->s.pos;
+	VectorAdd( truck->s.pos.trBase, rider->movedir, rider->s.pos.trBase );
+	VectorAdd( truck->r.currentOrigin, rider->movedir, rider->r.currentOrigin );
+	VectorCopy( rider->r.currentOrigin, rider->s.origin );
+	if ( rider->takedamage ) {
+		trap_LinkEntity( rider );
+	}
+}
+
+// gunner: throw a deflectable bolt at the nearest human in front of the truck
+static void Truck_RiderFire( gentity_t *truck ) {
+	gentity_t	*rider = truck->target_ent;
+	gentity_t	*best = NULL, *cl;
+	vec3_t		muzzle, dir;
+	float		d, bestDist = 1800;
+	trace_t		tr;
+	int			i, interval;
+
+	if ( !rider || !rider->takedamage || rider->count != TRUCK_RIDER_GUNNER
+			|| level.time < rider->timestamp ) {
+		return;
+	}
+	VectorCopy( rider->r.currentOrigin, muzzle );
+	muzzle[2] += 24;
+	for ( i = 0; i < level.maxclients; i++ ) {
+		cl = &g_entities[i];
+		if ( !cl->inuse || !cl->client || cl->health <= 0
+				|| ( cl->r.svFlags & SVF_BOT )
+				|| cl->client->sess.sessionTeam == TEAM_SPECTATOR ) {
+			continue;
+		}
+		// only shoot toward the runner's side (they come from -x)
+		if ( cl->r.currentOrigin[0] > muzzle[0] ) {
+			continue;
+		}
+		d = Distance( cl->r.currentOrigin, muzzle );
+		if ( d < bestDist ) {
+			bestDist = d;
+			best = cl;
+		}
+	}
+	interval = 1800 - 150 * truckStage;
+	rider->timestamp = level.time + ( interval < 600 ? 600 : interval );
+	if ( !best ) {
+		return;
+	}
+	trap_Trace( &tr, muzzle, NULL, NULL, best->r.currentOrigin, rider->s.number, MASK_SOLID );
+	if ( tr.fraction < 1.0f ) {
+		return;
+	}
+	VectorSubtract( best->r.currentOrigin, muzzle, dir );
+	fire_bullet( rider, muzzle, dir, 20, 1400, MOD_MACHINEGUN, WP_MACHINEGUN );
+}
+
+// place a truck at the back of the queue: one gap behind the current tail,
+// jogged sideways from it, at the fleet's stage speed
+static void Truck_Launch( gentity_t *ent ) {
+	float	x, y, gap, jog, lane;
+
+	gap = 64 + 40 * ( truckStage - 1 );
+	jog = 64 + 48 * ( truckStage - 1 );
+	lane = ent->random;
+	if ( truckTail && truckTail != ent ) {
+		x = truckTail->r.currentOrigin[0] + truckTail->r.maxs[0] - ent->r.mins[0]
+			+ ( gap > 320 ? 320 : gap ) * ( 0.75f + 0.5f * random() );
+		y = truckTail->r.currentOrigin[1] + crandom() * ( jog > 320 ? 320 : jog );
+	} else {
+		x = ent->pos2[0] + 256;
+		y = 0;
+	}
+	if ( y > lane ) {
+		y = lane;
+	} else if ( y < -lane ) {
+		y = -lane;
+	}
+
+	ent->s.pos.trBase[0] = x;
+	ent->s.pos.trBase[1] = y;
+	ent->s.pos.trBase[2] = 0;
+	ent->s.pos.trType = TR_LINEAR;
+	ent->s.pos.trTime = level.time;
+	VectorSet( ent->s.pos.trDelta, -Truck_Speed( ent ), 0, 0 );
+	// jump straight there: G_MoverPush would otherwise sweep the whole road
+	VectorCopy( ent->s.pos.trBase, ent->r.currentOrigin );
+	trap_LinkEntity( ent );
+	truckTail = ent;
+	Truck_RollRider( ent );
+	Truck_MoveRider( ent );
+}
+
+/*
+================
+G_TruckRunReset
+
+A human spawned: close out the previous run (time, stage, best) and restart
+the fleet from stage 1 at the near end of the road.
+================
+*/
+void G_TruckRunReset( gentity_t *player ) {
+	gentity_t	*e;
+	float		secs;
+	int			i;
+
+	if ( truckMapStart != level.startTime || !truckTail ) {
+		return;		// not a truck map (statics may be from an earlier map)
+	}
+	if ( truckRunHuman && player ) {
+		secs = ( level.time - truckRunStart ) * 0.001f;
+		if ( secs > g_truckBest.value ) {
+			trap_Cvar_Set( "g_truckBest", va( "%.1f", secs ) );
+			trap_SendServerCommand( player - g_entities,
+				va( "cp \"^3NEW BEST^7\n%.1fs  STAGE %i\n\"", secs, truckStage ) );
+		} else {
+			trap_SendServerCommand( player - g_entities,
+				va( "cp \"RUN OVER\n%.1fs  STAGE %i\nBEST %.1fs\n\"",
+					secs, truckStage, g_truckBest.value ) );
+		}
+		G_Printf( "truck run: %.1fs stage %i (best %s)\n", secs, truckStage,
+			g_truckBest.string );
+	}
+	truckRunStart = level.time;
+	truckStage = 1;
+	truckTail = NULL;
+	truckRunHuman = ( player != NULL );
+	for ( i = MAX_CLIENTS, e = g_entities + MAX_CLIENTS; i < level.num_entities; i++, e++ ) {
+		if ( e->inuse && e->classname && !Q_stricmp( e->classname, "func_truck" ) ) {
+			Truck_Launch( e );
+		}
+	}
+}
+
+static void Think_Truck( gentity_t *ent ) {
+	int		stage;
+	float	speed;
+
+	ent->nextthink = level.time + 1;	// every frame: riders track the truck
+
+	stage = Truck_StageNow();
+	if ( stage > truckStage ) {
+		truckStage = stage;
+		trap_SendServerCommand( -1, va( "cp \"STAGE %i\n\"", stage ) );
+	}
+	// fleet-wide speed: re-base the trajectory in place so nobody overtakes
+	speed = Truck_Speed( ent );
+	if ( ent->s.pos.trDelta[0] != -speed ) {
+		VectorCopy( ent->r.currentOrigin, ent->s.pos.trBase );
+		ent->s.pos.trTime = level.time;
+		ent->s.pos.trDelta[0] = -speed;
+	}
+	if ( ent->r.currentOrigin[0] < ent->pos2[0] ) {
+		Truck_Launch( ent );
+	}
+	Truck_MoveRider( ent );
+	Truck_RiderFire( ent );
+}
+
+static void Blocked_Truck( gentity_t *ent, gentity_t *other ) {
+	if ( !other->client ) {
+		G_FreeEntity( other );
+		return;
+	}
+	G_Damage( other, ent, ent, NULL, NULL, 10000, 0, MOD_CRUSH );
+}
+
+/*QUAKED func_truck (0 .5 .8) ?
+"speed"		base road speed in ups (320 default)
+"spawnx"	x offset where trucks enter (far end of the road)
+"killx"		x offset where trucks are recycled (near end)
+"lane"		max lateral offset (256 default)
+"ridex"		local x where an enemy rider stands
+"ridez"		roof height under the rider
+*/
+void SP_func_truck( gentity_t *ent ) {
+	float		spawnx, killx, ridex, ridez;
+	gentity_t	*rider;
+
+	G_SpawnFloat( "speed", "320", &ent->speed );
+	G_SpawnFloat( "spawnx", "4096", &spawnx );
+	G_SpawnFloat( "killx", "0", &killx );
+	G_SpawnFloat( "lane", "256", &ent->random );
+	G_SpawnFloat( "ridex", "0", &ridex );
+	G_SpawnFloat( "ridez", "112", &ridez );
+
+	trap_SetBrushModel( ent, ent->model );
+	InitMover( ent );
+	ent->use = NULL;
+	ent->reached = NULL;
+	ent->blocked = Blocked_Truck;
+	VectorSet( ent->pos1, spawnx, 0, 0 );
+	VectorSet( ent->pos2, killx, 0, 0 );
+
+	// one pre-allocated enemy slot per truck, drawn as a slice-drone NPC
+	rider = G_Spawn();
+	rider->classname = "truck_rider";
+	rider->s.modelindex = G_ModelIndex( "models/powerups/teleporter/tele_exit.md3" );
+	rider->s.eType = ET_SLICE_DRONE;
+	rider->flags |= FL_SLICE_GATE | FL_NO_KNOCKBACK;
+	VectorSet( rider->r.mins, -16, -16, -24 );
+	VectorSet( rider->r.maxs,  16,  16,  32 );
+	rider->die = TruckRider_Die;
+	VectorSet( rider->movedir, ridex, 0, ridez + 24 );
+	rider->s.angles[YAW] = 180;		// face the oncoming runner
+	rider->s.apos.trType = TR_STATIONARY;
+	VectorCopy( rider->s.angles, rider->s.apos.trBase );
+	rider->s.eFlags |= EF_NODRAW;
+	ent->target_ent = rider;
+
+	if ( truckMapStart != level.startTime ) {
+		truckMapStart = level.startTime;
+		truckRunStart = level.time;
+		truckStage = 1;
+		truckTail = NULL;
+		truckRunHuman = qfalse;
+	}
+	Truck_Launch( ent );
+	ent->think = Think_Truck;
+	ent->nextthink = level.time + 1;
+}
