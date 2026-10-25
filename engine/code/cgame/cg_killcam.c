@@ -998,11 +998,11 @@ void CG_DrawKillcam( void ) {
 				if ( kc.killerCombo >= 2 ) {
 					Com_sprintf( buf, sizeof( buf ), "%s X%i",
 						cgs.clientinfo[kc.attacker].name, kc.killerCombo );
-					CG_DrawMatrixString( kx + khx + 6, ky - khy + 2, buf, 1.4f, tc );
 				} else {
-					CG_DrawMatrixString( kx + khx + 6, ky - khy + 2,
-						cgs.clientinfo[kc.attacker].name, 1.4f, tc );
+					Q_strncpyz( buf, cgs.clientinfo[kc.attacker].name, sizeof( buf ) );
 				}
+				Q_strupr( buf );
+				CG_DrawMatrixString( kx + khx + 6, ky - khy + 2, buf, 1.4f, tc );
 			}
 		}
 	}
@@ -1021,7 +1021,9 @@ void CG_DrawKillcam( void ) {
 		} else {
 			Q_strncpyz( buf, "ELIMINATED", sizeof( buf ) );
 		}
-		CG_DrawMatrixString( 28, 18, buf, 2.0f, tc );
+		Q_strupr( buf );	// match the all-caps NERV readouts
+		// low in the bar: the console notify lines (obituaries) own the top ~30px
+		CG_DrawMatrixString( 28, 38, buf, 2.0f, tc );
 
 		// BOTTOM BAR readout, left-aligned: SPEED (bigger on a fast death), then
 		// STYLE and SCORE slide up into the row after the orbit beat
@@ -1058,7 +1060,7 @@ void CG_DrawKillcam( void ) {
 			rv = CG_KC_Reveal( 0.60f, 300.0f ) * alpha;
 			if ( rv > 0.01f ) {
 				cell = CG_KC_Lerp( 3.6f, 2.6f, rv );			// punches down as it lands
-				Com_sprintf( buf, sizeof( buf ), "%s  %iUPS", rank, peak );
+				Com_sprintf( buf, sizeof( buf ), "%s  %i UPS", rank, peak );
 				w = CG_MatrixStringWidth( buf, cell );
 				rankCol[3] = rv;
 				CG_DrawMatrixString( 612.0f - w, rowY - ( cell - 2.0f ) * 4.0f, buf, cell, rankCol );

@@ -203,3 +203,28 @@ skip is annotated with why. Net: ~45 real fixes landed, feel-critical (§7) and
 perf/upstream (§8) code touched name/comment-only.
 
 
+
+---
+
+## 11. Player-facing polish — copy, HUD, menus, effects (in-game pass, 2026-10-25)
+
+Played the build over the engine MCP (main menu, sword arena `strafe64dm_1337`
+with Assassin bots, killcam, pickups). Branch `polish/ui-copy-hud`.
+
+**FIXED**
+- e245f50 — katana kills fell through to the generic "was killed by"; now "was cut down by".
+- 834f790 — item pickup notice used the stock BIGCHAR string ("5 0  H e a l t h", different typeface); now compact icon + teal NERV matrix tag.
+- 59a2e03 — killcam "ELIMINATED BY …" drew on top of the console obituary lines (y=18); moved low in the letterbox bar, killer name/tag uppercased, "1188UPS" → "1188 UPS".
+- 8e9cefb — license screen helper copy was sentence case on an all-caps NERV screen; uppercased (not seen in-game — needs an unlicensed home to show).
+
+**REMAINING (priority order)**
+1. **Arena bots all named "Assassin"** — `sword_arena.cfg`/`arena*.cfg` `addbot Assassin ×4` → obituaries read "Assassin was cut down by Assassin". Add 3-4 named assassin bot profiles (same model/skill) or suffix names.
+2. **Default player name "UnnamedPlayer"** shows in obituaries; seed a themed default (e.g. `PILOT`) in autoexec / first-run.
+3. **Console notify lines in the stock tiny font** (top-left obituaries, "Wrote screenshots/…", "spawned item_health") clash with the NERV HUD; route obituaries through a themed kill-feed (matrix font, right-aligned) and keep the console notify for dev.
+4. **Combo multiplier reads as alarm when idle** — `cg_draw.c:3256` shows red "X8.3" while standing still as it decays; dim/fade it when no recent chain event.
+5. **"X6. 0" gap** — the HUD TTF advances '.' a full cell; tighten the '.' xSkip (or draw decimals smaller) in `CG_DrawMatrixString`.
+6. **Pickup notice overlaps the lower-left vitals column** in tight layouts — consider moving it up-right of the health readout.
+7. **Boot shows the OpenArena logo cinematic** before the STRAFE 64 menu — swap or skip the intro (`com_introPlayed`/intro roq).
+8. **Separator style** — subtitles use "/ /" while the footer uses "//"; pick one (menu `ui_menu.c:131` vs footer).
+9. **Killcam "FIRE TO RUN AGAIN"** sits low-contrast over bright floors; add a dark backing plate like the stats bar.
+10. **Killcam overdraw** — bright yellow additive trails + bloom wash out the frame on the orange floor (see collages); cap trail alpha during killcam. (Renderer side owned by the perf session — tune via cgame trail alpha only.)
