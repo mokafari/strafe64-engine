@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "../client/client.h"
 #include "../sys/sys_local.h"
+#include "sdl_rawmouse.h"
 
 #if !SDL_VERSION_ATLEAST(2, 0, 17)
 #define KMOD_SCROLL KMOD_RESERVED
@@ -46,7 +47,13 @@ static qboolean mouseAvailable = qfalse;
 static qboolean mouseActive = qfalse;
 
 static cvar_t *in_mouse             = NULL;
+static cvar_t *in_mouseDebug        = NULL;
 static cvar_t *in_nograb;
+
+// in_mouse 2: raw HID deltas (sdl_rawmouse_macos.c) replace SDL motion
+static qboolean rawMouseOpen = qfalse;		// backend running
+static qboolean rawMouseInUse = qfalse;		// its deltas drive the view
+static int sdlFrameDX, sdlFrameDY;			// SDL motion this frame, for in_mouseDebug
 
 static cvar_t *in_joystick          = NULL;
 static cvar_t *in_joystickThreshold = NULL;
@@ -1117,6 +1124,10 @@ static void IN_ProcessEvents( void )
 				{
 					if( !e.motion.xrel && !e.motion.yrel )
 						break;
+					sdlFrameDX += e.motion.xrel;
+					sdlFrameDY += e.motion.yrel;
+					if( rawMouseInUse )
+						break;
 					Com_QueueEvent( in_eventTime, SE_MOUSE, e.motion.xrel, e.motion.yrel, 0, NULL );
 				}
 				break;
@@ -1236,6 +1247,62 @@ static void IN_ProcessEvents( void )
 IN_Frame
 ===============
 */
+/*
+===============
+IN_RawMouseFrame
+
+Opens/closes the raw backend as in_mouse / in_mouseDebug change, then feeds
+this frame's raw counts in place of SDL's motion. in_mouseDebug 1 runs the
+raw backend alongside SDL and prints both streams per frame for comparison.
+===============
+*/
+static void IN_RawMouseFrame( void )
+{
+	static qboolean	failed = qfalse;
+	qboolean		want = in_mouse->integer == 2 || in_mouseDebug->integer;
+	int				dx, dy, reports;
+
+	if( in_mouse->modified || in_mouseDebug->modified )
+	{
+		in_mouse->modified = in_mouseDebug->modified = qfalse;
+		failed = qfalse;
+	}
+
+	if( want && !rawMouseOpen && !failed )
+	{
+		rawMouseOpen = IN_RawMouse_Init( );
+		failed = !rawMouseOpen;
+		if( rawMouseOpen )
+			Com_Printf( "Raw mouse input active (IOHID, unaccelerated)\n" );
+		else if( in_mouse->integer == 2 )
+			Com_Printf( S_COLOR_YELLOW "Raw mouse unavailable, using SDL relative mouse\n" );
+	}
+	else if( !want && rawMouseOpen )
+	{
+		IN_RawMouse_Shutdown( );
+		rawMouseOpen = qfalse;
+	}
+
+	rawMouseInUse = rawMouseOpen && in_mouse->integer == 2;
+
+	if( !rawMouseOpen )
+		return;
+
+	// always drain, so motion made while the mouse was released doesn't
+	// jolt the view when it's grabbed again
+	IN_RawMouse_Read( &dx, &dy, &reports );
+
+	if( !mouseActive )
+		return;
+
+	if( rawMouseInUse && ( dx || dy ) )
+		Com_QueueEvent( in_eventTime, SE_MOUSE, dx, dy, 0, NULL );
+
+	if( in_mouseDebug->integer && ( dx || dy || sdlFrameDX || sdlFrameDY ) )
+		Com_Printf( "mousedbg %d sdl %d %d raw %d %d n %d\n",
+			Sys_Milliseconds( ), sdlFrameDX, sdlFrameDY, dx, dy, reports );
+}
+
 void IN_Frame( void )
 {
 	qboolean loading;
@@ -1266,7 +1333,9 @@ void IN_Frame( void )
 	else
 		IN_ActivateMouse( cls.glconfig.isFullscreen );
 
+	sdlFrameDX = sdlFrameDY = 0;
 	IN_ProcessEvents( );
+	IN_RawMouseFrame( );
 
 	// Set event time for next frame to earliest possible time an event could happen
 	in_eventTime = Sys_Milliseconds( );
@@ -1301,7 +1370,9 @@ void IN_Init( void *windowData )
 	in_keyboardDebug = Cvar_Get( "in_keyboardDebug", "0", CVAR_ARCHIVE );
 
 	// mouse variables
+	// 1 = SDL relative mouse, 2 = raw HID counts (macOS; falls back to 1)
 	in_mouse = Cvar_Get( "in_mouse", "1", CVAR_ARCHIVE );
+	in_mouseDebug = Cvar_Get( "in_mouseDebug", "0", CVAR_TEMP );
 	in_nograb = Cvar_Get( "in_nograb", "0", CVAR_ARCHIVE );
 
 	in_joystick = Cvar_Get( "in_joystick", "0", CVAR_ARCHIVE|CVAR_LATCH );
@@ -1335,6 +1406,9 @@ void IN_Shutdown( void )
 
 	IN_DeactivateMouse( Cvar_VariableIntegerValue( "r_fullscreen" ) != 0 );
 	mouseAvailable = qfalse;
+
+	IN_RawMouse_Shutdown( );
+	rawMouseOpen = rawMouseInUse = qfalse;
 
 	IN_ShutdownJoystick( );
 
