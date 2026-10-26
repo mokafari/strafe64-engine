@@ -1605,6 +1605,75 @@ CG_DrawActiveFrame
 Generates and draws a game scene and status information at the given time.
 =================
 */
+/*
+=================
+CG_UpdateTimeGrade
+
+TIME IS THE MATERIAL. The world clock is the game's signature, so the frame
+wears it: as bullet-time freezes the world (timescale -> g_timeBindMin) the
+grade drains toward a cool, clinical still; at full speed it sits on the base
+grade, and momentum (CG_Flow) pushes it warm and vivid on top. Drives the
+renderer's non-archived r_gradeLive* offsets (never the archived base grade,
+which would rewrite q3config.cfg every frame), eased on the REAL clock so the
+shift glides even while cg.time is frozen. Yields to the killcam, which owns
+the grade while it runs.
+=================
+*/
+static void CG_UpdateTimeGrade( void ) {
+	static float	sat = 1.0f, temp = 0.0f;
+	static int		lastReal;
+	static char		lastSent[64];
+	char			buf[32], sent[64];
+	float			ts, tsMin, freeze, flow, wantSat, wantTemp, k;
+	int				now = trap_Milliseconds();
+
+	if ( !cg_timeGrade.integer || CG_KillcamActive() ) {
+		if ( lastSent[0] && Q_stricmp( lastSent, "1 0" ) ) {
+			trap_Cvar_Set( "r_gradeLiveSat", "1" );
+			trap_Cvar_Set( "r_gradeLiveTemp", "0" );
+			Q_strncpyz( lastSent, "1 0", sizeof( lastSent ) );
+		}
+		sat = 1.0f; temp = 0.0f;
+		lastReal = now;
+		return;
+	}
+
+	trap_Cvar_VariableStringBuffer( "timescale", buf, sizeof( buf ) );
+	ts = atof( buf );
+	if ( ts <= 0.0f ) {
+		ts = 1.0f;
+	}
+	trap_Cvar_VariableStringBuffer( "g_timeBindMin", buf, sizeof( buf ) );
+	tsMin = buf[0] ? atof( buf ) : 0.05f;
+	if ( tsMin >= 0.95f ) {
+		tsMin = 0.05f;
+	}
+
+	// 1 at the deepest freeze, 0 at (or above) full speed
+	freeze = ( 1.0f - ts ) / ( 1.0f - tsMin );
+	freeze = freeze < 0.0f ? 0.0f : freeze > 1.0f ? 1.0f : freeze;
+	flow = CG_Flow() * ( 1.0f - freeze );
+
+	wantSat = 1.0f + freeze * ( cg_timeGradeFreezeSat.value - 1.0f )
+		+ flow * ( cg_timeGradeSurgeSat.value - 1.0f );
+	wantTemp = freeze * cg_timeGradeFreezeTemp.value + flow * cg_timeGradeSurgeTemp.value;
+
+	// ~120 ms real-time ease: smooth, but a swing's surge still reads instantly
+	k = ( now - lastReal ) / 120.0f;
+	k = k < 0.0f ? 0.0f : k > 1.0f ? 1.0f : k;
+	lastReal = now;
+	sat += ( wantSat - sat ) * k;
+	temp += ( wantTemp - temp ) * k;
+
+	// only touch the cvars when the value visibly changes
+	Com_sprintf( sent, sizeof( sent ), "%.3f %.3f", sat, temp );
+	if ( strcmp( sent, lastSent ) ) {
+		trap_Cvar_Set( "r_gradeLiveSat", va( "%.3f", sat ) );
+		trap_Cvar_Set( "r_gradeLiveTemp", va( "%.3f", temp ) );
+		Q_strncpyz( lastSent, sent, sizeof( lastSent ) );
+	}
+}
+
 void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback ) {
 	int		inwater;
 
@@ -1654,6 +1723,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	// advance/expire the cinematic killcam (drives rack-focus + bloom, restores
 	// the look on respawn or timeout) before the view is built
 	CG_KillcamUpdate();
+	CG_UpdateTimeGrade();
 
 	// build cg.refdef
 	inwater = CG_CalcViewValues();

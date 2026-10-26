@@ -690,8 +690,8 @@ void RB_ColorGrade(FBO_t *srcFbo, FBO_t *dstFbo)
 	VectorSet4(viewInfo, 0.0f, 0.0f, 1.0f / width, 1.0f / height);
 	VectorSet4(grade,
 	           r_gradeContrast->value,
-	           r_gradeSaturation->value,
-	           r_gradeTemp->value,
+	           r_gradeSaturation->value * r_gradeLiveSat->value,
+	           r_gradeTemp->value + r_gradeLiveTemp->value,
 	           r_vignette->value);
 	VectorSet4(gradeFx,
 	           r_filmGrain->value,

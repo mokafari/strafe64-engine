@@ -1317,6 +1317,11 @@ extern	vmCvar_t		cg_fov;
 extern	vmCvar_t		cg_drawSpeed;
 extern	vmCvar_t		cg_speedFov;
 extern	vmCvar_t		cg_flowColor;
+extern	vmCvar_t		cg_timeGrade;
+extern	vmCvar_t		cg_timeGradeFreezeSat;
+extern	vmCvar_t		cg_timeGradeFreezeTemp;
+extern	vmCvar_t		cg_timeGradeSurgeSat;
+extern	vmCvar_t		cg_timeGradeSurgeTemp;
 extern	vmCvar_t		cg_stillVignette;	// cold edge vignette when slow (off = clean full-bleed)
 extern	vmCvar_t		cg_glitch;
 extern	vmCvar_t		cg_glitchAmount;

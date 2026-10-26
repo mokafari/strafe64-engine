@@ -168,6 +168,8 @@ cvar_t  *r_fxaa;
 cvar_t  *r_gradeContrast;
 cvar_t  *r_gradeSaturation;
 cvar_t  *r_gradeTemp;
+cvar_t  *r_gradeLiveSat;
+cvar_t  *r_gradeLiveTemp;
 cvar_t  *r_vignette;
 cvar_t  *r_filmGrain;
 cvar_t  *r_legacySpecular;
@@ -1391,6 +1393,11 @@ void R_Register( void )
 	r_gradeContrast = ri.Cvar_Get( "r_gradeContrast", "1.06", CVAR_ARCHIVE );
 	r_gradeSaturation = ri.Cvar_Get( "r_gradeSaturation", "1.08", CVAR_ARCHIVE );
 	r_gradeTemp = ri.Cvar_Get( "r_gradeTemp", "0.04", CVAR_ARCHIVE );
+	// per-frame offsets the game drives (time-grade: cool when the world freezes,
+	// warm in a surge). Not archived, so animating them never rewrites q3config.cfg
+	// and never pollutes the user's base grade.
+	r_gradeLiveSat = ri.Cvar_Get( "r_gradeLiveSat", "1", CVAR_TEMP );
+	r_gradeLiveTemp = ri.Cvar_Get( "r_gradeLiveTemp", "0", CVAR_TEMP );
 	r_vignette = ri.Cvar_Get( "r_vignette", "0.18", CVAR_ARCHIVE );
 	r_filmGrain = ri.Cvar_Get( "r_filmGrain", "0.03", CVAR_ARCHIVE );
 
