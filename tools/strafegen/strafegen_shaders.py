@@ -322,6 +322,31 @@ s64console
 	}
 }
 
+// ITEM HOLOGRAM - every pickup renders through this (cgame CG_ItemHolo,
+// cg_itemHolo 1) instead of its stock OpenArena skin: a faint additive body in
+// the item's tint (rgbGen entity: health cyan, armor magenta, powerups amber)
+// with the NERV matrix pattern env-mapped over it, scrolling, so pickups read
+// as projected light in the dusk haze rather than plastic props. Additive, so
+// it blooms and never darkens the scene.
+s64itemHolo
+{
+	nopicmip
+	cull none
+	{
+		map $whiteimage
+		blendFunc GL_SRC_ALPHA GL_ONE
+		rgbGen entity
+		alphaGen const 0.30
+	}
+	{
+		map textures/strafe64/matrix.tga
+		blendFunc GL_SRC_ALPHA GL_ONE
+		rgbGen entity
+		alphaGen const 0.9
+		tcGen environment
+		tcMod scroll 0 0.35
+	}
+}
 // Main-menu background: same NERV terminal plate (slightly deeper, slower
 // drift). Replaces OA's logo menuback via the same unique-name mechanism.
 s64menuback

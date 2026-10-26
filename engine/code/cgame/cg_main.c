@@ -154,6 +154,7 @@ vmCvar_t	cg_tracerLength;
 vmCvar_t	cg_autoswitch;
 vmCvar_t	cg_ignore;
 vmCvar_t	cg_simpleItems;
+vmCvar_t	cg_itemHolo;
 vmCvar_t	cg_fov;
 vmCvar_t	cg_drawSpeed;
 vmCvar_t	cg_speedFov;
@@ -352,6 +353,8 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_crosshairY, "cg_crosshairY", "0", CVAR_ARCHIVE },
 	{ &cg_brassTime, "cg_brassTime", "2500", CVAR_ARCHIVE },
 	{ &cg_simpleItems, "cg_simpleItems", "0", CVAR_ARCHIVE },
+	// pickups render as tinted neon holograms instead of stock OpenArena models
+	{ &cg_itemHolo, "cg_itemHolo", "1", CVAR_ARCHIVE },
 	{ &cg_addMarks, "cg_marks", "1", CVAR_ARCHIVE },
 	{ &cg_lagometer, "cg_lagometer", "1", CVAR_ARCHIVE },
 	{ &cg_railTrailTime, "cg_railTrailTime", "400", CVAR_ARCHIVE  },
@@ -985,6 +988,9 @@ static void CG_RegisterGraphics( void ) {
 	// clear any references to old media
 	memset( &cg.refdef, 0, sizeof( cg.refdef ) );
 	trap_R_ClearScene();
+
+	// shipped in the shared zzz_strafe64_shader.pk3 (strafegen_shaders.SHADER_SCRIPT)
+	cgs.media.itemHoloShader = trap_R_RegisterShader( "s64itemHolo" );
 
 	CG_LoadingString( cgs.mapname );
 
