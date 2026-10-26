@@ -1411,10 +1411,10 @@ void R_Register( void )
 	// skips it). Defaults are deliberately subtle.
 	r_legacySpecular = ri.Cvar_Get( "r_legacySpecular", "0", CVAR_ARCHIVE );
 	r_rimLight = ri.Cvar_Get( "r_rimLight", "1", CVAR_ARCHIVE );
-	r_rimScale = ri.Cvar_Get( "r_rimScale", "0.32", CVAR_ARCHIVE );
-	r_rimExp = ri.Cvar_Get( "r_rimExp", "2.7", CVAR_ARCHIVE );
-	r_rimColorR = ri.Cvar_Get( "r_rimColorR", "0.42", CVAR_ARCHIVE );
-	r_rimColorG = ri.Cvar_Get( "r_rimColorG", "0.66", CVAR_ARCHIVE );
+	r_rimScale = ri.Cvar_Get( "r_rimScale", "0.7", CVAR_ARCHIVE );
+	r_rimExp = ri.Cvar_Get( "r_rimExp", "4.0", CVAR_ARCHIVE );
+	r_rimColorR = ri.Cvar_Get( "r_rimColorR", "0.35", CVAR_ARCHIVE );
+	r_rimColorG = ri.Cvar_Get( "r_rimColorG", "0.85", CVAR_ARCHIVE );
 	r_rimColorB = ri.Cvar_Get( "r_rimColorB", "1.0", CVAR_ARCHIVE );
 
 	// STRAFE 64 bodycam finish pass: a real-camera/vest-cam look (wide-lens

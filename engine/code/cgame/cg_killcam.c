@@ -108,9 +108,9 @@ static const kcLookCvar_t kc_lookCvars[] = {
 	{ "r_gradeTemp",		"0.04"	},
 	{ "r_gradeContrast",	"1.06"	},
 	{ "r_vignette",			"0.18"	},
-	{ "r_rimScale",			"0.32"	},
-	{ "r_rimColorR",		"0.42"	},
-	{ "r_rimColorG",		"0.66"	},
+	{ "r_rimScale",			"0.7"	},
+	{ "r_rimColorR",		"0.35"	},
+	{ "r_rimColorG",		"0.85"	},
 	{ "r_rimColorB",		"1.0"	},
 	{ "r_bloom",			"0.25"	},
 	{ "r_dofAutoFocus",		"1"		},
@@ -139,7 +139,7 @@ static void CG_KillcamApplyLook( void ) {
 	trap_Cvar_Set( "r_gradeContrast", "1.22" );
 	trap_Cvar_Set( "r_vignette", "0.40" );
 
-	trap_Cvar_Set( "r_rimScale", "0.62" );
+	trap_Cvar_Set( "r_rimScale", "0.9" );
 	trap_Cvar_Set( "r_rimColorR", "0.24" );
 	trap_Cvar_Set( "r_rimColorG", "0.70" );
 	trap_Cvar_Set( "r_rimColorB", "1.0" );
