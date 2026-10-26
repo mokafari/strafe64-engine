@@ -61,7 +61,7 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
              item_trail=False, standalone=False, backup=False,
              bake=False, bake_bounce=3,
              vscale=1.0, hscale=1.0, density=1.0, sections=None,
-             theme="default", greeble_density=1.0):
+             theme="ethereal", greeble_density=1.0):
     os.makedirs(out_dir, exist_ok=True)
     cfg.THEME = theme           # read by BspWriter to remap bulk faces to concrete
     mods = cfg.GenMods(vscale=vscale, hscale=hscale, density=density,
@@ -315,8 +315,8 @@ def main():
                          "guarantee the identity shader pak is present so its "
                          "loose .bsp maps render with real shaders, not grey")
     # ---- art theme ----
-    ap.add_argument("--theme", default="default", choices=("default", "concrete", "ethereal"),
-                    help="art theme. 'default' = Source dev look (orange floors/grey "
+    ap.add_argument("--theme", default="ethereal", choices=("default", "concrete", "ethereal"),
+                    help="art theme (ethereal unless set). 'default' = Source dev look (orange floors/grey "
                          "walls); 'concrete' = lun3dm5 brutalist pale concrete — one "
                          "material + a cube-greeble pass that erodes masses into the "
                          "stacked-cube silhouette; 'ethereal' = the same concrete at a "

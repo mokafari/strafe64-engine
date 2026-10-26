@@ -13,7 +13,10 @@ GFX = True
 # dev-texture surfaces to an alternate material. "default" = the Source dev look
 # (orange floors / grey walls); "concrete" = the lun3dm5 brutalist pale-concrete
 # look (see strafegen_palettes.theme_remap + the greeble pass in strafegen_geom).
-# Set by --theme; "default" leaves every map byte-identical.
+# "ethereal" = concrete x neon at dusk (ART_DIRECTION §12), the generator
+# default since 2026-10; pair it with --bake for the lightmapped look.
+# Set by --theme / generate(theme=); "default" reproduces the old dev look
+# byte-identically.
 THEME = "default"
 
 
