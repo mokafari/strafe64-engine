@@ -336,6 +336,121 @@ def greeble_course(course, seed=0, density=1.0, cap=6000):
     return len(added)
 
 
+def greeble_brutal(course, seed=0, density=1.0, cap=4000):
+    """lun3dm5-style block cladding for the ethereal theme.
+
+    What makes lun3dm5 read as monumental is not fine teeth (greeble_course's
+    8-24u erosion: voxel noise, ~39x the surfaces) but masses clad in offset
+    rectangular BLOCKS at many scales (32-192u), each pushed out to a different
+    depth, so a baked sun throws a shadow line off every step. Per sizable
+    axis-box mass:
+
+      * side cladding -- each side face, in a band under the rim (the whole face
+        on low masses, the top 256u on tall walls so their wall-run zone stays
+        flush), is split recursively on a 16u grid into rectangles; most become
+        blocks extruded 8-48u, some are left as recesses;
+      * underside blocks -- floating slabs get the same partition hung beneath
+        them as chunky blocks, so they read heavy from below;
+      * neon reveal -- one thin cyan glow strip under the rim on long sides, the
+        theme's single saturated line.
+
+    Everything stays outside the footprint or below the top surface (rim =
+    top - 16), never on the run line. Returns the count added.
+    """
+    if density <= 0:
+        return 0
+    rng = random.Random((int(seed) & 0xffffffff) ^ 0xB2B7A1)
+    pals = (PAL_ETHER, PAL_ETHER, PAL_ETHER_FLOOR, PAL_CRETE_DARK)
+    depths = (8, 16, 16, 24, 24, 32, 48)
+    added = []
+
+    def blk(cmn, cmx, tex=TEX_CONCRETE, pal=None):
+        if len(added) >= cap:
+            return
+        if (cmx[0] - cmn[0] < 2 or cmx[1] - cmn[1] < 2 or cmx[2] - cmn[2] < 2):
+            return
+        added.append(make_box(tuple(cmn), tuple(cmx), tex=tex,
+                              palette=pal or rng.choice(pals)))
+
+    def snap(v):
+        return round(v / 16.0) * 16.0
+
+    def partition(a0, a1, b0, b1, leaf, depth=0):
+        """Recursive guillotine split of [a0,a1]x[b0,b1] into blocks."""
+        da, db = a1 - a0, b1 - b0
+        lim = rng.choice((64, 96, 128, 192))
+        if depth > 7 or (da <= lim and db <= lim) or min(da, db) < 48:
+            leaf(a0, a1, b0, b1)
+            return
+        if da >= db:
+            cut = snap(a0 + da * rng.uniform(0.3, 0.7))
+            if cut <= a0 + 16 or cut >= a1 - 16:
+                leaf(a0, a1, b0, b1)
+                return
+            partition(a0, cut, b0, b1, leaf, depth + 1)
+            partition(cut, a1, b0, b1, leaf, depth + 1)
+        else:
+            cut = snap(b0 + db * rng.uniform(0.3, 0.7))
+            if cut <= b0 + 16 or cut >= b1 - 16:
+                leaf(a0, a1, b0, b1)
+                return
+            partition(a0, a1, b0, cut, leaf, depth + 1)
+            partition(a0, a1, cut, b1, leaf, depth + 1)
+
+    keep = min(1.0, 0.72 * density)
+    sides = ((0, -1, 1), (0, +1, 1), (1, -1, 0), (1, +1, 0))
+    for b in list(course.solids):
+        if len(added) >= cap:
+            break
+        if getattr(b, "contents", CONTENTS_SOLID) != CONTENTS_SOLID:
+            continue
+        if not _is_axis_box(b):
+            continue
+        mn, mx = b.mins, b.maxs
+        dims = [mx[i] - mn[i] for i in range(3)]
+        if min(dims[0], dims[1]) < 96 or max(dims) > 4096:
+            continue
+        rim = mx[2] - 16                       # never flush with the run surface
+        z0 = max(mn[2], rim - 256)             # tall walls: clad the top band only
+
+        for out_ax, sgn, run_ax in sides:
+            face = mn[out_ax] if sgn < 0 else mx[out_ax]
+
+            def side_leaf(u0, u1, v0, v1, out_ax=out_ax, sgn=sgn, run_ax=run_ax,
+                          face=face):
+                if rng.random() > keep:
+                    return                      # a recess: let the face show
+                d = rng.choice(depths)
+                cmn, cmx = [0.0, 0.0, v0], [0.0, 0.0, v1]
+                cmn[run_ax], cmx[run_ax] = u0, u1
+                cmn[out_ax], cmx[out_ax] = ((face - d, face) if sgn < 0
+                                            else (face, face + d))
+                blk(cmn, cmx)
+
+            if rim - z0 >= 32:
+                partition(mn[run_ax], mx[run_ax], z0, rim, side_leaf)
+            # neon reveal under the rim (long sides only), proud of the cladding
+            span = mx[run_ax] - mn[run_ax]
+            if span >= 256:
+                cmn, cmx = [0.0, 0.0, rim + 2], [0.0, 0.0, rim + 6]
+                cmn[run_ax], cmx[run_ax] = mn[run_ax] + 16, mx[run_ax] - 16
+                cmn[out_ax], cmx[out_ax] = ((face - 3, face) if sgn < 0
+                                            else (face, face + 3))
+                blk(cmn, cmx, tex=TEX_WALL, pal=PAL_NEON_TRIM)
+
+        # ---- underside blocks on floating slabs ---------------------------
+        if dims[2] <= 96:
+            def under_leaf(x0, x1, y0, y1):
+                if rng.random() > keep * 0.8:
+                    return
+                d = rng.choice((16, 32, 48, 64, 96))
+                blk([x0, y0, mn[2] - d], [x1, y1, mn[2]])
+            partition(mn[0] + 16, mx[0] - 16, mn[1] + 16, mx[1] - 16, under_leaf)
+
+    course.solids.extend(added)
+    return len(added)
+
+
 def scale_course(course, sx, sy, sz):
     """Uniformly rescale a built course in place by (sx, sy, sz).
 

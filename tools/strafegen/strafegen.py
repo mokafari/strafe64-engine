@@ -109,9 +109,10 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
     # (decorative, gameplay-safe — see greeble_course). The face material remap
     # itself is applied at BSP-emit via cfg.THEME; this adds the silhouette.
     if theme in ("concrete", "ethereal") and greeble_density > 0:
-        n = greeble_course(course, seed=getattr(course, "seed", 0),
-                           density=greeble_density)
-        print(f"    concrete theme: +{n} greeble cubes (density {greeble_density:g})")
+        # ethereal: big rhythmic brutalist forms; concrete keeps the lun3dm5 erosion
+        gfn = greeble_brutal if theme == "ethereal" else greeble_course
+        n = gfn(course, seed=getattr(course, "seed", 0), density=greeble_density)
+        print(f"    {theme} theme: +{n} greeble brushes (density {greeble_density:g})")
     # universal post-build resize (identity at 1,1,1 -> byte-unchanged). Runs
     # before bake/write so both paths see the resized geometry.
     scale_course(course, mods.hscale, mods.hscale, mods.vscale)
