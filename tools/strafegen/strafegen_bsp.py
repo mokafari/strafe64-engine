@@ -138,6 +138,17 @@ _DAY_KEY_RGB  = (0.50, 0.49, 0.45)         # warm-white sun key
 _DAY_FILL_RGB = (0.16, 0.18, 0.24)         # cool sky fill on shadow walls
 
 
+# Ethereal theme: a low violet dusk. Deep blue-violet skylight on the floors, a
+# low warm peach key raking in near the horizon so cube faces split into lit and
+# shadow planes (that raking light is what makes raw concrete look sculpted),
+# and cool cyan fills that echo the neon so shadow sides aren't dead black.
+_ETH_SUN_DIR  = (0.7660, 0.4420, 0.4663)   # az +30, el ~28 (low, raking)
+_ETH_SKY_AMB  = (0.19, 0.21, 0.29)         # dim blue-violet dusk skylight
+_ETH_GND_AMB  = (0.07, 0.07, 0.11)         # near-dark bounce: masses read heavy
+_ETH_KEY_RGB  = (0.40, 0.31, 0.25)         # warm peach sunset key (raking)
+_ETH_FILL_RGB = (0.04, 0.09, 0.13)         # cyan neon spill on shadow walls
+
+
 def build_light_model(seed):
     """Build the vertex-light dome for the active theme.
 
@@ -148,6 +159,11 @@ def build_light_model(seed):
         for d in _DOME_FILL_DIRS:
             suns.append((d, _DAY_FILL_RGB))
         return LightModel("concrete-day", _DAY_SKY_AMB, _DAY_GND_AMB, suns)
+    if cfg.THEME == "ethereal":
+        suns = [(_ETH_SUN_DIR, _ETH_KEY_RGB)]
+        for d in _DOME_FILL_DIRS:
+            suns.append((d, _ETH_FILL_RGB))
+        return LightModel("ethereal-dusk", _ETH_SKY_AMB, _ETH_GND_AMB, suns)
     fam = _HUE_ORDER[seed % len(_HUE_ORDER)]
     sky, gnd, key, fill = _HUE_FAMILIES[fam]
     suns = [(_SUN_DIR, key)]

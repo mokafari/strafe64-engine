@@ -27,6 +27,8 @@ TEX_CONCRETE = "textures/strafe64/crete"
 TEX_SKY_REAL = "textures/strafe64/skyreal"
 TEX_FOG      = "textures/strafe64/fog"
 TEX_FOG_DAY  = "textures/strafe64/fog_day"
+TEX_FOG_ETHER = "textures/strafe64/fog_ether"
+TEX_SKY_ETHER = "textures/strafe64/sky_ether"
 
 
 # ---- Source dev-texture palettes + accent-glow routing ----
@@ -65,6 +67,8 @@ PAL_KB_DECK   = SRC_ORANGE
 PAL_KB_WALL   = SRC_GREY
 PAL_KB_NEON   = (90, 230, 255)     # cyan: portals, edges, the spire crown (accent)
 PAL_KB_COLUMN = (210, 90, 255)     # magenta wall-jump columns (accent)
+# ethereal theme: ledges/trim become cyan neon strips (the cyberpunk line work)
+PAL_NEON_TRIM = (80, 220, 255)
 
 # Accent palettes that should read as self-illuminated NEON BEACONS rather than
 # matte dev panels. Faces wearing one of these are routed (by _glow_tex, at
@@ -74,7 +78,7 @@ PAL_KB_COLUMN = (210, 90, 255)     # magenta wall-jump columns (accent)
 # (SRC_ORANGE/SRC_GREY) is deliberately excluded so the track stays readable.
 ACCENT_GLOW = frozenset((
     PAL_START, PAL_FINISH, PAL_CHECK, PAL_PAD, PAL_GATE, PAL_DANGER,
-    PAL_KB_NEON, PAL_KB_COLUMN,
+    PAL_KB_NEON, PAL_KB_COLUMN, PAL_NEON_TRIM,
 ))
 TEX_FLOOR_GLOW = "textures/strafe64/glow_floor"
 TEX_WALL_GLOW  = "textures/strafe64/glow_wall"
@@ -118,9 +122,33 @@ _CONCRETE_TEX = {TEX_FLOOR: TEX_CONCRETE, TEX_WALL: TEX_CONCRETE,
                  TEX_SKY: TEX_SKY_REAL}
 
 
+# ---- ethereal theme (brutalist concrete x cyberpunk neon, at dusk) ---------
+# The same poured-concrete material and greeble erosion as "concrete", but lit
+# by a low violet dusk instead of daylight, wrapped in a close lavender haze and
+# under the Bryce dusk sky. Concrete stays the only bulk material; the ONLY
+# saturated colour is neon: every ledge/trim edge becomes a cyan glow strip and
+# the accent pads/gates keep their glow. Palettes are a touch cooler than the
+# day set so the grade (and time-grade) has a neutral-cool base to push.
+PAL_ETHER       = (214, 216, 228)   # walls / bulk
+PAL_ETHER_FLOOR = (222, 220, 226)   # floors / decks
+_ETHEREAL_PAL = {
+    SRC_ORANGE: PAL_ETHER_FLOOR,
+    SRC_TRIM:   PAL_NEON_TRIM,
+    SRC_GREY:   PAL_ETHER,
+    SRC_BLUE:   PAL_ETHER,
+}
+_ETHEREAL_TEX = {TEX_FLOOR: TEX_CONCRETE, TEX_WALL: TEX_CONCRETE, TEX_SKY: TEX_SKY_ETHER}
+
+CONCRETE_THEMES = ("concrete", "ethereal")
+
+
 def theme_fog(theme="default"):
     """Fog shader name for the active theme's global fog volume."""
-    return TEX_FOG_DAY if theme == "concrete" else TEX_FOG
+    if theme == "concrete":
+        return TEX_FOG_DAY
+    if theme == "ethereal":
+        return TEX_FOG_ETHER
+    return TEX_FOG
 
 
 def theme_remap(tex, palette, theme="default"):
@@ -134,4 +162,9 @@ def theme_remap(tex, palette, theme="default"):
     if theme == "concrete":
         palette = _CONCRETE_PAL.get(palette, palette)
         tex = _CONCRETE_TEX.get(tex, tex)
+    elif theme == "ethereal":
+        palette = _ETHEREAL_PAL.get(palette, palette)
+        # neon faces keep their dev tex so _glow_tex can route them to glow
+        if palette not in ACCENT_GLOW:
+            tex = _ETHEREAL_TEX.get(tex, tex)
     return tex, palette

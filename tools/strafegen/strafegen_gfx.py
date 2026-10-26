@@ -212,10 +212,55 @@ def gfx_shaders():
     return COMPONENT_SHADERS
 
 
+# Ethereal theme sun: low, dim and peach, raking in near the horizon. The shared
+# dusk sun (intensity 100 at 38deg) floods up-facing concrete to white under HDR
+# + bloom; the ethereal look wants the floors to sit in violet shade with only
+# the raking light catching the cube faces.
+ETHER_SUN_COLOR     = (1.00, 0.74, 0.62)
+ETHER_SUN_INTENSITY = 38.0
+ETHER_SUN_AZIMUTH   = 30.0
+ETHER_SUN_ELEVATION = 22.0
+ETHER_SUN_SHADOW    = 0.6
+
+
+def ether_sky(shader_script, with_sun=True):
+    """Append textures/strafe64/sky_ether: the shared Bryce dusk sky block, renamed,
+    with its sun keywords swapped for the ethereal theme's low peach sun (or none
+    when gfx is off). Idempotent; a no-op if the sky block isn't present."""
+    if "textures/strafe64/sky_ether" in shader_script:
+        return shader_script
+    start = shader_script.find("textures/strafe64/sky\n{")
+    if start < 0:
+        return shader_script
+    depth, i = 0, shader_script.index("{", start)
+    while True:
+        if shader_script[i] == "{":
+            depth += 1
+        elif shader_script[i] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    block = shader_script[start:i + 1].replace("textures/strafe64/sky\n",
+                                                "textures/strafe64/sky_ether\n", 1)
+    block = "\n".join(l for l in block.split("\n")
+                      if not l.strip().startswith(("q3gl2_sun", "q3map_sun", "q3map_skylight")))
+    if with_sun:
+        r, g, b = ETHER_SUN_COLOR
+        sun = ("\tq3gl2_sun %g %g %g %g %g %g %g\n"
+               % (r, g, b, ETHER_SUN_INTENSITY, ETHER_SUN_AZIMUTH,
+                  ETHER_SUN_ELEVATION, ETHER_SUN_SHADOW)
+               + "\tq3map_sun %g %g %g %g %g %g\n"
+               % (r, g, b, 60, ETHER_SUN_AZIMUTH, ETHER_SUN_ELEVATION)
+               + "\tq3map_skylight 30 3\n")
+        block = block.replace("\tsurfaceparm sky\n", "\tsurfaceparm sky\n" + sun, 1)
+    return shader_script + "\n// ETHEREAL SKY - the Bryce dusk with the ethereal theme's low peach sun\n" + block + "\n"
+
+
 def augment(shader_script):
     """Full transform applied by strafegen at pk3-build time: arm the sun on the
     sky shader and append the component materials."""
-    return inject_sun(shader_script) + "\n" + COMPONENT_SHADERS
+    return ether_sky(inject_sun(shader_script)) + "\n" + COMPONENT_SHADERS
 
 
 # ======================================================================

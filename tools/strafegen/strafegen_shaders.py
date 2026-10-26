@@ -181,6 +181,20 @@ textures/strafe64/fog_day
 	surfaceparm trans
 	fogparms ( 0.62 0.70 0.82 ) 5200
 }
+// ETHER FOG — the ethereal theme's haze: lavender, and closer than the day fog,
+// so the concrete masses dissolve into soft violet light with distance and the
+// neon strips glow through it. That near-volumetric falloff is most of the
+// "ethereal" read; the time-grade and bloom do the rest.
+textures/strafe64/fog_ether
+{
+	qer_editorimage textures/common/fog
+	surfaceparm fog
+	surfaceparm nolightmap
+	surfaceparm nomarks
+	surfaceparm nonsolid
+	surfaceparm trans
+	fogparms ( 0.34 0.30 0.48 ) 3400
+}
 // global atmospheric fog volume. The whole play area is wrapped in one
 // CONTENTS_FOG brush (see write()), and every non-sky world surface is tagged
 // to this fog, so distance fades the world toward the synthwave horizon colour
@@ -333,4 +347,4 @@ s64menuback
 def build_shader(gfx_on=True):
     """The scripts/strafe64.shader text. With gfx_on, inject the q3gl2 sun and
     append the component materials (strafegen_gfx.augment); else vanilla identity."""
-    return gfx.augment(SHADER_SCRIPT) if gfx_on else SHADER_SCRIPT
+    return gfx.augment(SHADER_SCRIPT) if gfx_on else gfx.ether_sky(SHADER_SCRIPT, with_sun=False)

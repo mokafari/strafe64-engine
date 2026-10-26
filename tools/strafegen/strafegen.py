@@ -108,7 +108,7 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
     # CONCRETE THEME: erode the big masses into lun3dm5-style cube clusters
     # (decorative, gameplay-safe — see greeble_course). The face material remap
     # itself is applied at BSP-emit via cfg.THEME; this adds the silhouette.
-    if theme == "concrete" and greeble_density > 0:
+    if theme in ("concrete", "ethereal") and greeble_density > 0:
         n = greeble_course(course, seed=getattr(course, "seed", 0),
                            density=greeble_density)
         print(f"    concrete theme: +{n} greeble cubes (density {greeble_density:g})")
@@ -314,13 +314,15 @@ def main():
                          "guarantee the identity shader pak is present so its "
                          "loose .bsp maps render with real shaders, not grey")
     # ---- art theme ----
-    ap.add_argument("--theme", default="default", choices=("default", "concrete"),
+    ap.add_argument("--theme", default="default", choices=("default", "concrete", "ethereal"),
                     help="art theme. 'default' = Source dev look (orange floors/grey "
                          "walls); 'concrete' = lun3dm5 brutalist pale concrete — one "
                          "material + a cube-greeble pass that erodes masses into the "
-                         "stacked-cube silhouette. Accents stay vivid in both")
+                         "stacked-cube silhouette; 'ethereal' = the same concrete at a "
+                         "violet dusk in lavender haze, with cyan neon ledge strips. "
+                         "Accents stay vivid in all themes")
     ap.add_argument("--greeble-density", type=float, default=1.0,
-                    help="with --theme concrete: cube-erosion density (1.0 default, "
+                    help="with --theme concrete/ethereal: cube-erosion density (1.0 default, "
                          "0 = concrete material only / no added cubes, 1.8 = heavier)")
     # ---- geometry modifiers (Stage B) ----
     ap.add_argument("--gen-vscale", type=float, default=1.0,
