@@ -535,7 +535,10 @@ def write_map(course, path, baked=False, extra_world=None):
             tex = ftex[len("textures/"):]
             pts = " ".join(
                 f"( {q[0]:g} {q[1]:g} {q[2]:g} )" for q in (p0, p1, p2))
-            out += f"{pts} {tex} 0 0 0 0.5 0.5 0 0 0\n"
+            # 64px-editor-image materials (crete*, m/*): scale 1 => one repeat
+            # per 64u, matching the direct BSP writer's ST
+            sc = 1.0 if ("crete" in tex or "/m/" in tex) else 0.5
+            out += f"{pts} {tex} 0 0 0 {sc:g} {sc:g} 0 0 0\n"
         return out + "}\n"
 
     with open(path, "w") as fh:

@@ -188,10 +188,22 @@ def _load_baked():
         if os.path.exists(p):
             with open(p, "rb") as fh:
                 out[f"textures/strafe64/env/realsky_{side}.tga"] = fh.read()
+    for side in ("rt", "lf", "ft", "bk", "up", "dn"):      # ethereal photo sky
+        p = os.path.join(sky_dir, f"ethsky_{side}.tga")
+        if os.path.exists(p):
+            with open(p, "rb") as fh:
+                out[f"textures/strafe64/env/ethsky_{side}.tga"] = fh.read()
     crete = os.path.join(sky_dir, "crete.tga")
     if os.path.exists(crete):
         with open(crete, "rb") as fh:
             out["textures/strafe64/crete.tga"] = fh.read()
+    # ethereal material library (strafegen_materials): skytex/m/*.tga
+    mdir = os.path.join(sky_dir, "m")
+    if os.path.isdir(mdir):
+        for fn in sorted(os.listdir(mdir)):
+            if fn.endswith((".tga", ".jpg", ".png")):     # albedo + _nh maps
+                with open(os.path.join(mdir, fn), "rb") as fh:
+                    out["textures/strafe64/m/" + fn] = fh.read()
     # ethereal theme: board-formed concrete (Codex image gen, mirror-tiled)
     crete_eth = os.path.join(sky_dir, "crete_eth.tga")
     if os.path.exists(crete_eth):

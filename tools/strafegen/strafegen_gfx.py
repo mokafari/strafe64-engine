@@ -231,27 +231,15 @@ ETHER_BAKE_COLOR     = (1.00, 0.88, 0.78)   # warm WHITE: peach x concrete read 
 
 
 def ether_sky(shader_script, with_sun=True):
-    """Append textures/strafe64/sky_ether: the shared Bryce dusk sky block, renamed,
-    with its sun keywords swapped for the ethereal theme's low peach sun (or none
-    when gfx is off). Idempotent; a no-op if the sky block isn't present."""
+    """Append textures/strafe64/sky_ether: the ethereal photo sky (Codex image gen
+    -> ethsky_from_pano.py: cirrus over a low gold sun, a cloud sea below, faint
+    megastructures on the horizon) as a static skybox, with the theme's sun
+    keywords (runtime q3gl2_sun + baked q3map_sun/skylight), or none when gfx is
+    off. Its photo sun sits at az ~29deg, matching ETHER_SUN_AZIMUTH.
+    Idempotent."""
     if "textures/strafe64/sky_ether" in shader_script:
         return shader_script
-    start = shader_script.find("textures/strafe64/sky\n{")
-    if start < 0:
-        return shader_script
-    depth, i = 0, shader_script.index("{", start)
-    while True:
-        if shader_script[i] == "{":
-            depth += 1
-        elif shader_script[i] == "}":
-            depth -= 1
-            if depth == 0:
-                break
-        i += 1
-    block = shader_script[start:i + 1].replace("textures/strafe64/sky\n",
-                                                "textures/strafe64/sky_ether\n", 1)
-    block = "\n".join(l for l in block.split("\n")
-                      if not l.strip().startswith(("q3gl2_sun", "q3map_sun", "q3map_skylight")))
+    sun = ""
     if with_sun:
         r, g, b = ETHER_SUN_COLOR
         sun = ("\tq3gl2_sun %g %g %g %g %g %g %g\n"
@@ -260,10 +248,17 @@ def ether_sky(shader_script, with_sun=True):
                + "\tq3map_sun %g %g %g %g %g %g\n"
                % (ETHER_BAKE_COLOR + (ETHER_BAKE_SUN, ETHER_SUN_AZIMUTH,
                                       ETHER_BAKE_ELEVATION))
-               + "\tq3map_skylight %g %g\n" % ETHER_BAKE_SKYLIGHT)
-        block = block.replace("\tsurfaceparm sky\n", "\tsurfaceparm sky\n" + sun, 1)
-    return shader_script + "\n// ETHEREAL SKY - the Bryce dusk with the ethereal theme's low peach sun\n" + block + "\n"
-
+               + "\tq3map_skylight %g %g\n" % ETHER_BAKE_SKYLIGHT
+               # neutral sky bounce so the warm/blue photo doesn't tint it all
+               + "\tq3map_lightRGB 0.82 0.86 1.0\n")
+    block = ("textures/strafe64/sky_ether\n{\n"
+             "\tqer_editorimage textures/strafe64/env/ethsky_ft.tga\n"
+             "\tsurfaceparm noimpact\n\tsurfaceparm nolightmap\n"
+             "\tsurfaceparm nomarks\n\tsurfaceparm sky\n"
+             + sun +
+             "\tskyparms textures/strafe64/env/ethsky - -\n}\n")
+    return (shader_script + "\n// ETHEREAL SKY - Codex photo sky: cloud sea, low gold sun\n"
+            + block)
 
 def augment(shader_script):
     """Full transform applied by strafegen at pk3-build time: arm the sun on the

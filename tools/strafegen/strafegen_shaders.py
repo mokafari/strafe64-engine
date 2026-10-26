@@ -45,6 +45,10 @@ textures/strafe64/wall
 // so one shared pak serves both themes.
 textures/strafe64/crete
 {
+	// 64px editor image: q3map2 projects baked .map faces by IMAGE size, so the
+	// 1024 photo would repeat every 512u in a bake (16x too big); this pins it
+	// to the same 64u grid the direct BSP writer uses (write_map scale 1.0)
+	qer_editorimage textures/strafe64/d_wall.tga
 	surfaceparm nolightmap
 	{
 		map textures/strafe64/crete.tga
@@ -167,6 +171,7 @@ textures/strafe64/sky
 // real formwork against a 56u player.
 textures/strafe64/crete_eth
 {
+	qer_editorimage textures/strafe64/d_wall.tga	// 64u bake projection (see crete)
 	surfaceparm nolightmap
 	{
 		map textures/strafe64/crete_eth.tga
@@ -215,7 +220,8 @@ textures/strafe64/fog_ether
 	surfaceparm nomarks
 	surfaceparm nonsolid
 	surfaceparm trans
-	fogparms ( 0.34 0.30 0.48 ) 3400
+	// the photo sky's horizon haze (sampled just under the horizon line)
+	fogparms ( 0.58 0.50 0.52 ) 5200
 }
 // global atmospheric fog volume. The whole play area is wrapped in one
 // CONTENTS_FOG brush (see write()), and every non-sky world surface is tagged
@@ -394,8 +400,9 @@ s64menuback
 def build_shader(gfx_on=True):
     """The scripts/strafe64.shader text. With gfx_on, inject the q3gl2 sun and
     append the component materials (strafegen_gfx.augment); else vanilla identity."""
+    import strafegen_materials as mats
     base = (gfx.augment(SHADER_SCRIPT) if gfx_on
-            else gfx.ether_sky(SHADER_SCRIPT, with_sun=False))
+            else gfx.ether_sky(SHADER_SCRIPT, with_sun=False)) + mats.shader_blocks()
     # baked-map materials ride in the SAME shared pak under their own names
     # (*_lm lightmapped, *_bk sun-less sky) so nothing can override them: a
     # baked map pk3 shipping its own scripts/strafe64.shader always lost to the

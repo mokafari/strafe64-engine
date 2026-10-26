@@ -61,12 +61,16 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
              item_trail=False, standalone=False, backup=False,
              bake=False, bake_bounce=3,
              vscale=1.0, hscale=1.0, density=1.0, sections=None,
-             theme="ethereal", greeble_density=1.0):
+             theme="ethereal", greeble_density=1.0, showcase=False):
     os.makedirs(out_dir, exist_ok=True)
     cfg.THEME = theme           # read by BspWriter to remap bulk faces to concrete
     mods = cfg.GenMods(vscale=vscale, hscale=hscale, density=density,
                        sections=sections)
-    if latticearena:
+    if showcase:
+        from strafegen_showcase import Showcase
+        name = name or "strafe64_showcase"
+        course = Showcase(seed or 64).build()
+    elif latticearena:
         lite = latticearena == "lite"
         base = "lattice_arena_lite" if lite else "lattice_arena"
         name = name or (f"{base}_{seed}" if seed else base)
@@ -258,6 +262,8 @@ def main():
     ap.add_argument("--surfturn", action="store_true",
                     help="generate a banked surf-TURN test piece (180deg steep "
                          "banked arc — candidate corner geometry, feel-test by hand)")
+    ap.add_argument("--showcase", action="store_true",
+                    help="the hand-composed ethereal showcase map (strafe64_showcase)")
     ap.add_argument("--latticearena", action="store_true",
                     help="generate the 16-pilot LATTICE heat arena (big open "
                          "sealed box, 24 SPREAD spawns so a full field has no "
@@ -392,6 +398,12 @@ def main():
                      voidrise=args.voidrise, voiddelay=args.voiddelay,
                      item_trail=args.item_trail, name=args.name,
                      standalone=args.standalone, backup=args.backup, **_genmods)
+        return
+    if args.showcase:
+        generate(args.seed or 64, 1, 1, args.out, args.map, args.pk3,
+                 showcase=True, name=args.name, theme=args.theme,
+                 bake=args.bake, bake_bounce=args.bake_bounce,
+                 standalone=args.standalone, backup=args.backup)
         return
     if args.latticearena:
         seed = args.seed if args.seed is not None else 64
