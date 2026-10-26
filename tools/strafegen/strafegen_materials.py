@@ -18,15 +18,23 @@ TEX_M = "textures/strafe64/m/"
 
 # name -> (tga file, tcMod scale, one-line description)
 MATERIALS = {
-    # tiles are 2x2 mirror tiles, so each holds the source image twice per axis
+    # grid materials are 2x2 mirror tiles (the source twice per axis); organic
+    # ones (build_materials.ORGANIC) are one seamless image per tile
     "board":    ("board.jpg",    0.20,  "refined board-formed concrete, ~8u boards"),
     "panel":    ("panel.jpg",    0.0625, "precast panels ~128u, bolt caps"),
     "slab":     ("slab.jpg",     0.083, "troweled floor slab, saw-cut joints ~128u"),
-    "weather":  ("weather.jpg",  0.125, "softly streaked exterior concrete"),
+    "weather":  ("weather.jpg",  0.25,  "softly streaked exterior concrete"),
     "grate":    ("grate.jpg",    1.00,  "dark galvanized bar grating, ~4u cells"),
     "trim":     ("trim.jpg",     0.50,  "brushed gunmetal plate with bolts"),
-    "polished": ("polished.jpg", 0.083, "dark honed terrazzo concrete, large grid"),
+    "polished": ("polished.jpg", 0.125, "dark honed terrazzo concrete, large grid"),
     "glass":    ("glass.jpg",    0.0625, "black smoked-glass curtain wall, gunmetal mullions"),
+    # marble & granite set (strafe64_marble)
+    "marble_white":   ("marble_white.jpg",   0.125, "polished Carrara, soft grey veining"),
+    "marble_black":   ("marble_black.jpg",   0.125, "polished Nero Marquina, white veins"),
+    "marble_tiles":   ("marble_tiles.jpg",   0.0625, "large-format white marble floor tiles"),
+    "granite_grey":   ("granite_grey.jpg",   0.5,   "polished salt-and-pepper granite"),
+    "granite_flamed": ("granite_flamed.jpg", 0.5,   "flamed charcoal granite, matte"),
+    "brass":          ("brass.jpg",          0.5,   "brushed champagne brass"),
 }
 
 
@@ -44,6 +52,12 @@ RELIEF = {
     "trim":     (0.4, 0.0),
     "polished": (0.25, 0.0),
     "glass":    (0.5, 0.0),
+    "marble_white":   (0.12, 0.0),     # polished stone is optically flat
+    "marble_black":   (0.12, 0.0),
+    "marble_tiles":   (0.5, 0.0),      # grout lines only
+    "granite_grey":   (0.15, 0.0),
+    "granite_flamed": (0.6, 0.0),
+    "brass":          (0.3, 0.0),
 }
 
 

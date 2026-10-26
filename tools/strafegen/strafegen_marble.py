@@ -1,0 +1,216 @@
+"""strafegen_marble — a vertical marble & granite temple, built for the moveset.
+
+Sized from the movement budget (gravity 800): jump 270 ups -> ~45u, air jump
++~56u, two walljumps ~+80u, stair-jump ~74u. So:
+
+  * spiral of floating granite platforms inside a black-marble atrium, 96u
+    apart in z and <=200u apart in plan: one jump + air jump per step, climbing
+    to the rooftop ring at 640u;
+  * a wall-run gallery: two long, perfectly FLAT white marble walls 192u apart
+    (never clad -- cladding steps break a wall-run), raised so the run carries
+    you across a gap;
+  * a wall-jump shaft: two black walls 160u apart, 224u to the ledge;
+  * four brass-rimmed jump pads throwing you tangentially onto the rooftop
+    ring, so pad -> ring -> spiral down is a loop;
+  * spawns spread on the plaza and pushed clear of every footprint.
+
+Neon is used sparingly and only where the sun (az ~30deg) can't reach: under
+platform lips, inside the shaft, under the ring walkway.
+
+    python3 strafegen.py --marble --bake --pk3      # -> strafe64_marble
+"""
+import math
+
+from strafegen_geom import make_box, avoid_footprints
+from strafegen_palettes import TEX_TRIGGER, CONTENTS_TRIGGER
+from strafegen_showcase import Showcase
+
+
+# vertex tone per material: polished white stone under a hard sun blows out at
+# the near-white default, so the light stones sit lower and the dark ones
+# a touch higher to keep their veining readable
+MAT_PAL = {"marble_white": (168, 168, 172), "marble_tiles": (172, 172, 176),
+           "marble_black": (236, 236, 240), "brass": (220, 216, 208)}
+
+
+class Marble(Showcase):
+    def __init__(self, seed=64, night=False):
+        super().__init__(seed, night=night)
+        # polished white stone: far less light than concrete before it blows out
+        self.bake_scale = 0.7 if not night else 2.2
+
+    def box(self, mins, maxs, mat, pal=None, clad=False, faces=None):
+        return super().box(mins, maxs, mat, pal=pal or MAT_PAL.get(mat, (232, 232, 236)),
+                           clad=clad, faces=faces)
+
+    def pad(self, k, px, py, tx, ty, tz):
+        """Brass-rimmed jump pad at (px,py) throwing toward (tx,ty,tz)."""
+        self.box((px - 52, py - 52, 0), (px + 52, py + 52, 8), "granite_flamed")
+        for (mn, mx) in (((px - 60, py - 60, 0), (px + 60, py - 52, 12)),
+                         ((px - 60, py + 52, 0), (px + 60, py + 60, 12)),
+                         ((px - 60, py - 52, 0), (px - 52, py + 52, 12)),
+                         ((px + 52, py - 52, 0), (px + 60, py + 52, 12))):
+            self.box(mn, mx, "brass")
+        self.neon((px - 40, py - 40, 8), (px + 40, py + 40, 9), floor=True)
+        tb = make_box((px - 52, py - 52, 9), (px + 52, py + 52, 80),
+                      tex=TEX_TRIGGER, contents=CONTENTS_TRIGGER, draw=set())
+        self.triggers.append((tb, {"classname": "trigger_push", "target": f"mb_pad_{k}"}))
+        self.place("target_position", tx, ty, tz, targetname=f"mb_pad_{k}")
+
+    def build(self):
+        P = 1280.0
+        A, AH, T = 512.0, 640.0, 32.0          # atrium half-size, height, wall thickness
+        self.sections.append(("marble temple", {"plaza": int(2 * P), "atrium": int(2 * A)}))
+        blockers = []
+
+        # ---- plaza: large-format marble tiles, flamed granite border band -----
+        self.box((-P, -P, -64), (P, P, 0), "marble_tiles")
+        for (mn, mx) in (((-P, -P, 0), (P, -P + 96, 2)), ((-P, P - 96, 0), (P, P, 2)),
+                         ((-P, -P + 96, 0), (-P + 96, P - 96, 2)),
+                         ((P - 96, -P + 96, 0), (P, P - 96, 2))):
+            self.box(mn, mx, "granite_flamed")
+        # thick floating base with a white marble skirt and an edge light
+        for (mn, mx) in (((-P - 32, -P - 32, -360), (P + 32, -P, -16)),
+                         ((-P - 32, P, -360), (P + 32, P + 32, -16)),
+                         ((-P - 32, -P, -360), (-P, P, -16)),
+                         ((P, -P, -360), (P + 32, P, -16))):
+            self.box(mn, mx, "marble_white")
+        self.box((-P, -P, -360), (P, P, -200), "granite_grey")
+        # low parapet (32u: stops walk-offs, still hoppable on purpose) with a
+        # brass cap -- the playtest's first death was a bot walking off the edge
+        for (mn, mx) in (((-P, -P, 0), (P, -P + 24, 32)), ((-P, P - 24, 0), (P, P, 32)),
+                         ((-P, -P + 24, 0), (-P + 24, P - 24, 32)),
+                         ((P - 24, -P + 24, 0), (P, P - 24, 32))):
+            self.box(mn, mx, "granite_flamed")
+            self.box((mn[0], mn[1], 32), (mx[0], mx[1], 36), "brass")
+        self.neon((-P - 35, -P - 35, -28), (P + 35, -P - 32, -24))
+        self.neon((-P - 35, P + 32, -28), (P + 35, P + 35, -24))
+        self.neon((-P - 35, -P - 32, -28), (-P - 32, P + 32, -24))
+        self.neon((P + 32, -P - 32, -28), (P + 35, P + 32, -24))
+
+        # ---- atrium: black marble walls, a 160u doorway centred in each ---------
+        door = 80.0
+        for (axis, s) in ((0, -1), (0, 1), (1, -1), (1, 1)):
+            for half in (-1, 1):
+                if axis == 0:          # walls at x = +-A, running in y
+                    x0, x1 = (s * A - T, s * A) if s > 0 else (s * A, s * A + T)
+                    y0, y1 = (door, A) if half > 0 else (-A, -door)
+                    self.box((x0, y0, 0), (x1, y1, AH), "marble_black")
+                else:                  # walls at y = +-A, running in x
+                    y0, y1 = (s * A - T, s * A) if s > 0 else (s * A, s * A + T)
+                    x0, x1 = (door, A) if half > 0 else (-A, -door)
+                    self.box((x0, y0, 0), (x1, y1, AH), "marble_black")
+            # lintel over the doorway
+            if axis == 0:
+                x0, x1 = (s * A - T, s * A) if s > 0 else (s * A, s * A + T)
+                self.box((x0, -door, 256), (x1, door, AH), "marble_black")
+            else:
+                y0, y1 = (s * A - T, s * A) if s > 0 else (s * A, s * A + T)
+                self.box((-door, y0, 256), (door, y1, AH), "marble_black")
+        blockers.append((0.0, 0.0, A + 40))
+
+        # rooftop ring walkway on the atrium walls (granite deck, brass edges,
+        # neon under its inner lip), 128u wide -- the loop's high road
+        rz, rw = AH, 128.0
+        for (mn, mx) in (((-A - 48, -A - 48, rz), (A + 48, -A + rw - 48, rz + 24)),
+                         ((-A - 48, A - rw + 48, rz), (A + 48, A + 48, rz + 24)),
+                         ((-A - 48, -A + rw - 48, rz), (-A + rw - 48, A - rw + 48, rz + 24)),
+                         ((A - rw + 48, -A + rw - 48, rz), (A + 48, A - rw + 48, rz + 24))):
+            self.box(mn, mx, "granite_grey", faces={"+z": "granite_flamed"})
+        for (mn, mx) in (((-A - 52, -A - 52, rz + 24), (A + 52, -A - 48, rz + 40)),
+                         ((-A - 52, A + 48, rz + 24), (A + 52, A + 52, rz + 40)),
+                         ((-A - 52, -A - 48, rz + 24), (-A - 48, A + 48, rz + 40)),
+                         ((A + 48, -A - 48, rz + 24), (A + 52, A + 48, rz + 40))):
+            self.box(mn, mx, "brass")
+        ri = A - rw + 48
+        self.neon((-ri, -ri - 3, rz - 4), (ri, -ri, rz - 1))
+        self.neon((-ri, ri, rz - 4), (ri, ri + 3, rz - 1))
+
+        # ---- the spiral: granite platforms, 96u per step, lit under the lip ----
+        steps = 6
+        for i in range(steps):
+            a = math.radians(225 + i * 62)
+            r = 300.0
+            cx, cy, z = r * math.cos(a), r * math.sin(a), 96.0 * (i + 1)
+            w = 152.0
+            self.box((cx - w / 2, cy - w / 2, z - 24), (cx + w / 2, cy + w / 2, z),
+                     "granite_grey", faces={"+z": "marble_white"})
+            # a thin lit frame under the lip (a full-size glowing underside read
+            # as a glare panel from below)
+            e, z0 = 12.0, z - 27
+            self.neon((cx - w / 2 + e, cy - w / 2 + e, z0), (cx + w / 2 - e, cy - w / 2 + e + 3, z - 24))
+            self.neon((cx - w / 2 + e, cy + w / 2 - e - 3, z0), (cx + w / 2 - e, cy + w / 2 - e, z - 24))
+            self.neon((cx - w / 2 + e, cy - w / 2 + e + 3, z0), (cx - w / 2 + e + 3, cy + w / 2 - e - 3, z - 24))
+            self.neon((cx + w / 2 - e - 3, cy - w / 2 + e + 3, z0), (cx + w / 2 - e, cy + w / 2 - e - 3, z - 24))
+        # top of the spiral steps onto the ring (at 576 -> ring 640 via jump)
+        self.place("item_health_large", 0, 0, 24)
+
+        # ---- wall-run gallery: two flat white marble walls, a gap between ------
+        gx0, gx1, gy = 700.0, 1180.0, 0.0
+        for side in (-1, 1):
+            y0 = gy + side * 96
+            y1 = y0 + side * 32
+            self.box((gx0, min(y0, y1), 64), (gx1, max(y0, y1), 448), "marble_white")
+        # the run's purpose: launch decks at each end, 64u up, a void between
+        self.box((gx0 - 160, gy - 96, 0), (gx0, gy + 96, 64), "granite_grey",
+                 faces={"+z": "granite_flamed"})
+        self.box((gx1, gy - 96, 0), (gx1 + 96, gy + 96, 192), "granite_grey",
+                 faces={"+z": "granite_flamed"})
+        self.neon((gx1 - 3, gy - 90, 180), (gx1, gy + 90, 184))
+        blockers.append(((gx0 + gx1) / 2, gy, 260))
+
+        # ---- wall-jump shaft: two black walls 160u apart, ledge on top ----------
+        sx, sy = -900.0, -900.0
+        for side in (-1, 1):
+            x0 = sx + side * 80
+            x1 = x0 + side * 32
+            self.box((min(x0, x1), sy - 96, 0), (max(x0, x1), sy + 96, 224), "marble_black")
+            self.neon((min(x0, x1) if side > 0 else max(x0, x1) - 3, sy - 4, 16),
+                      ((min(x0, x1) + 3) if side > 0 else max(x0, x1), sy + 4, 208))
+        self.box((sx - 112, sy + 96, 0), (sx + 112, sy + 224, 224), "marble_black",
+                 faces={"+z": "granite_flamed"})
+        self.place("weapon_railgun", sx, sy + 160, 248)
+        blockers.append((sx, sy, 200))
+
+        # ---- jump pads: tangential throws onto the rooftop ring ---------------
+        pad_r = 820.0
+        for k in range(4):
+            a = math.radians(45 + 90 * k)
+            px, py = pad_r * math.cos(a), pad_r * math.sin(a)
+            ta = a + math.radians(35)
+            self.pad(k, px, py, (A - 40) * math.cos(ta) * 1.1, (A - 40) * math.sin(ta) * 1.1,
+                     AH + 220)
+            blockers.append((px, py, 70))
+
+        # ---- statement pieces: a black monolith, white marble obelisk ----------
+        self.box((-1100, 700, 0), (-1000, 1020, 900), "marble_black")
+        self.neon((-1103, 704, 24), (-1100, 1016, 28))
+        self.box((980, 900, 0), (1060, 980, 760), "marble_white")
+        self.box((960, 880, 760), (1080, 1000, 784), "brass")
+        blockers += [(-1050, 860, 200), (1020, 940, 80)]
+
+        # ---- spawns: ten, spread, nudged off every footprint ------------------
+        for k in range(10):
+            a = math.radians(18 + k * 36)
+            r = 1000.0 if k % 2 else 680.0
+            x, y = r * math.cos(a), r * math.sin(a)
+            x, y = avoid_footprints(x, y, blockers, clearance=48.0, ring_r=r)
+            yaw = math.degrees(math.atan2(-y, -x)) % 360
+            self.place("info_player_deathmatch", x, y, 40, angle=f"{yaw:.0f}")
+        self.place("info_player_intermission", -900, 900, 900, angle="315")
+        for cls, x, y, z in (("weapon_rocketlauncher", 0, -A - 200, 24),
+                             ("item_armor_combat", 0, A + 200, 24),
+                             ("item_quad", 0, 0, AH + 48)):
+            self.place(cls, x, y, z)
+
+        hull = __import__("strafegen_geom").make_skybox(-2560, -2560, -420, 2560, 2560, 2600)
+        if self.night:
+            for b in hull:
+                for f in b.faces:
+                    if f.tex.endswith("/sky"):
+                        f.tex = "textures/strafe64/sky_ether_night"
+        self.solids += hull
+        self.entities.insert(0, {"classname": "worldspawn",
+                                 "message": "STRAFE64 // MARBLE temple"
+                                            + (" (night)" if self.night else "")})
+        return self

@@ -31,6 +31,12 @@ SOURCES = {
     "trim":     ("metal_trim", 1.5, 2.0),
     "polished": ("polished", 1.5, 3.0),
     "glass":    ("glass", 3.0, 1.2),
+    "marble_white":   ("marble_white", 1.0, 3.0),
+    "marble_black":   ("marble_black", 1.0, 3.0),
+    "marble_tiles":   ("marble_tiles", 2.5, 1.5),
+    "granite_grey":   ("granite_grey", 1.0, 2.0),
+    "granite_flamed": ("granite_flamed", 2.5, 1.2),
+    "brass":          ("brass_trim", 1.0, 2.0),
 }
 
 
@@ -44,14 +50,40 @@ def mirror(im):
     return t
 
 
+# Organic materials (stone, weathering) get a true seamless tile: mirroring
+# turns veins into kaleidoscope diamonds. Regular grids (panels, joints, tiles,
+# boards, grating) keep the 2x2 mirror, which their symmetry hides.
+ORGANIC = {"weather", "marble_white", "marble_black", "granite_grey",
+           "granite_flamed", "polished", "brass"}
+
+
+def seamless(im, feather=0.22):
+    """Make a square image tile: blend it with its half-offset copy, the copy
+    winning near the edges (where the original's opposite edges would meet)."""
+    a = np.asarray(im, np.float32)
+    n = a.shape[0]
+    rolled = np.roll(np.roll(a, n // 2, 0), n // 2, 1)
+    t = np.linspace(0.0, 1.0, n)
+    edge = np.minimum(t, 1.0 - t) / feather          # 0 at edges -> 1 inside
+    w1 = np.clip(edge, 0, 1)
+    w1 = w1 * w1 * (3 - 2 * w1)
+    w = (w1[:, None] * w1[None, :])[..., None]
+    return Image.fromarray(np.clip(a * w + rolled * (1 - w), 0, 255).astype(np.uint8))
+
+
 def build(src_png, out_dir, name, strength, blur):
     im = Image.open(src_png).convert("RGB")
     w, h = im.size
-    c = min(w, h, 1024)
-    q = im.crop(((w - c) // 2, (h - c) // 2, (w + c) // 2, (h + c) // 2))
-    if c < 1024:
-        q = q.resize((1024, 1024), Image.LANCZOS)
-    alb = mirror(q)
+    if name in ORGANIC:
+        c = min(w, h)                                  # the whole image, once
+        q = im.crop(((w - c) // 2, (h - c) // 2, (w + c) // 2, (h + c) // 2))
+        alb = seamless(q).resize((2048, 2048), Image.LANCZOS)
+    else:
+        c = min(w, h, 1024)
+        q = im.crop(((w - c) // 2, (h - c) // 2, (w + c) // 2, (h + c) // 2))
+        if c < 1024:
+            q = q.resize((1024, 1024), Image.LANCZOS)
+        alb = mirror(q)
     alb.save(os.path.join(out_dir, name + ".jpg"), quality=93, subsampling=0)
 
     g = alb.convert("L")                     # full 2048 relief, matching the albedo
