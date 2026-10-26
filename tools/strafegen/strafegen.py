@@ -68,8 +68,9 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
                        sections=sections)
     if showcase:
         from strafegen_showcase import Showcase
-        name = name or "strafe64_showcase"
-        course = Showcase(seed or 64).build()
+        name = name or ("strafe64_showcase_night" if showcase == "night"
+                         else "strafe64_showcase")
+        course = Showcase(seed or 64, night=(showcase == "night")).build()
     elif latticearena:
         lite = latticearena == "lite"
         base = "lattice_arena_lite" if lite else "lattice_arena"
@@ -264,6 +265,8 @@ def main():
                          "banked arc — candidate corner geometry, feel-test by hand)")
     ap.add_argument("--showcase", action="store_true",
                     help="the hand-composed ethereal showcase map (strafe64_showcase)")
+    ap.add_argument("--night", action="store_true",
+                    help="with --showcase: the moonlit night variant (strafe64_showcase_night)")
     ap.add_argument("--latticearena", action="store_true",
                     help="generate the 16-pilot LATTICE heat arena (big open "
                          "sealed box, 24 SPREAD spawns so a full field has no "
@@ -401,7 +404,8 @@ def main():
         return
     if args.showcase:
         generate(args.seed or 64, 1, 1, args.out, args.map, args.pk3,
-                 showcase=True, name=args.name, theme=args.theme,
+                 showcase="night" if args.night else True, name=args.name,
+                 theme=args.theme,
                  bake=args.bake, bake_bounce=args.bake_bounce,
                  standalone=args.standalone, backup=args.backup)
         return

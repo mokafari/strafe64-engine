@@ -108,7 +108,7 @@ import strafegen_materials as _mats
 LM_TEX = ("textures/strafe64/surf", "textures/strafe64/wall",
           "textures/strafe64/crete", "textures/strafe64/crete_eth") + _mats.ALL_TEX
 BK_SKY = ("textures/strafe64/sky", "textures/strafe64/sky_ether",
-          "textures/strafe64/skyreal")
+          "textures/strafe64/sky_ether_night", "textures/strafe64/skyreal")
 
 
 def baked_tex(tex):

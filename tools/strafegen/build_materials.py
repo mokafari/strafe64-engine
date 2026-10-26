@@ -7,7 +7,7 @@ For each material (strafegen_materials.MATERIALS):
   * <name>.jpg     2048 seamless albedo: a native-resolution 1024 centre crop,
                    2x2 mirror-tiled (seamless whatever the source edges do) --
                    no downscaling, so Codex's detail survives;
-  * <name>_nh.png  1024 tangent-space normal (RGB, +Y up) with height in alpha.
+  * <name>_nh.png  2048 tangent-space normal (RGB, +Y up) with height in alpha.
                    rend2 auto-loads <diffuse>_nh for lightmapped surfaces and
                    parallax-maps from the alpha. Height is RELIEF only: the
                    luminance minus its broad shading, so joints, board edges,
@@ -21,12 +21,16 @@ from PIL import Image, ImageFilter
 
 # name: (Codex source png, relief strength, detail blur px)
 SOURCES = {
-    "board":   ("conc_board_fine", 5.0, 1.2),
-    "slab":    ("conc_floor_slab", 3.0, 1.5),
-    "panel":   ("conc_smooth_panel", 4.0, 1.2),
-    "weather": ("conc_weathered", 6.0, 1.0),
-    "grate":   ("metal_grate", 9.0, 0.8),
-    "trim":    ("metal_trim", 2.5, 0.8),
+    # detail blur is wide enough to drop pores/aggregate (they made the relief
+    # read as lumpy stucco) while keeping joints, board edges and bolt holes
+    "board":    ("board2", 3.0, 2.6),
+    "slab":     ("conc_floor_slab", 2.0, 3.0),
+    "panel":    ("conc_smooth_panel", 3.0, 2.2),
+    "weather":  ("weather2", 2.5, 2.4),
+    "grate":    ("metal_grate", 9.0, 0.8),
+    "trim":     ("metal_trim", 1.5, 2.0),
+    "polished": ("polished", 1.5, 3.0),
+    "glass":    ("glass", 3.0, 1.2),
 }
 
 
@@ -50,9 +54,9 @@ def build(src_png, out_dir, name, strength, blur):
     alb = mirror(q)
     alb.save(os.path.join(out_dir, name + ".jpg"), quality=93, subsampling=0)
 
-    g = alb.resize((1024, 1024), Image.LANCZOS).convert("L")
-    fine = np.asarray(g.filter(ImageFilter.GaussianBlur(blur)), np.float32) / 255.0
-    broad = np.asarray(g.filter(ImageFilter.GaussianBlur(40)), np.float32) / 255.0
+    g = alb.convert("L")                     # full 2048 relief, matching the albedo
+    fine = np.asarray(g.filter(ImageFilter.GaussianBlur(blur * 2)), np.float32) / 255.0
+    broad = np.asarray(g.filter(ImageFilter.GaussianBlur(80)), np.float32) / 255.0
     hgt = fine - broad
     lo, hi = np.percentile(hgt, 1), np.percentile(hgt, 99)
     hgt = np.clip((hgt - lo) / (hi - lo + 1e-6), 0.0, 1.0)

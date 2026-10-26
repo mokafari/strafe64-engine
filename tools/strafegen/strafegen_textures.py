@@ -188,11 +188,12 @@ def _load_baked():
         if os.path.exists(p):
             with open(p, "rb") as fh:
                 out[f"textures/strafe64/env/realsky_{side}.tga"] = fh.read()
-    for side in ("rt", "lf", "ft", "bk", "up", "dn"):      # ethereal photo sky
-        p = os.path.join(sky_dir, f"ethsky_{side}.tga")
-        if os.path.exists(p):
-            with open(p, "rb") as fh:
-                out[f"textures/strafe64/env/ethsky_{side}.tga"] = fh.read()
+    for sky in ("ethsky", "ethnight"):                     # ethereal photo skies
+        for side in ("rt", "lf", "ft", "bk", "up", "dn"):
+            p = os.path.join(sky_dir, f"{sky}_{side}.tga")
+            if os.path.exists(p):
+                with open(p, "rb") as fh:
+                    out[f"textures/strafe64/env/{sky}_{side}.tga"] = fh.read()
     crete = os.path.join(sky_dir, "crete.tga")
     if os.path.exists(crete):
         with open(crete, "rb") as fh:

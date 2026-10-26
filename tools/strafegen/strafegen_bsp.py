@@ -211,6 +211,8 @@ class BspWriter:
     def __init__(self, course):
         self.c = course
         self.theme = cfg.THEME          # art theme: remaps bulk dev faces (concrete)
+        # a course may pin its own fog (e.g. the showcase's night variant)
+        self.fog_tex = getattr(course, "fog_tex", None) or theme_fog(cfg.THEME)
         self.light = build_light_model(getattr(course, "seed", 64))
         self.shaders = _Store()
         self.planes = _Store()
@@ -416,7 +418,7 @@ class BspWriter:
             fzs = [b.mins[2] for b in c.solids] + [b.maxs[2] for b in c.solids]
             fog = make_box((min(fxs), min(fys), min(fzs)),
                            (max(fxs), max(fys), max(fzs)),
-                           tex=theme_fog(self.theme), contents=CONTENTS_FOG,
+                           tex=self.fog_tex, contents=CONTENTS_FOG,
                            draw=set())
             c.solids.append(fog)
             self.has_fog = True
@@ -483,7 +485,7 @@ class BspWriter:
             f"<{len(self.indexes)}i", *self.indexes)
         if self.fog_brush_index is not None:
             lumps[LUMP_FOGS] = struct.pack(
-                "<64s2i", theme_fog(self.theme).encode(),
+                "<64s2i", self.fog_tex.encode(),
                 self.fog_brush_index, -1)
         else:
             lumps[LUMP_FOGS] = b""

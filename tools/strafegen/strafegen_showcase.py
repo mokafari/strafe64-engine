@@ -15,7 +15,7 @@ import math
 import random
 
 from strafegen_geom import make_box, make_skybox
-from strafegen_palettes import TEX_WALL, PAL_NEON_TRIM
+from strafegen_palettes import TEX_WALL, TEX_FLOOR, TEX_SKY, PAL_NEON_TRIM
 import strafegen_materials as M
 
 PAL_MAT = (232, 232, 236)        # near-white: the material photo carries tone
@@ -23,8 +23,9 @@ PAL_MAT_DARK = (200, 202, 210)   # a touch darker for weathered masses
 
 
 class Showcase:
-    def __init__(self, seed=64):
+    def __init__(self, seed=64, night=False):
         self.seed = seed
+        self.night = night
         self.rng = random.Random(seed)
         self.solids = []
         self.triggers = []
@@ -34,6 +35,11 @@ class Showcase:
         # open air: far more sky light reaches every surface than in a killbox
         self.bake_scale = 1.0
         self.bake_ambient = ("8", "0.78 0.80 0.86")
+        if night:
+            # moonlit: a dim cool floor, the neon surfacelights do the work
+            self.bake_scale = 2.6
+            self.bake_ambient = ("9", "0.40 0.48 0.80")
+            self.fog_tex = "textures/strafe64/fog_ether_night"
 
     # ---- helpers ---------------------------------------------------------
     def box(self, mins, maxs, mat, pal=PAL_MAT, clad=False, faces=None):
@@ -45,8 +51,9 @@ class Showcase:
         self.solids.append(b)
         return b
 
-    def neon(self, mins, maxs):
-        b = make_box(mins, maxs, tex=TEX_WALL, palette=PAL_NEON_TRIM)
+    def neon(self, mins, maxs, floor=False):
+        b = make_box(mins, maxs, tex=TEX_FLOOR if floor else TEX_WALL,
+                     palette=PAL_NEON_TRIM)
         b.no_clad = True
         self.solids.append(b)
 
@@ -65,7 +72,7 @@ class Showcase:
         self.box((-P, C, -64), (P, P, 0), "slab")
         self.box((-P, -C, -64), (-C, C, 0), "slab")
         self.box((C, -C, -64), (P, C, 0), "slab")
-        self.box((-C, -C, -D - 64), (C, C, -D), "slab")
+        self.box((-C, -C, -D - 64), (C, C, -D), "polished")
         # court walls (board-formed) with a neon reveal just under the plaza lip
         for (mn, mx) in (((-C, -C, -D), (C, -C + 16, -8)), ((-C, C - 16, -D), (C, C, -8)),
                          ((-C, -C + 16, -D), (-C + 16, C - 16, -8)),
@@ -81,17 +88,29 @@ class Showcase:
         # plinths in the court for scale (and cover)
         for x, y, w, d in ((-200, 120, 192, 64), (180, -80, 64, 192), (0, 230, 128, 128)):
             self.box((x - w / 2, y - d / 2, -D), (x + w / 2, y + d / 2, -D + 40), "panel")
+            # recessed light under each bench: pools on the polished court floor
+            if w >= d:
+                self.neon((x - w / 2 + 8, y - d / 2 - 3, -D + 2), (x + w / 2 - 8, y - d / 2, -D + 5))
+                self.neon((x - w / 2 + 8, y + d / 2, -D + 2), (x + w / 2 - 8, y + d / 2 + 3, -D + 5))
+            else:
+                self.neon((x - w / 2 - 3, y - d / 2 + 8, -D + 2), (x - w / 2, y + d / 2 - 8, -D + 5))
+                self.neon((x + w / 2, y - d / 2 + 8, -D + 2), (x + w / 2 + 3, y + d / 2 - 8, -D + 5))
 
         # monolith towers: precast body, weathered overhanging crown, clad band
         towers = ((-900, 700, 256, 320, 896), (820, 820, 320, 256, 640),
                   (-1040, -220, 192, 448, 512), (980, -360, 256, 256, 1024),
                   (-420, -980, 384, 160, 384))
         for (x, y, w, d, h) in towers:
-            self.box((x - w / 2, y - d / 2, 0), (x + w / 2, y + d / 2, h), "panel",
-                     clad=True)
+            # the tallest reads as the cyber tower: black glass, no cladding
+            glassy = h >= 1024
+            self.box((x - w / 2, y - d / 2, 0), (x + w / 2, y + d / 2, h),
+                     "glass" if glassy else "panel", clad=not glassy)
             self.box((x - w / 2 - 16, y - d / 2 - 16, h), (x + w / 2 + 16, y + d / 2 + 16, h + 48),
                      "weather")
             self.neon((x - w / 2 - 3, y - d / 2 + 24, h - 24), (x - w / 2, y + d / 2 - 24, h - 20))
+            # the sun comes from az ~30deg, so the -x/-y corner is always in shade:
+            # a vertical neon edge there reads strongest and never fights the sun
+            self.neon((x - w / 2 - 3, y - d / 2 - 3, 24), (x - w / 2, y - d / 2 + 3, h - 24))
 
         # the island reads as one thick floating slab: weathered fascia skirt
         # around the plaza edge + a heavy underside mass
@@ -101,6 +120,10 @@ class Showcase:
                          ((P, -P, -320), (P + 32, P, -16))):
             self.box(mn, mx, "weather")
         self.box((-P, -P, -320), (P, P, -176), "weather")
+        self.neon((-P - 35, -P - 35, -28), (P + 35, -P - 32, -24))
+        self.neon((-P - 35, P + 32, -28), (P + 35, P + 35, -24))
+        self.neon((-P - 35, -P - 32, -28), (-P - 32, P + 32, -24))
+        self.neon((P + 32, -P - 32, -28), (P + 35, P + 32, -24))
 
         # colonnade: a rhythm of tall board columns under a precast beam --
         # the low sun throws a striped shadow field across the plaza
@@ -119,6 +142,10 @@ class Showcase:
             top = tz - (i + 1) * tz / 7.0
             self.box((480, ty1 + i * 28, 0), (720, ty1 + (i + 1) * 28, max(top, 8.0)),
                      "slab")
+            # lit stair nosing on each riser (faces the way down: +y)
+            if top > 12:
+                yr = ty1 + (i + 1) * 28
+                self.neon((488, yr, top - 4), (712, yr + 2, top - 1))
         self.box((tx0 + 32, ty0 + 32, tz), (tx0 + 160, ty0 + 160, tz + 40), "panel")
 
         # long monolith wall with vertical window slots, each lit neon inside
@@ -149,6 +176,8 @@ class Showcase:
             x0 = 448 + i * 26
             self.box((x0, -96, 0), (x0 + 26, 96, max(top, 8.0)), "board",
                      faces={"+z": "slab"})
+            if top > 12:                                # lit nosing, faces +x
+                self.neon((x0 + 26, -88, top - 4), (x0 + 28, 88, top - 1))
 
         # steel catwalk along the north side: grate deck, gunmetal edges + rails
         cz, cy = 288.0, 560.0
@@ -190,8 +219,38 @@ class Showcase:
         self.place("item_armor_combat", 0, 0, bz + 64)
         self.place("weapon_railgun", 0, cy, cz + 24)
 
+        # ---- surreal cyber layer ----------------------------------------------
+        # hovering slabs with lit undersides
+        for (x, y, z, w, d, t, mat) in ((-320, 300, 720, 640, 256, 40, "panel"),
+                                        (520, -180, 920, 384, 384, 48, "board")):
+            self.box((x - w / 2, y - d / 2, z), (x + w / 2, y + d / 2, z + t), mat)
+            # a neon border inset under the slab: a floating lit frame, not an X
+            i0 = 20.0
+            self.neon((x - w / 2 + i0, y - d / 2 + i0, z - 3), (x + w / 2 - i0, y - d / 2 + i0 + 4, z))
+            self.neon((x - w / 2 + i0, y + d / 2 - i0 - 4, z - 3), (x + w / 2 - i0, y + d / 2 - i0, z))
+            self.neon((x - w / 2 + i0, y - d / 2 + i0 + 4, z - 3), (x - w / 2 + i0 + 4, y + d / 2 - i0 - 4, z))
+            self.neon((x + w / 2 - i0 - 4, y - d / 2 + i0 + 4, z - 3), (x + w / 2 - i0, y + d / 2 - i0 - 4, z))
+        # a giant square ring hung upright behind the slot wall, neon inside
+        ry0, ry1, rz0, rz1, rw = 1130.0, 1178.0, 560.0, 1200.0, 320.0
+        for (mn, mx) in (((-rw - 48, ry0, rz0), (-rw, ry1, rz1)),
+                         ((rw, ry0, rz0), (rw + 48, ry1, rz1)),
+                         ((-rw - 48, ry0, rz1), (rw + 48, ry1, rz1 + 48)),
+                         ((-rw - 48, ry0, rz0 - 48), (rw + 48, ry1, rz0))):
+            self.box(mn, mx, "trim")
+        self.neon((-rw, ry0 + 20, rz0), (-rw + 3, ry1 - 20, rz1))
+        self.neon((rw - 3, ry0 + 20, rz0), (rw, ry1 - 20, rz1))
+        self.neon((-rw, ry0 + 20, rz1 - 3), (rw, ry1 - 20, rz1))
+        self.neon((-rw, ry0 + 20, rz0), (rw, ry1 - 20, rz0 + 3))
+
         # open air: a tall sky hull well clear of everything
-        self.solids += make_skybox(-2560, -2560, -320, 2560, 2560, 2400)
+        hull = make_skybox(-2560, -2560, -320, 2560, 2560, 2400)
+        if self.night:
+            for b in hull:
+                for f in b.faces:
+                    if f.tex == TEX_SKY:
+                        f.tex = "textures/strafe64/sky_ether_night"
+        self.solids += hull
         self.entities.insert(0, {"classname": "worldspawn",
-                                 "message": "STRAFE64 // ETHEREAL showcase"})
+                                 "message": "STRAFE64 // ETHEREAL showcase"
+                                            + (" (night)" if self.night else "")})
         return self

@@ -257,8 +257,21 @@ def ether_sky(shader_script, with_sun=True):
              "\tsurfaceparm nomarks\n\tsurfaceparm sky\n"
              + sun +
              "\tskyparms textures/strafe64/env/ethsky - -\n}\n")
+    night = ""
+    if with_sun:
+        # moon key: cool, dim, high enough to rim the masses; the neon carries
+        # the rest. Photo moon sits at the same bearing as the dusk sun.
+        night = ("\tq3map_sun 0.70 0.80 1.0 70 0 38\n"   # photo moon at az 0
+                 + "\tq3map_skylight 45 4\n\tq3map_lightRGB 0.55 0.65 1.0\n")
+    night_block = ("textures/strafe64/sky_ether_night\n{\n"
+                   "\tqer_editorimage textures/strafe64/env/ethnight_ft.tga\n"
+                   "\tsurfaceparm noimpact\n\tsurfaceparm nolightmap\n"
+                   "\tsurfaceparm nomarks\n\tsurfaceparm sky\n"
+                   + night +
+                   "\tskyparms textures/strafe64/env/ethnight - -\n}\n")
     return (shader_script + "\n// ETHEREAL SKY - Codex photo sky: cloud sea, low gold sun\n"
-            + block)
+            + block + "// ETHEREAL NIGHT SKY - moonlit cloud sea, lit megastructures\n"
+            + night_block)
 
 def augment(shader_script):
     """Full transform applied by strafegen at pk3-build time: arm the sun on the

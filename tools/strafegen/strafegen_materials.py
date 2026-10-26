@@ -19,12 +19,14 @@ TEX_M = "textures/strafe64/m/"
 # name -> (tga file, tcMod scale, one-line description)
 MATERIALS = {
     # tiles are 2x2 mirror tiles, so each holds the source image twice per axis
-    "board":   ("board.jpg",   0.20,  "fine board-formed concrete, ~8u boards"),
-    "panel":   ("panel.jpg",   0.0625, "precast panels ~128u, bolt caps"),
-    "slab":    ("slab.jpg",    0.083, "troweled floor slab, saw-cut joints ~128u"),
-    "weather": ("weather.jpg", 0.125, "rain-streaked exterior concrete"),
-    "grate":   ("grate.jpg",   1.00,  "dark galvanized bar grating, ~4u cells"),
-    "trim":    ("trim.jpg",    0.50,  "brushed gunmetal plate with bolts"),
+    "board":    ("board.jpg",    0.20,  "refined board-formed concrete, ~8u boards"),
+    "panel":    ("panel.jpg",    0.0625, "precast panels ~128u, bolt caps"),
+    "slab":     ("slab.jpg",     0.083, "troweled floor slab, saw-cut joints ~128u"),
+    "weather":  ("weather.jpg",  0.125, "softly streaked exterior concrete"),
+    "grate":    ("grate.jpg",    1.00,  "dark galvanized bar grating, ~4u cells"),
+    "trim":     ("trim.jpg",     0.50,  "brushed gunmetal plate with bolts"),
+    "polished": ("polished.jpg", 0.083, "dark honed terrazzo concrete, large grid"),
+    "glass":    ("glass.jpg",    0.0625, "black smoked-glass curtain wall, gunmetal mullions"),
 }
 
 
@@ -32,12 +34,16 @@ MATERIALS = {
 # Parallax only on strongly structured materials -- on noisy concrete heights it
 # smears ("liquid" swim at grazing angles); those get plain normal mapping.
 RELIEF = {
-    "board":   (1.0, 0.010),
-    "panel":   (1.0, 0.008),
-    "grate":   (1.2, 0.020),
-    "slab":    (0.3, 0.0),     # troweled floor is near-flat; more reads as stucco
-    "weather": (1.0, 0.0),
-    "trim":    (0.6, 0.0),
+    # structure-only relief (build_materials blurs pores away); parallax only
+    # where real depth exists -- on concrete it melted the surface into lumps
+    "board":    (0.7, 0.0),
+    "panel":    (0.7, 0.0),
+    "slab":     (0.3, 0.0),
+    "weather":  (0.6, 0.0),
+    "grate":    (1.2, 0.020),
+    "trim":     (0.4, 0.0),
+    "polished": (0.25, 0.0),
+    "glass":    (0.5, 0.0),
 }
 
 

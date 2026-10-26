@@ -223,6 +223,18 @@ textures/strafe64/fog_ether
 	// the photo sky's horizon haze (sampled just under the horizon line)
 	fogparms ( 0.58 0.50 0.52 ) 5200
 }
+// ETHER NIGHT FOG - deep indigo haze for the night variant: the cloud sea's
+// moonlit tone, far enough that the neon reads crisp up close.
+textures/strafe64/fog_ether_night
+{
+	qer_editorimage textures/common/fog
+	surfaceparm fog
+	surfaceparm nolightmap
+	surfaceparm nomarks
+	surfaceparm nonsolid
+	surfaceparm trans
+	fogparms ( 0.10 0.12 0.20 ) 4200
+}
 // global atmospheric fog volume. The whole play area is wrapped in one
 // CONTENTS_FOG brush (see write()), and every non-sky world surface is tagged
 // to this fog, so distance fades the world toward the synthwave horizon colour
