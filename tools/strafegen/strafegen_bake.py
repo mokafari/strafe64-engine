@@ -27,6 +27,9 @@ import subprocess
 import tempfile
 import zipfile
 
+import strafegen_config as cfg
+from strafegen_palettes import theme_remap
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 Q3MAP2 = os.path.join(HERE, "q3map2")
 
@@ -57,6 +60,43 @@ def lightmap_world_shaders(shader_script):
         nb = nb.replace(
             "\t\tmap textures/strafe64/%s.tga\n\t\trgbGen exactVertex" % img,
             "\t\tmap textures/strafe64/%s.tga\n\t\tblendFunc filter\n\t\trgbGen exactVertex" % img)
+        out = out[:h] + nb + out[e:]
+    # theme materials (concrete): lightmap first, then the photo stage(s) as a
+    # filter. Map-less stages (the vertex shader's faint wave overlay) are
+    # dropped -- with no blendFunc they would REPLACE the lit result with white.
+    for tex in ("crete", "crete_eth"):
+        head = "textures/strafe64/%s\n{\n" % tex
+        h = out.find(head)
+        if h < 0:
+            continue
+        e = out.find("\n}\n", h) + 3
+        body = out[h + len(head):e - 2]
+        params, stages, depth, cur = [], [], 0, []
+        for ln in body.splitlines(keepends=True):
+            st = ln.strip()
+            if depth == 0 and st == "{":
+                depth, cur = 1, [ln]
+            elif depth == 1 and st == "}":
+                cur.append(ln)
+                stages.append("".join(cur))
+                depth = 0
+            elif depth == 1:
+                cur.append(ln)
+            elif st != "surfaceparm nolightmap":
+                params.append(ln)
+        kept = []
+        for stg in stages:
+            if "map textures/" not in stg:
+                continue
+            lines = [l for l in stg.splitlines(keepends=True)
+                     if not l.strip().startswith("blendFunc")]
+            for i, l in enumerate(lines):
+                if l.strip().startswith("map textures/"):
+                    lines.insert(i + 1, "\t\tblendFunc filter\n")
+                    break
+            kept.append("".join(lines))
+        nb = (head + "".join(params) + "\t{\n\t\tmap $lightmap\n\t\trgbGen identity\n\t}\n"
+              + "".join(kept) + "}\n")
         out = out[:h] + nb + out[e:]
     return out
 
@@ -89,8 +129,9 @@ def _face_proj(course):
         for f in b.faces:
             ax = _dom_axis(f.normal)
             o = [(1, 2), (0, 2), (0, 1)][ax]
+            _t, pal = theme_remap(f.tex, f.palette, cfg.THEME)
             proj.append((f.normal, f.dist, o,
-                         [(p[o[0]], p[o[1]]) for p in f.poly], f.palette))
+                         [(p[o[0]], p[o[1]]) for p in f.poly], pal))
     return proj
 
 

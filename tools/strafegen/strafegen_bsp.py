@@ -526,7 +526,9 @@ def write_map(course, path):
             n = vcross(vsub(p0, p1), vsub(p2, p1))
             if vdot(n, f.normal) < 0:
                 p0, p2 = p2, p0
-            tex = f.tex[len("textures/"):]
+            # same material routing as BspWriter: theme remap, then accent glow
+            ftex, fpal = theme_remap(f.tex, f.palette, cfg.THEME)
+            tex = _glow_tex(ftex, fpal)[len("textures/"):]
             pts = " ".join(
                 f"( {q[0]:g} {q[1]:g} {q[2]:g} )" for q in (p0, p1, p2))
             out += f"{pts} {tex} 0 0 0 0.5 0.5 0 0 0\n"
