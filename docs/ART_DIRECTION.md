@@ -353,11 +353,14 @@ and read as "a Quake mod". The identity is:
 
 ### 12.1 The four rules
 
-1. **Concrete is the only bulk material.** Poured concrete (the `crete`
-   photo material + cube-greeble erosion), never painted, never tiled-looking.
-   Form comes from light, not from colour.
-2. **Light, not paint, carries colour.** A low raking warm-peach key on the lit
-   faces, blue-violet skylight in shadow, a close lavender haze for depth. The
+1. **Concrete is the only bulk material.** Board-formed brutalist concrete
+   (`crete_eth`: timber-board grain + tie-hole grid), clad in offset blocks at
+   many scales the way lun3dm5 is — never fine teeth, never painted. Form
+   comes from light, not from colour.
+2. **Light, not paint, carries colour.** Baked lightmaps (q3map2) with a hard
+   warm-white sun throwing a shadow off every cladding step, blue-grey shade
+   that stays readable (never black), cyan spill from the neon, a close
+   lavender haze for depth. The
    concrete itself stays grey; if a surface reads as pink or blue *paint*, the
    lighting is too strong.
 3. **Neon is the only saturated colour, and it always means something.**
@@ -372,11 +375,15 @@ and read as "a Quake mod". The identity is:
 
 | Role | Value | Where |
 |---|---|---|
-| Concrete walls / bulk | vertex `(214,216,228)` × `crete` photo | `strafegen_palettes.PAL_ETHER` |
+| Concrete material | board-formed, Codex image gen, mirror-tiled 1024, ~13u boards | `skytex/crete_eth.tga`, shader `crete_eth` / `crete_eth_lm` |
+| Concrete walls / bulk | vertex `(214,216,228)` × `crete_eth` | `strafegen_palettes.PAL_ETHER` |
 | Concrete floors | vertex `(222,220,226)` | `PAL_ETHER_FLOOR` |
 | Key light (raking sunset) | `(0.40,0.31,0.25)`, elevation ~28° | `strafegen_bsp._ETH_KEY_RGB` |
 | Skylight / shadow fill | `(0.19,0.21,0.29)` / cyan spill `(0.04,0.09,0.13)` | `_ETH_SKY_AMB`, `_ETH_FILL_RGB` |
-| Runtime sun | `(1.0,0.74,0.62)` ×38, az 30°, el 22° | `strafegen_gfx.ETHER_SUN_*` (`sky_ether`) |
+| Runtime sun (unbaked maps) | `(1.0,0.74,0.62)` ×38, az 30°, el 22° | `strafegen_gfx.ETHER_SUN_*` (`sky_ether`) |
+| Baked sun / skylight | `(1.0,0.88,0.78)` ×240, el 48° / skylight 220 | `strafegen_gfx.ETHER_BAKE_*` (q3map_sun in `sky_ether_bk`) |
+| Baked shade floor | `_ambient 30`, `_color 0.60 0.65 0.78`, `-scale 2.5` | `strafegen_bake.BAKE_AMBIENT` / `BAKE_SCALE` |
+| Neon as light | cyan `q3map_lightRGB 0.35 0.85 1.0`; strips ×900, pads ×150 | `glow_wall` / `glow_floor` (bake only) |
 | Haze | `( 0.34 0.30 0.48 )` @ 3400u | `fog_ether` shader |
 | Neon trim (wayfinding) | `(80,220,255)` cyan, glow | `PAL_NEON_TRIM` |
 | Pickups: health / armor / powerup / other | cyan / magenta / amber / cool white | `cg_ents.c CG_ItemHolo` |
@@ -384,11 +391,15 @@ and read as "a Quake mod". The identity is:
 
 ### 12.3 The pieces in code
 
-- **World:** `strafegen.py --theme ethereal` (opt-in; `default` and `concrete`
-  output is byte-identical to before). Works with every course kind, e.g.
-  `--killbox --theme ethereal`. Ship the regenerated shared
-  `zzz_strafe64_shader.pk3` with it: it carries `sky_ether`, `fog_ether` and
-  `s64itemHolo`.
+- **World:** ethereal is the generator default; bake it for the real look:
+  `strafegen.py 8224 --killbox --bake --pk3` (~2–3 min per map). The block
+  cladding is `strafegen_geom.greeble_brutal`. `tools/strafegen/regen_shipped.py`
+  rebuilds every shipped map from one manifest. `--theme default` / `concrete`
+  still reproduce the old looks byte-identically. Always ship the regenerated
+  shared `zzz_strafe64_shader.pk3`: it carries `sky_ether`, `fog_ether`,
+  `s64itemHolo`, `crete_eth`, and the baked-map `*_lm` / `*_bk` variants.
+  (Baked maps must use those uniquely named variants: a map pk3's own
+  `strafe64.shader` always loses to the shared pak's.)
 - **Time-grade:** `cg_timeGrade 1` (default) drives the renderer's
   non-archived `r_gradeLiveSat` / `r_gradeLiveTemp` from the world timescale
   and `CG_Flow`. Tune with `cg_timeGradeFreezeSat/Temp` (0.62 / −0.14) and
@@ -410,9 +421,10 @@ and read as "a Quake mod". The identity is:
 
 ### 12.4 Still open
 
-- Make `ethereal` the generator default once the full map set is regenerated
-  and play-tested in it. The stock OA maps (e.g. `aggressor`) still break the
-  look; ship only strafegen maps.
+- The stock OA maps (e.g. `aggressor`) still break the look; ship only
+  strafegen maps. The `dojo_*` baselines stay in the old look on purpose.
+- A Codex-generated sky (cloud sea under a dusk megastructure skyline) to
+  replace the Bryce dusk, like lun3dm5's photo sky.
 - Replace the HUD weapon icons (still stock OpenArena) with line icons in the
   neon/matrix style.
 - Give each signature moment (perfect parry, speed milestone, killcam) one
