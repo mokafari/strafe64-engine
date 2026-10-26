@@ -517,7 +517,7 @@ class BspWriter:
 # ======================================================================
 # .map writer (optional, for tweaking a course in Radiant)
 # ======================================================================
-def write_map(course, path):
+def write_map(course, path, baked=False, extra_world=None):
     def brush_text(b):
         out = "{\n"
         for f in b.faces:
@@ -528,7 +528,11 @@ def write_map(course, path):
                 p0, p2 = p2, p0
             # same material routing as BspWriter: theme remap, then accent glow
             ftex, fpal = theme_remap(f.tex, f.palette, cfg.THEME)
-            tex = _glow_tex(ftex, fpal)[len("textures/"):]
+            ftex = _glow_tex(ftex, fpal)
+            if baked:                       # lightmapped / sun-less variants
+                import strafegen_bake
+                ftex = strafegen_bake.baked_tex(ftex)
+            tex = ftex[len("textures/"):]
             pts = " ".join(
                 f"( {q[0]:g} {q[1]:g} {q[2]:g} )" for q in (p0, p1, p2))
             out += f"{pts} {tex} 0 0 0 0.5 0.5 0 0 0\n"
@@ -537,6 +541,8 @@ def write_map(course, path):
     with open(path, "w") as fh:
         fh.write("{\n")
         for k, v in course.entities[0].items():
+            fh.write(f'"{k}" "{v}"\n')
+        for k, v in (extra_world or {}).items():
             fh.write(f'"{k}" "{v}"\n')
         for b in course.solids:
             fh.write(brush_text(b))

@@ -192,6 +192,11 @@ def _load_baked():
     if os.path.exists(crete):
         with open(crete, "rb") as fh:
             out["textures/strafe64/crete.tga"] = fh.read()
+    # ethereal theme: board-formed concrete (Codex image gen, mirror-tiled)
+    crete_eth = os.path.join(sky_dir, "crete_eth.tga")
+    if os.path.exists(crete_eth):
+        with open(crete_eth, "rb") as fh:
+            out["textures/strafe64/crete_eth.tga"] = fh.read()
     return out
 
 

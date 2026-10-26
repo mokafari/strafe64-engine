@@ -79,6 +79,10 @@ textures/strafe64/crete
 textures/strafe64/glow_floor
 {
 	surfaceparm nolightmap
+	// bake only (q3map2): neon pads/gates light the concrete around them
+	q3map_surfacelight 150
+	q3map_lightRGB 0.35 0.85 1.0
+	q3map_lightSubdivide 64
 	{
 		map textures/strafe64/d_floor.tga
 		rgbGen exactVertex
@@ -92,6 +96,10 @@ textures/strafe64/glow_floor
 textures/strafe64/glow_wall
 {
 	surfaceparm nolightmap
+	// bake only (q3map2): the thin neon reveals throw cyan light on the cladding
+	q3map_surfacelight 900
+	q3map_lightRGB 0.35 0.85 1.0
+	q3map_lightSubdivide 32
 	{
 		map textures/strafe64/d_wall.tga
 		rgbGen exactVertex
@@ -150,6 +158,20 @@ textures/strafe64/sky
 		rgbGen wave sin 0.40 0.16 0 0.05
 		tcMod scale 3.5 3.5
 		tcMod scroll -0.010 0.0035
+	}
+}
+// CONCRETE (ETHEREAL) - board-formed brutalist concrete: horizontal timber-board
+// grain with a regular tie-hole grid (Codex image gen, mirror-tiled to a seamless
+// 1024 in skytex/crete_eth.tga). Same vertex-lit form as crete; the bake routes
+// it to crete_eth_lm. ~10 boards per tile at scale 0.5 => ~13u boards, close to
+// real formwork against a 56u player.
+textures/strafe64/crete_eth
+{
+	surfaceparm nolightmap
+	{
+		map textures/strafe64/crete_eth.tga
+		tcMod scale 0.5 0.5
+		rgbGen exactVertex
 	}
 }
 // PHOTOREAL SKY — the concrete (lun3dm5) theme's sky. A STATIC photo skybox
@@ -372,4 +394,11 @@ s64menuback
 def build_shader(gfx_on=True):
     """The scripts/strafe64.shader text. With gfx_on, inject the q3gl2 sun and
     append the component materials (strafegen_gfx.augment); else vanilla identity."""
-    return gfx.augment(SHADER_SCRIPT) if gfx_on else gfx.ether_sky(SHADER_SCRIPT, with_sun=False)
+    base = (gfx.augment(SHADER_SCRIPT) if gfx_on
+            else gfx.ether_sky(SHADER_SCRIPT, with_sun=False))
+    # baked-map materials ride in the SAME shared pak under their own names
+    # (*_lm lightmapped, *_bk sun-less sky) so nothing can override them: a
+    # baked map pk3 shipping its own scripts/strafe64.shader always lost to the
+    # shared pak's, and its surfaces silently rendered with the vertex shaders.
+    import strafegen_bake as bake
+    return base + bake.baked_variants(base)

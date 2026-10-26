@@ -221,6 +221,13 @@ ETHER_SUN_INTENSITY = 38.0
 ETHER_SUN_AZIMUTH   = 30.0
 ETHER_SUN_ELEVATION = 22.0
 ETHER_SUN_SHADOW    = 0.6
+# The BAKE (q3map2: q3map_sun / q3map_skylight) is tuned separately from the
+# runtime sun above: q3map2 needs a much stronger, higher sun to clear arena
+# walls and reach the floors, or enclosed layouts bake near-black.
+ETHER_BAKE_SUN       = 240.0
+ETHER_BAKE_ELEVATION = 48.0
+ETHER_BAKE_SKYLIGHT  = (220, 4)
+ETHER_BAKE_COLOR     = (1.00, 0.88, 0.78)   # warm WHITE: peach x concrete read orange
 
 
 def ether_sky(shader_script, with_sun=True):
@@ -251,8 +258,9 @@ def ether_sky(shader_script, with_sun=True):
                % (r, g, b, ETHER_SUN_INTENSITY, ETHER_SUN_AZIMUTH,
                   ETHER_SUN_ELEVATION, ETHER_SUN_SHADOW)
                + "\tq3map_sun %g %g %g %g %g %g\n"
-               % (r, g, b, 60, ETHER_SUN_AZIMUTH, ETHER_SUN_ELEVATION)
-               + "\tq3map_skylight 30 3\n")
+               % (ETHER_BAKE_COLOR + (ETHER_BAKE_SUN, ETHER_SUN_AZIMUTH,
+                                      ETHER_BAKE_ELEVATION))
+               + "\tq3map_skylight %g %g\n" % ETHER_BAKE_SKYLIGHT)
         block = block.replace("\tsurfaceparm sky\n", "\tsurfaceparm sky\n" + sun, 1)
     return shader_script + "\n// ETHEREAL SKY - the Bryce dusk with the ethereal theme's low peach sun\n" + block + "\n"
 

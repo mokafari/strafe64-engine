@@ -23,6 +23,8 @@ TEX_TRIGGER = "textures/common/trigger"
 # a faint 16u panel grid. Always shipped in the shared pak; only referenced when
 # the concrete theme is active, so it costs nothing under the default look.
 TEX_CONCRETE = "textures/strafe64/crete"
+# ethereal theme: board-formed brutalist concrete (timber grain + tie holes)
+TEX_CONCRETE_ETH = "textures/strafe64/crete_eth"
 # Photoreal sky + pale day fog for the concrete theme (see strafegen_shaders).
 TEX_SKY_REAL = "textures/strafe64/skyreal"
 TEX_FOG      = "textures/strafe64/fog"
@@ -137,7 +139,8 @@ _ETHEREAL_PAL = {
     SRC_GREY:   PAL_ETHER,
     SRC_BLUE:   PAL_ETHER,
 }
-_ETHEREAL_TEX = {TEX_FLOOR: TEX_CONCRETE, TEX_WALL: TEX_CONCRETE, TEX_SKY: TEX_SKY_ETHER}
+_ETHEREAL_TEX = {TEX_FLOOR: TEX_CONCRETE_ETH, TEX_WALL: TEX_CONCRETE_ETH,
+                 TEX_CONCRETE: TEX_CONCRETE_ETH, TEX_SKY: TEX_SKY_ETHER}
 
 CONCRETE_THEMES = ("concrete", "ethereal")
 
