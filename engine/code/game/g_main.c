@@ -55,6 +55,7 @@ vmCvar_t	g_speedKnockback;
 vmCvar_t	g_grapple;
 vmCvar_t	g_grappleInstant;	// 1 = instant trace-attach (movement tool), 0 = fly-out projectile
 vmCvar_t	g_truckRamp;		// func_truck: seconds per stage (speed/gap/enemies ramp each stage)
+vmCvar_t	g_truckMaxGap;		// func_truck: hard ceiling on the hop between trucks (always reachable)
 vmCvar_t	g_truckBots;		// func_truck: max Assassin bots dropped in (one per stage)
 vmCvar_t	g_truckRiders;		// func_truck: 1 = also static slice-gate/gunner riders
 vmCvar_t	g_truckBest;		// func_truck: best survival time (s)
@@ -209,6 +210,7 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_grapple, "g_grapple", "1", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_grappleInstant, "g_grappleInstant", "1", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_truckRamp, "g_truckRamp", "30", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_truckMaxGap, "g_truckMaxGap", "340", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_truckBots, "g_truckBots", "4", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_truckRiders, "g_truckRiders", "0", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_truckBest, "g_truckBest", "0", CVAR_ARCHIVE, 0, qfalse  },

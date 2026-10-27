@@ -789,6 +789,7 @@ extern	vmCvar_t	g_grappleInstant;
 extern	vmCvar_t	g_truckRamp;
 extern	vmCvar_t	g_truckBest;
 extern	vmCvar_t	g_truckBots;
+extern	vmCvar_t	g_truckMaxGap;
 extern	vmCvar_t	g_truckRiders;
 void G_TruckPlaceBot( gentity_t *bot );
 void G_TruckRunReset( gentity_t *player );

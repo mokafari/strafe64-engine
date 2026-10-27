@@ -1664,7 +1664,7 @@ static gentity_t	*truckTails[TRUCK_MAX_LANES];	// back of each lane's queue
 static int			truckLanes = 1;
 // lane layout: centre at road height, left HIGH (double-jump up from centre),
 // right LOW (drop down) — parallel routes that differ in Z as well as Y
-static const float	truckLaneY[TRUCK_MAX_LANES] = { 0, 480, -480 };
+static const float	truckLaneY[TRUCK_MAX_LANES] = { 0, 600, -600 };	// widest truck (fork, 192) + 96 jog stays clear
 static const float	truckLaneZ[TRUCK_MAX_LANES] = { 0, 80, -96 };	// <= double-jump ledge (88u)
 static int			truckMapStart = -1;	// level.startTime these statics belong to
 static qboolean		truckRunHuman;		// a human has run since the last reset
@@ -1787,7 +1787,7 @@ static void Truck_RiderFire( gentity_t *truck ) {
 // place a truck at the back of the queue: one gap behind the current tail,
 // jogged sideways from it, at the fleet's stage speed
 static void Truck_Launch( gentity_t *ent ) {
-	float		x, y, gap, jog, laneY;
+	float		x, y, gap, jog, laneY, d, cap;
 	int			lane = ent->count;
 	gentity_t	*tail;
 
@@ -1796,12 +1796,25 @@ static void Truck_Launch( gentity_t *ent ) {
 	}
 	tail = truckTails[lane];
 	laneY = truckLaneY[lane];
-	gap = 64 + 40 * ( truckStage - 1 );
-	jog = 48 + 24 * ( truckStage - 1 );
+	// CONTINUOUS ramp (not per stage): d climbs 0->1 over ~10 stages of run
+	// time, widening the forward gap and sideways jog every launch. The hard
+	// ceiling is a guarantee, not a tuning knob: both trucks share one speed,
+	// so the hop is a static-platform jump, and at plain run speed (320) a
+	// jump + air jump (300 up, 800 grav) carries ~480u. g_truckMaxGap (340)
+	// caps the DIAGONAL hop at ~70% of that — never impossible, no bhop needed.
+	d = ( level.time - truckRunStart ) / ( 10000.0f * ( g_truckRamp.value > 1 ? g_truckRamp.value : 1 ) );
+	if ( d > 1 ) {
+		d = 1;
+	}
+	cap = g_truckMaxGap.value > 64 ? g_truckMaxGap.value : 64;
+	gap = ( 64 + ( cap - 64 ) * d ) * ( 0.8f + 0.2f * random() );
+	jog = crandom() * ( 32 + 128 * d );
+	if ( gap * gap + jog * jog > cap * cap ) {
+		gap = sqrt( cap * cap - jog * jog );
+	}
 	if ( tail && tail != ent ) {
-		x = tail->r.currentOrigin[0] + tail->r.maxs[0] - ent->r.mins[0]
-			+ ( gap > 320 ? 320 : gap ) * ( 0.75f + 0.5f * random() );
-		y = tail->r.currentOrigin[1] + crandom() * ( jog > 128 ? 128 : jog );
+		x = tail->r.currentOrigin[0] + tail->r.maxs[0] - ent->r.mins[0] + gap;
+		y = tail->r.currentOrigin[1] + jog;
 	} else {
 		x = ent->pos2[0] + 256 + 160 * lane;	// stagger the lanes' first trucks
 		y = laneY;
