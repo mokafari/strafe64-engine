@@ -121,10 +121,14 @@ class Trucks:
 
     def build(self):
         top = self.BASE_TOP
-        # start pad: flush with the truck roofs, just short of the recycle line
+        # start pad: flush with the truck roofs, just short of the recycle line.
+        # A func_static MOVER, not world: the game's seamless wrap shifts it
+        # back with the road so it never reappears beside the runner, and a
+        # new run brings it home (g_mover.c Truck_Wrap / G_TruckRunReset).
         self.sections.append(("start pad", {}))
-        self.solids.append(make_box((-1024, -256, top - 32), (-512, 256, top),
-                                    palette=PAL_START))
+        self.movers.append((make_box((-1024, -256, top - 32), (-512, 256, top),
+                                     palette=PAL_START),
+                            {"classname": "func_static"}))
         for dy in (-96, 0, 96):
             self.place("info_player_deathmatch", -704, dy, top + 40, angle="0")
 
@@ -150,7 +154,7 @@ class Trucks:
 
         # void kill-pit under the whole road
         self.sections.append(("void pit", {}))
-        x0, x1, w = -1280.0, self.ROAD_LEN + 1024.0, 1280.0
+        x0, x1, w = -1280.0, 2 * self.ROAD_LEN, 1280.0  # room for the queue ahead after a wrap
         pit = make_box((x0, -w, -768), (x1, w, -512), tex=TEX_TRIGGER,
                        contents=CONTENTS_TRIGGER, draw=set())
         self.triggers.append((pit, {"classname": "trigger_hurt", "dmg": "10000"}))

@@ -1661,6 +1661,12 @@ static int			truckStage;
 static gentity_t	*truckTail;			// last truck launched = back of the queue
 static int			truckMapStart = -1;	// level.startTime these statics belong to
 static qboolean		truckRunHuman;		// a human has run since the last reset
+static float		truckWrapped;		// road shifted back so far this run (distance)
+static float		truckFarX;			// furthest runner x this run (pre-wrap frame)
+static int			truckFrame = -1;	// level.time of the last fleet-wide update
+
+#define TRUCK_WRAP_X		2048	// runner past this -> shift the world back by it
+#define TRUCK_BEHIND		1024	// trucks this far behind the runner recycle
 
 static int Truck_StageNow( void ) {
 	int	len;
@@ -1807,6 +1813,67 @@ static void Truck_Launch( gentity_t *ent ) {
 	Truck_MoveRider( ent );
 }
 
+// the human doing the run (single-player treadmill): first live non-bot
+static gentity_t *Truck_Runner( void ) {
+	gentity_t	*cl;
+	int			i;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		cl = &g_entities[i];
+		if ( cl->inuse && cl->client && cl->health > 0
+				&& !( cl->r.svFlags & SVF_BOT )
+				&& cl->client->sess.sessionTeam != TEAM_SPECTATOR
+				&& cl->client->pers.connected == CON_CONNECTED ) {
+			return cl;
+		}
+	}
+	return NULL;
+}
+
+static qboolean Truck_IsRoadMover( gentity_t *e ) {
+	return e->inuse && e->s.eType == ET_MOVER && e->classname
+		&& ( !Q_stricmp( e->classname, "func_truck" )
+			|| !Q_stricmp( e->classname, "func_static" ) );
+}
+
+/*
+================
+Truck_Wrap
+
+Seamless treadmill: shift the runner, every road mover (trucks + the start
+pad) and every live projectile back by dx in one frame, so the run continues
+forever inside the BSP's bounds. Only the static void pit / sky stay put, and
+they're uniform along x. The runner's EF_TELEPORT_BIT flips so the client
+drops its prediction-error smoothing instead of sliding across the shift.
+================
+*/
+static void Truck_Wrap( gentity_t *runner, float dx ) {
+	gentity_t	*e;
+	int			i;
+
+	runner->client->ps.origin[0] -= dx;
+	runner->r.currentOrigin[0] -= dx;
+	runner->s.pos.trBase[0] -= dx;
+	runner->client->ps.eFlags ^= EF_TELEPORT_BIT;
+	trap_LinkEntity( runner );
+
+	for ( i = MAX_CLIENTS, e = g_entities + MAX_CLIENTS; i < level.num_entities; i++, e++ ) {
+		if ( Truck_IsRoadMover( e ) || ( e->inuse && e->s.eType == ET_MISSILE ) ) {
+			e->s.pos.trBase[0] -= dx;
+			e->r.currentOrigin[0] -= dx;
+			trap_LinkEntity( e );
+		}
+	}
+	for ( i = MAX_CLIENTS, e = g_entities + MAX_CLIENTS; i < level.num_entities; i++, e++ ) {
+		if ( e->inuse && e->target_ent && e->classname
+				&& !Q_stricmp( e->classname, "func_truck" ) ) {
+			Truck_MoveRider( e );
+		}
+	}
+	truckWrapped += dx;
+	truckFarX -= dx;
+}
+
 /*
 ================
 G_TruckRunReset
@@ -1817,7 +1884,7 @@ the fleet from stage 1 at the near end of the road.
 */
 void G_TruckRunReset( gentity_t *player ) {
 	gentity_t	*e;
-	float		secs;
+	float		secs, dist;
 	int			i;
 
 	if ( truckMapStart != level.startTime || !truckTail ) {
@@ -1825,22 +1892,33 @@ void G_TruckRunReset( gentity_t *player ) {
 	}
 	if ( truckRunHuman && player ) {
 		secs = ( level.time - truckRunStart ) * 0.001f;
+		dist = ( truckWrapped + truckFarX + 704 ) / 64.0f;	// ~metres
 		if ( secs > g_truckBest.value ) {
 			trap_Cvar_Set( "g_truckBest", va( "%.1f", secs ) );
 			trap_SendServerCommand( player - g_entities,
-				va( "cp \"^3NEW BEST^7\n%.1fs  STAGE %i\n\"", secs, truckStage ) );
+				va( "cp \"^3NEW BEST^7\n%.1fs  %.0fm  STAGE %i\n\"", secs, dist, truckStage ) );
 		} else {
 			trap_SendServerCommand( player - g_entities,
-				va( "cp \"RUN OVER\n%.1fs  STAGE %i\nBEST %.1fs\n\"",
-					secs, truckStage, g_truckBest.value ) );
+				va( "cp \"RUN OVER\n%.1fs  %.0fm  STAGE %i\nBEST %.1fs\n\"",
+					secs, dist, truckStage, g_truckBest.value ) );
 		}
-		G_Printf( "truck run: %.1fs stage %i (best %s)\n", secs, truckStage,
-			g_truckBest.string );
+		G_Printf( "truck run: %.1fs %.0fm stage %i (best %s)\n", secs, dist,
+			truckStage, g_truckBest.string );
 	}
 	truckRunStart = level.time;
 	truckStage = 1;
 	truckTail = NULL;
 	truckRunHuman = ( player != NULL );
+	truckWrapped = 0;
+	truckFarX = -704;
+	// the start pad wrapped away with the road last run: bring it home
+	for ( i = MAX_CLIENTS, e = g_entities + MAX_CLIENTS; i < level.num_entities; i++, e++ ) {
+		if ( Truck_IsRoadMover( e ) && !Q_stricmp( e->classname, "func_static" ) ) {
+			VectorClear( e->s.pos.trBase );
+			VectorClear( e->r.currentOrigin );
+			trap_LinkEntity( e );
+		}
+	}
 	for ( i = MAX_CLIENTS, e = g_entities + MAX_CLIENTS; i < level.num_entities; i++, e++ ) {
 		if ( e->inuse && e->classname && !Q_stricmp( e->classname, "func_truck" ) ) {
 			Truck_Launch( e );
@@ -1849,10 +1927,22 @@ void G_TruckRunReset( gentity_t *player ) {
 }
 
 static void Think_Truck( gentity_t *ent ) {
-	int		stage;
-	float	speed;
+	int			stage;
+	float		speed, back;
+	gentity_t	*runner;
 
 	ent->nextthink = level.time + 1;	// every frame: riders track the truck
+
+	runner = Truck_Runner();
+	if ( truckFrame != level.time ) {	// once per frame, not per truck
+		truckFrame = level.time;
+		if ( runner && runner->r.currentOrigin[0] > truckFarX ) {
+			truckFarX = runner->r.currentOrigin[0];
+		}
+		if ( runner && runner->r.currentOrigin[0] > TRUCK_WRAP_X ) {
+			Truck_Wrap( runner, TRUCK_WRAP_X );
+		}
+	}
 
 	stage = Truck_StageNow();
 	if ( stage > truckStage ) {
@@ -1866,7 +1956,10 @@ static void Think_Truck( gentity_t *ent ) {
 		ent->s.pos.trTime = level.time;
 		ent->s.pos.trDelta[0] = -speed;
 	}
-	if ( ent->r.currentOrigin[0] < ent->pos2[0] ) {
+	// recycle at the near end of the road, or once the runner is well past
+	back = ent->r.currentOrigin[0] + ent->r.maxs[0];
+	if ( ent->r.currentOrigin[0] < ent->pos2[0]
+			|| ( runner && back < runner->r.currentOrigin[0] - TRUCK_BEHIND ) ) {
 		Truck_Launch( ent );
 	}
 	Truck_MoveRider( ent );
