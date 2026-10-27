@@ -26,7 +26,10 @@ class Trucks:
 
     ROAD_LEN = 6144.0
     KILL_X = -256.0
-    BASE_TOP = 112.0        # flatbed roof; start pad is flush with it
+    BASE_TOP = 112.0
+    # parallel routes: centre at pad height, left lane HIGH, right lane LOW
+    # (game-side layout in g_mover.c truckLaneY/truckLaneZ)
+    LANES = 3        # flatbed roof; start pad is flush with it
 
     # archetype weights per difficulty (easy leans on flatbeds)
     # The daily-course sections ported onto trailers (slalom, hurdles, tower,
@@ -46,7 +49,8 @@ class Trucks:
         self.rng = random.Random(seed ^ 0x7C0C)
         self.seed = seed
         self.diff = difficulty
-        self.fleet = fleet or (16, 15, 14)[difficulty]   # fewer trucks = wider gaps
+        self.fleet = fleet or (24, 21, 18)[difficulty]   # spread over LANES queues
+        self.kpal = PAL_PAD
         self.speed = (260, 320, 380)[difficulty]
         self.solids = []
         self.triggers = []
@@ -64,12 +68,22 @@ class Trucks:
     # runner boards at the -x nose and runs out the +x tail. Each returns
     # (parts, ride_x, ride_z): the brushes and where a rider stands.
 
-    def _deck(self, L, W, top, pal=PAL_PILLAR):
-        return make_box((-L / 2, -W, 0), (L / 2, W, top), palette=pal)
+    # every truck type wears its own bright deck colour so you can read what's
+    # coming from three trucks away (grey-on-grey vanished into the sky haze)
+    KIND_PAL = {
+        "flatbed": PAL_PAD, "trailer": PAL_CHECK, "ramp": PAL_GATE,
+        "walls": PAL_FINISH, "bar": SRC_ORANGE, "hurdle": SRC_TRIM,
+        "slalom": (110, 150, 255), "hurdles": (255, 170, 80),
+        "tower": PAL_START, "fork": PAL_KB_COLUMN, "tunnel": PAL_KB_NEON,
+        "bhop": (255, 140, 200),
+    }
+
+    def _deck(self, L, W, top, pal=None):
+        return make_box((-L / 2, -W, 0), (L / 2, W, top), palette=pal or self.kpal)
 
     def truck_flatbed(self, L, W):
         top = self.BASE_TOP - self.rng.choice((0, 16, 32))
-        return [self._deck(L, W, top, PAL_PAD)], L / 4, top
+        return [self._deck(L, W, top)], L / 4, top
 
     def truck_trailer(self, L, W):
         """Low cab at the nose, tall box behind it: board the cab, then
@@ -77,7 +91,7 @@ class Trucks:
         cab = 112.0
         box = cab + self.rng.choice((56, 72, 80))   # <= 88u double-jump ledge
         split = -L / 2 + 112
-        return [make_box((-L / 2, -W, 0), (split, W, cab), palette=PAL_PILLAR),
+        return [make_box((-L / 2, -W, 0), (split, W, cab), palette=self.kpal),
                 make_box((split, -W, 0), (L / 2, W, box), palette=PAL_WALLS)], L / 4, box
 
     def truck_ramp(self, L, W):
@@ -86,7 +100,7 @@ class Trucks:
         top = self.BASE_TOP
         rise = self.rng.choice((64, 96))
         mid = 0.0
-        deck = make_box((-L / 2, -W, 0), (mid, W, top), palette=PAL_PILLAR)
+        deck = make_box((-L / 2, -W, 0), (mid, W, top), palette=self.kpal)
         wedge = make_box((mid, -W, 0), (L / 2, W, top + rise), palette=PAL_GATE,
                          top_drop={4: rise, 6: rise})
         return [deck, wedge], -L / 4, top
@@ -100,8 +114,8 @@ class Trucks:
         end = (L - gap) / 2
         t = 16.0
         Wx = W + 32
-        return [make_box((-L / 2, -W, 0), (-L / 2 + end, W, top), palette=PAL_PILLAR),
-                make_box((L / 2 - end, -W, 0), (L / 2, W, top), palette=PAL_PILLAR),
+        return [make_box((-L / 2, -W, 0), (-L / 2 + end, W, top), palette=self.kpal),
+                make_box((L / 2 - end, -W, 0), (L / 2, W, top), palette=self.kpal),
                 make_box((-L / 2, -Wx, 0), (L / 2, -Wx + t, top + wall_h), palette=PAL_WALLS),
                 make_box((-L / 2, Wx - t, 0), (L / 2, Wx, top + wall_h), palette=PAL_WALLS),
                 ], L / 2 - end / 2, top
@@ -167,7 +181,7 @@ class Trucks:
         for k in range(1, steps + 1):
             x0 = -L / 2 + k * run
             parts.append(make_box((x0, -W, top), (L / 2, W, top + 68 * k),
-                                  palette=PAL_TOWER if k % 2 else PAL_PILLAR))
+                                  palette=PAL_TOWER if k % 2 else self.kpal))
         return parts, L / 2 - run / 2, top + 68 * steps
 
     def truck_fork(self, L, W):
@@ -206,7 +220,7 @@ class Trucks:
             x0 = -L / 2 + k * (pad + gap)
             jog = self.rng.uniform(-W * 0.3, W * 0.3)
             parts.append(make_box((x0, jog - 56, top - 16), (x0 + pad, jog + 56, top),
-                                  palette=PAL_BHOP))
+                                  palette=self.kpal))
         return parts, L / 2 - pad / 2, top
 
     def build(self):
@@ -229,6 +243,7 @@ class Trucks:
             # guarantee one of each kind early in the fleet, then weighted
             kind = kinds[i] if i < len(kinds) else self.rng.choices(kinds, wts)[0]
             counts[kind] = counts.get(kind, 0) + 1
+            self.kpal = self.KIND_PAL[kind]
             L = (self.rng.choice((864, 960, 1056)) if kind in self.LONG
                  else self.rng.choice((480, 576, 672)))
             W = self.rng.choice((64, 80, 96))
@@ -237,28 +252,20 @@ class Trucks:
                 "classname": "func_truck",
                 "speed": f"{self.speed:g}",
                 "spawnx": f"{self.ROAD_LEN:g}", "killx": f"{self.KILL_X:g}",
-                "lane": "320", "index": str(i), "count": str(self.fleet),
+                "jog": "96", "lanes": str(self.LANES), "laneidx": str(i % self.LANES),
+                "index": str(i), "count": str(self.fleet),
                 "ridex": f"{rx:g}", "ridez": f"{rz:g}",
                 "kind": kind}))
         self.sections.append(("truck fleet", dict(count=self.fleet,
                                                   speed=self.speed, **counts)))
 
-        # the highway: a lethal road under the fleet (Clustertruck's "the
-        # ground kills you"). Uniform along x so the game's wrap can't be seen;
-        # dashed lane lines give the eye a speed reference. A thin trigger
-        # skin on the asphalt kills on touch.
-        self.sections.append(("kill road", {}))
-        x0, x1, w = -1280.0, 4 * self.ROAD_LEN, 1280.0  # room for the queue ahead after a wrap
-        self.solids.append(make_box((x0, -w, -64), (x1, w, 0), palette=PAL_WALLS))
-        for ly in (-480, -160, 160, 480):
-            x = x0
-            while x < x1:
-                self.solids.append(make_box((x, ly - 6, 0), (x + 160, ly + 6, 1),
-                                            palette=PAL_GATE))
-                x += 480
-        kill = make_box((x0, -w, 1), (x1, w, 24), tex=TEX_TRIGGER,
-                        contents=CONTENTS_TRIGGER, draw=set())
-        self.triggers.append((kill, {"classname": "trigger_hurt", "dmg": "10000"}))
+        # open sky: no ground at all, just the fleet over the cloud sea. A deep
+        # trigger_hurt pit catches the fall (bots are re-dropped before it).
+        self.sections.append(("void pit", {}))
+        x0, x1, w = -1280.0, 4 * self.ROAD_LEN, 1600.0  # room for the queue ahead after a wrap
+        pit = make_box((x0, -w, -768), (x1, w, -512), tex=TEX_TRIGGER,
+                       contents=CONTENTS_TRIGGER, draw=set())
+        self.triggers.append((pit, {"classname": "trigger_hurt", "dmg": "10000"}))
         self.solids += make_skybox(x0 - 64, -w - 64, -832, x1 + 64, w + 64, 2048)
         self.entities.insert(0, {
             "classname": "worldspawn",

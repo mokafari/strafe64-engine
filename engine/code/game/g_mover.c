@@ -1659,6 +1659,13 @@ time + stage against the best (g_truckBest), and resets the fleet to stage 1.
 static int			truckRunStart;		// level.time the current run began
 static int			truckStage;
 static gentity_t	*truckTail;			// last truck launched = back of the queue
+#define TRUCK_MAX_LANES		3
+static gentity_t	*truckTails[TRUCK_MAX_LANES];	// back of each lane's queue
+static int			truckLanes = 1;
+// lane layout: centre at road height, left HIGH (double-jump up from centre),
+// right LOW (drop down) — parallel routes that differ in Z as well as Y
+static const float	truckLaneY[TRUCK_MAX_LANES] = { 0, 480, -480 };
+static const float	truckLaneZ[TRUCK_MAX_LANES] = { 0, 80, -96 };	// <= double-jump ledge (88u)
 static int			truckMapStart = -1;	// level.startTime these statics belong to
 static qboolean		truckRunHuman;		// a human has run since the last reset
 static float		truckWrapped;		// road shifted back so far this run (distance)
@@ -1780,28 +1787,35 @@ static void Truck_RiderFire( gentity_t *truck ) {
 // place a truck at the back of the queue: one gap behind the current tail,
 // jogged sideways from it, at the fleet's stage speed
 static void Truck_Launch( gentity_t *ent ) {
-	float	x, y, gap, jog, lane;
+	float		x, y, gap, jog, laneY;
+	int			lane = ent->count;
+	gentity_t	*tail;
 
-	gap = 64 + 40 * ( truckStage - 1 );
-	jog = 64 + 48 * ( truckStage - 1 );
-	lane = ent->random;
-	if ( truckTail && truckTail != ent ) {
-		x = truckTail->r.currentOrigin[0] + truckTail->r.maxs[0] - ent->r.mins[0]
-			+ ( gap > 320 ? 320 : gap ) * ( 0.75f + 0.5f * random() );
-		y = truckTail->r.currentOrigin[1] + crandom() * ( jog > 320 ? 320 : jog );
-	} else {
-		x = ent->pos2[0] + 256;
-		y = 0;
+	if ( lane < 0 || lane >= truckLanes ) {
+		lane = 0;
 	}
-	if ( y > lane ) {
-		y = lane;
-	} else if ( y < -lane ) {
-		y = -lane;
+	tail = truckTails[lane];
+	laneY = truckLaneY[lane];
+	gap = 64 + 40 * ( truckStage - 1 );
+	jog = 48 + 24 * ( truckStage - 1 );
+	if ( tail && tail != ent ) {
+		x = tail->r.currentOrigin[0] + tail->r.maxs[0] - ent->r.mins[0]
+			+ ( gap > 320 ? 320 : gap ) * ( 0.75f + 0.5f * random() );
+		y = tail->r.currentOrigin[1] + crandom() * ( jog > 128 ? 128 : jog );
+	} else {
+		x = ent->pos2[0] + 256 + 160 * lane;	// stagger the lanes' first trucks
+		y = laneY;
+	}
+	// stay inside this lane's band so the three routes never merge
+	if ( y > laneY + ent->random ) {
+		y = laneY + ent->random;
+	} else if ( y < laneY - ent->random ) {
+		y = laneY - ent->random;
 	}
 
 	ent->s.pos.trBase[0] = x;
 	ent->s.pos.trBase[1] = y;
-	ent->s.pos.trBase[2] = 0;
+	ent->s.pos.trBase[2] = truckLaneZ[lane];
 	ent->s.pos.trType = TR_LINEAR;
 	ent->s.pos.trTime = level.time;
 	VectorSet( ent->s.pos.trDelta, -Truck_Speed( ent ), 0, 0 );
@@ -1809,6 +1823,7 @@ static void Truck_Launch( gentity_t *ent ) {
 	VectorCopy( ent->s.pos.trBase, ent->r.currentOrigin );
 	trap_LinkEntity( ent );
 	truckTail = ent;
+	truckTails[lane] = ent;
 	Truck_RollRider( ent );
 	Truck_MoveRider( ent );
 }
@@ -1964,6 +1979,37 @@ void G_TruckPlaceBot( gentity_t *bot ) {
 
 /*
 ================
+Truck_RescueBots
+
+Bots path on AAS, which knows nothing about moving trucks: they walk off
+roofs, and the world wrap strands the ones behind the runner outside the
+map, falling forever. Any live bot that has dropped below the lowest lane,
+left the road band, or fallen far behind is put straight back on a truck
+ahead — the stage's enemy count stays real instead of evaporating.
+================
+*/
+static void Truck_RescueBots( void ) {
+	gentity_t	*bot, *runner = Truck_Runner();
+	int			i;
+	float		rx = runner ? runner->r.currentOrigin[0] : 0;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		bot = &g_entities[i];
+		if ( !bot->inuse || !bot->client || !( bot->r.svFlags & SVF_BOT )
+				|| bot->health <= 0
+				|| bot->client->sess.sessionTeam == TEAM_SPECTATOR ) {
+			continue;
+		}
+		if ( bot->r.currentOrigin[2] < truckLaneZ[2] - 160
+				|| fabs( bot->r.currentOrigin[1] ) > 1100
+				|| bot->r.currentOrigin[0] < rx - 1600 ) {
+			G_TruckPlaceBot( bot );
+		}
+	}
+}
+
+/*
+================
 G_TruckRunReset
 
 A human spawned: close out the previous run (time, stage, best) and restart
@@ -2033,6 +2079,7 @@ static void Think_Truck( gentity_t *ent ) {
 		if ( runner && runner->r.currentOrigin[0] > TRUCK_WRAP_X ) {
 			Truck_Wrap( runner, TRUCK_WRAP_X );
 		}
+		Truck_RescueBots();
 	}
 
 	stage = Truck_StageNow();
@@ -2081,7 +2128,14 @@ void SP_func_truck( gentity_t *ent ) {
 	G_SpawnFloat( "speed", "320", &ent->speed );
 	G_SpawnFloat( "spawnx", "4096", &spawnx );
 	G_SpawnFloat( "killx", "0", &killx );
-	G_SpawnFloat( "lane", "256", &ent->random );
+	G_SpawnFloat( "jog", "96", &ent->random );		// lateral play inside the lane
+	G_SpawnInt( "laneidx", "0", &ent->count );
+	G_SpawnInt( "lanes", "1", &truckLanes );
+	if ( truckLanes < 1 ) {
+		truckLanes = 1;
+	} else if ( truckLanes > TRUCK_MAX_LANES ) {
+		truckLanes = TRUCK_MAX_LANES;
+	}
 	G_SpawnFloat( "ridex", "0", &ridex );
 	G_SpawnFloat( "ridez", "112", &ridez );
 
@@ -2115,6 +2169,7 @@ void SP_func_truck( gentity_t *ent ) {
 		truckRunStart = level.time;
 		truckStage = 1;
 		truckTail = NULL;
+		memset( truckTails, 0, sizeof( truckTails ) );
 		truckRunHuman = qfalse;
 	}
 	Truck_Launch( ent );
