@@ -662,6 +662,7 @@ typedef struct {
 	int			voiceTime;
 
 	// reward medals
+	int			rewardVoiceReal;	// trap_Milliseconds of last announcer VO (throttle)
 	int			rewardStack;
 	int			rewardTime;
 	int			rewardCount[MAX_REWARDSTACK];
@@ -1266,6 +1267,8 @@ extern	vmCvar_t		cg_drawCrosshair;
 extern	vmCvar_t		cg_swordReticle;	// STRAFE 64: hot-tint the crosshair when an enemy is in katana kill-range
 extern	vmCvar_t		cg_drawCrosshairNames;
 extern	vmCvar_t		cg_drawRewards;
+extern	vmCvar_t		cg_rewardVoice;
+qboolean CG_RewardVoiceOK( void );
 extern	vmCvar_t		cg_drawTeamOverlay;
 extern	vmCvar_t		cg_teamOverlayUserinfo;
 extern	vmCvar_t		cg_crosshairX;

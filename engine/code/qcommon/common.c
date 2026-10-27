@@ -2927,7 +2927,10 @@ void Com_Init( char *commandLine ) {
 	// browser-driven event loop. So default throttling to off.
 	com_maxfps = Cvar_Get ("com_maxfps", "0", CVAR_ARCHIVE);
 #else
-	com_maxfps = Cvar_Get ("com_maxfps", "85", CVAR_ARCHIVE);
+	// STRAFE 64: 144 (not id's 85) — at high speed an 85fps cap on a high-refresh
+	// display beats against vsync (frames alternate 1/2 refreshes, ~26Hz judder)
+	// and reads as the mouse "sticking" exactly when the world moves fast.
+	com_maxfps = Cvar_Get ("com_maxfps", "144", CVAR_ARCHIVE);
 #endif
 	com_blood = Cvar_Get ("com_blood", "1", CVAR_ARCHIVE);
 

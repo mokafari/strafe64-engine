@@ -1339,6 +1339,10 @@ void ClientThink_real( gentity_t *ent ) {
 
 	memset (&pm, 0, sizeof(pm));
 
+	// STRAFE 64: flag bot pmoves — the sword flow-assist magnetism is a
+	// PLAYER aid; bots lunging with it read as hits from beyond blade reach
+	pm.botBlade = ( ent->r.svFlags & SVF_BOT ) != 0;
+
 	// check for the hit-scan gauntlet, don't let the action
 	// go through as an attack unless it actually hits something
 	if ( client->ps.weapon == WP_GAUNTLET && !( ucmd->buttons & BUTTON_TALK ) &&

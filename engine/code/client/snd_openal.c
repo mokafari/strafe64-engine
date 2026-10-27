@@ -2644,7 +2644,7 @@ qboolean S_AL_Init( soundInterface_t *si )
 	// Time-dilation pitch (bullet-time varispeed) — see S_AL_UpdateTimePitch
 	s_timePitch       = Cvar_Get( "s_timePitch",       "1",    CVAR_ARCHIVE );
 	s_timePitchSfx    = Cvar_Get( "s_timePitchSfx",    "1",    CVAR_ARCHIVE );
-	s_timePitchMusic  = Cvar_Get( "s_timePitchMusic",  "1",    CVAR_ARCHIVE );
+	s_timePitchMusic  = Cvar_Get( "s_timePitchMusic",  "0",    CVAR_ARCHIVE );	// music drives through bullet-time (playtest: pitch-bent music reads as broken, not cool)
 	s_timePitchFloor  = Cvar_Get( "s_timePitchFloor",  "0.35", CVAR_ARCHIVE );
 	s_timePitchCurve  = Cvar_Get( "s_timePitchCurve",  "0.75", CVAR_ARCHIVE );
 	s_timePitchCeil   = Cvar_Get( "s_timePitchCeil",   "1.5",  CVAR_ARCHIVE );

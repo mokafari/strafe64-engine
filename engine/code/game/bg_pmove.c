@@ -2388,8 +2388,8 @@ static float PM_SwordMagnetLunge( vec3_t outDir ) {
 	VectorNormalize( flatforward );
 	VectorCopy( flatforward, outDir );
 
-	if ( pm_swordMagnet <= 0.0f ) {
-		return 120.0f;			// steer disabled — plain forward step
+	if ( pm_swordMagnet <= 0.0f || pm->botBlade ) {
+		return 120.0f;			// steer disabled (or a bot — the magnet is a PLAYER assist)
 	}
 
 	VectorCopy( pm->ps->origin, eye );

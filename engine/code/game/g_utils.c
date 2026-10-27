@@ -549,6 +549,89 @@ void G_KillBox (gentity_t *ent) {
 
 }
 
+/*
+=================
+G_ShoveBox
+
+STRAFE 64: spawn/teleport arrivals SHOVE bystanders clear instead of gibbing
+them. Round-start mass respawns on the arena's few spawn points made telefrags
+~10% of all playtest deaths — random, unearned paste. Each occupant is moved to
+the nearest clear spot on a ring search and knocked away; only when no clear
+spot exists (fully walled in) does it fall back to the stock telefrag so two
+bodies never interpenetrate.
+=================
+*/
+void G_ShoveBox( gentity_t *ent ) {
+	int			i, num, j, k;
+	int			touch[MAX_GENTITIES];
+	gentity_t	*hit;
+	vec3_t		mins, maxs, spot, dir;
+	trace_t		tr;
+	qboolean	placed;
+	static const float ring[8][2] = {
+		{ 1, 0 }, { 0.707f, 0.707f }, { 0, 1 }, { -0.707f, 0.707f },
+		{ -1, 0 }, { -0.707f, -0.707f }, { 0, -1 }, { 0.707f, -0.707f }
+	};
+
+	VectorAdd( ent->client->ps.origin, ent->r.mins, mins );
+	VectorAdd( ent->client->ps.origin, ent->r.maxs, maxs );
+	num = trap_EntitiesInBox( mins, maxs, touch, MAX_GENTITIES );
+
+	for ( i = 0 ; i < num ; i++ ) {
+		hit = &g_entities[touch[i]];
+		if ( !hit->client || hit == ent ) {
+			continue;
+		}
+		if ( hit->client->ps.stats[STAT_HEALTH] <= 0 ) {
+			continue;			// corpses don't block
+		}
+
+		// ring search for the nearest clear spot, stepping outward
+		placed = qfalse;
+		for ( j = 0 ; j < 3 && !placed ; j++ ) {
+			float	rad = 48.0f + 36.0f * j;
+
+			for ( k = 0 ; k < 8 ; k++ ) {
+				VectorCopy( hit->client->ps.origin, spot );
+				spot[0] += ring[k][0] * rad;
+				spot[1] += ring[k][1] * rad;
+				spot[2] += 2;	// slack so a floor-flush box doesn't start solid
+
+				trap_Trace( &tr, spot, hit->r.mins, hit->r.maxs, spot,
+					hit->s.number, MASK_PLAYERSOLID );
+				if ( !tr.startsolid && !tr.allsolid ) {
+					placed = qtrue;
+					break;
+				}
+			}
+		}
+
+		if ( !placed ) {
+			// walled in — the stock telefrag is the only honest resolution
+			G_Damage( hit, ent, ent, NULL, NULL,
+				100000, DAMAGE_NO_PROTECTION, MOD_TELEFRAG );
+			continue;
+		}
+
+		// displace + knock away from the arrival
+		trap_UnlinkEntity( hit );
+		VectorCopy( spot, hit->client->ps.origin );
+		VectorSubtract( spot, ent->client->ps.origin, dir );
+		dir[2] = 0;
+		if ( VectorNormalize( dir ) == 0.0f ) {
+			dir[0] = 1;
+		}
+		VectorMA( hit->client->ps.velocity, 380.0f, dir, hit->client->ps.velocity );
+		hit->client->ps.velocity[2] += 140.0f;
+		hit->client->ps.pm_flags |= PMF_TIME_KNOCKBACK;
+		hit->client->ps.pm_time = 120;
+
+		BG_PlayerStateToEntityState( &hit->client->ps, &hit->s, qtrue );
+		VectorCopy( hit->client->ps.origin, hit->r.currentOrigin );
+		trap_LinkEntity( hit );
+	}
+}
+
 //==============================================================================
 
 /*

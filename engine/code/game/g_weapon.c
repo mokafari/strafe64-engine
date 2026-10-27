@@ -288,7 +288,7 @@ void Weapon_Sword( gentity_t *ent ) {
 	// --- AIM-SNAP: bend the cut onto a near-miss enemy so slightly-off aim still
 	// connects clean. Only assists misses within g_swordAimSnap degrees of the cut
 	// line — never a hard turn — and nudges the blade, not the camera. ---
-	if ( g_swordAimSnap.value > 0.0f ) {
+	if ( g_swordAimSnap.value > 0.0f && !( ent->r.svFlags & SVF_BOT ) ) {	// assist bends PLAYER cuts only
 		float		snapCos = cos( DEG2RAD( g_swordAimSnap.value ) );
 		float		reach = SWORD_RANGE + SWORD_RANGE_BONUS;
 		gentity_t	*snap = G_SwordFindTarget( ent, muzzle, axis, reach, snapCos, qtrue );
@@ -375,6 +375,15 @@ void Weapon_Sword( gentity_t *ent ) {
 			tent->s.otherEntityNum = traceEnt->s.number;
 			tent->s.eventParm = DirToByte( tr.plane.normal );
 			tent->s.weapon = ent->s.weapon;
+		}
+
+		// TEMP-friendly telemetry (g_debugDamage): true attacker->victim distance
+		// on every blade connect, to audit perceived reach vs actual reach
+		if ( g_debugDamage.integer ) {
+			G_Printf( "SWORDHIT: %i -> %i dist %.0f (range %.0f, speed %.0f)%s\n",
+				ent->s.number, tr.entityNum,
+				Distance( ent->r.currentOrigin, traceEnt->r.currentOrigin ),
+				range, speed, ( ent->r.svFlags & SVF_BOT ) ? " [bot]" : "" );
 		}
 
 		// COUNTER-HIT: catching an enemy still committed to their own swing bites

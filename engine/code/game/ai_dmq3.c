@@ -3656,7 +3656,7 @@ void BotCheckAttack(bot_state_t *bs) {
 		// orbits at 110-220u and the cut reaches ~160u at speed (SWORD_RANGE +
 		// SWORD_RANGE_BONUS, g_weapon.c). Gate by the sword's reach when the bot
 		// holds it so the swings actually fire and read as visible slashing.
-		float meleeRange = (bs->cur_ps.stats[STAT_WEAPONS] & (1 << WP_SWORD)) ? 220.0f : 60.0f;
+		float meleeRange = (bs->cur_ps.stats[STAT_WEAPONS] & (1 << WP_SWORD)) ? 180.0f : 60.0f;
 		if (VectorLengthSquared(dir) > Square(meleeRange)) {
 			return;
 		}
@@ -5471,7 +5471,7 @@ void BotSetupDeathmatchAI(void) {
 	trap_Cvar_Register(&bot_rocketjump, "bot_rocketjump", "1", 0);
 	trap_Cvar_Register(&bot_grapple, "bot_grapple", "0", 0);
 	trap_Cvar_Register(&bot_fastchat, "bot_fastchat", "0", 0);
-	trap_Cvar_Register(&bot_nochat, "bot_nochat", "0", 0);
+	trap_Cvar_Register(&bot_nochat, "bot_nochat", "1", 0);	// STRAFE 64: bot trash-talk off by default (playtest noise)
 	trap_Cvar_Register(&bot_testrchat, "bot_testrchat", "0", 0);
 	trap_Cvar_Register(&bot_challenge, "bot_challenge", "0", 0);
 	trap_Cvar_Register(&bot_predictobstacles, "bot_predictobstacles", "1", 0);

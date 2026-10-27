@@ -112,6 +112,7 @@ vmCvar_t	cg_drawCrosshair;
 vmCvar_t	cg_swordReticle;
 vmCvar_t	cg_drawCrosshairNames;
 vmCvar_t	cg_drawRewards;
+vmCvar_t	cg_rewardVoice;
 vmCvar_t	cg_crosshairSize;
 vmCvar_t	cg_crosshairX;
 vmCvar_t	cg_crosshairY;
@@ -278,7 +279,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_autoswitch, "cg_autoswitch", "1", CVAR_ARCHIVE },
 	{ &cg_drawGun, "cg_drawGun", "1", CVAR_ARCHIVE },
 	{ &cg_zoomFov, "cg_zoomfov", "22.5", CVAR_ARCHIVE },
-	{ &cg_fov, "cg_fov", "90", CVAR_ARCHIVE },
+	{ &cg_fov, "cg_fov", "105", CVAR_ARCHIVE },	// STRAFE 64: 90 reads claustrophobic at flow speeds
 	{ &cg_drawSpeed, "cg_drawSpeed", "1", CVAR_ARCHIVE },
 	{ &cg_speedFov, "cg_speedFov", "1", CVAR_ARCHIVE },
 	{ &cg_flowColor, "cg_flowColor", "0", CVAR_ARCHIVE },
@@ -333,6 +334,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_swordReticle, "cg_swordReticle", "1", CVAR_ARCHIVE },
 	{ &cg_drawCrosshairNames, "cg_drawCrosshairNames", "1", CVAR_ARCHIVE },
 	{ &cg_drawRewards, "cg_drawRewards", "1", CVAR_ARCHIVE },
+	{ &cg_rewardVoice, "cg_rewardVoice", "2", CVAR_ARCHIVE },
 	{ &cg_crosshairSize, "cg_crosshairSize", "24", CVAR_ARCHIVE },
 	{ &cg_crosshairHealth, "cg_crosshairHealth", "1", CVAR_ARCHIVE },
 	{ &cg_crosshairX, "cg_crosshairX", "0", CVAR_ARCHIVE },
