@@ -58,7 +58,9 @@ class Granite(Marble):
             h = base - i * step
             z1 = rise * (i + 1)
             # polished sides, flamed (grippy-looking) walking top
-            self.box((-h, -h, rise * i), (h, h, z1), "granite_grey",
+            # polished Absolute Black faces (the salt-and-pepper grey read as
+            # noise at this scale), flamed charcoal walking top
+            self.box((-h, -h, rise * i), (h, h, z1), "granite_black",
                      faces={"+z": "granite_flamed"})
             # brass nosing on the edge + neon under the lip on the shade sides
             for (mn, mx) in (((-h, -h, z1), (h, -h + 6, z1 + 2)), ((-h, h - 6, z1), (h, h, z1 + 2)),
@@ -113,7 +115,7 @@ class Granite(Marble):
                 else:
                     y0, y1 = sorted((sa * r0, sa * r1))
                     x0, x1 = sorted((off, off + side * 24))
-                self.box((x0, y0, 48), (x1, y1, 368), "granite_grey")
+                self.box((x0, y0, 48), (x1, y1, 368), "granite_black")
             # launch block at the inner end: 96u up, reaches tier 2 (192) with an air jump
             lr = 612.0
             # offset 140u to the side so it doesn't block the stairway's foot

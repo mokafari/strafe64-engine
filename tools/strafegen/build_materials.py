@@ -37,6 +37,7 @@ SOURCES = {
     "granite_grey":   ("granite_grey", 1.0, 2.0),
     "granite_flamed": ("granite_flamed", 2.5, 1.2),
     "brass":          ("brass_trim", 1.0, 2.0),
+    "granite_black":  ("granite_black", 1.0, 2.5),
 }
 
 
@@ -54,7 +55,7 @@ def mirror(im):
 # turns veins into kaleidoscope diamonds. Regular grids (panels, joints, tiles,
 # boards, grating) keep the 2x2 mirror, which their symmetry hides.
 ORGANIC = {"weather", "marble_white", "marble_black", "granite_grey",
-           "granite_flamed", "polished", "brass"}
+           "granite_flamed", "polished", "brass", "granite_black"}
 
 
 def seamless(im, feather=0.22):

@@ -145,7 +145,7 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
         for sec, info in course.sections:
             extra = (" " + " ".join(f"{k}={v}" for k, v in info.items())) if info else ""
             print(f"    {sec}{extra}")
-        print(f"    + {os.path.basename(st['pk3'])} (standalone baked pk3)")
+        print(f"    + {os.path.basename(st['pk3'])} (baked; deploy with zzz_strafe64_shader.pk3)")
         print(f"    play: copy into baseoa and run \\map {name}")
         return st["pk3"]
 
