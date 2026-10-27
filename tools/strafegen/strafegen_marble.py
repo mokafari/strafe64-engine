@@ -254,9 +254,13 @@ class Marble(Showcase):
             yaw = math.degrees(math.atan2(-y, -x)) % 360
             self.place("info_player_deathmatch", x, y, 40, angle=f"{yaw:.0f}")
         self.place("info_player_intermission", -700, 700, 820, angle="315")
-        for cls, x, y, z in (("weapon_rocketlauncher", 0, -A - 140, 24),
+        for cls, x, y, z in (("weapon_shotgun", 0, -A - 140, 24),
+                             ("weapon_rocketlauncher", 0, 120, AH + 48),   # earned: up on the atrium roof
                              ("item_armor_combat", 0, A + 140, 24),
-                             ("item_quad", 0, 0, AH + 48)):
+                             ("item_quad", 0, 0, AH + 48),
+                             # E/W counterweights so the rocket isn't the only gun
+                             ("weapon_plasmagun", A + 140, 0, 24),
+                             ("weapon_lightning", -A - 140, 120, 24)):
             self.place(cls, x, y, z)
 
         hull = __import__("strafegen_geom").make_skybox(-2560, -2560, -420, 2560, 2560, 2600)
