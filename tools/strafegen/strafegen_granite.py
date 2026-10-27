@@ -69,6 +69,26 @@ class Granite(Marble):
             self.neon((-h, -h - 3, z1 - 14), (h, -h, z1 - 10))
         blockers.append((0.0, 0.0, base * 1.4142 + 24))
         top = rise * tiers
+        # ziggurat stairways: a straight flight of 16u steps (walkable -- no
+        # jump needed) up the middle of each face to the summit, white marble
+        # with brass nosings. Bots path the tiers via these (playtest tracking:
+        # only 2 of 24 bot samples were on the ziggurat before), and 96u tier
+        # hops stay the fast route for players.
+        nst = int(top // 16)
+        run = (base - (base - step * (tiers - 1))) / nst
+        for k in range(4):
+            for j in range(nst):
+                r0 = base - j * run
+                z1 = 16.0 * (j + 1)
+                if k == 0:
+                    mn, mx = (r0 - run, -64, 0), (r0 + 20, 64, z1)
+                elif k == 1:
+                    mn, mx = (-64, r0 - run, 0), (64, r0 + 20, z1)
+                elif k == 2:
+                    mn, mx = (-r0 - 20, -64, 0), (-r0 + run, 64, z1)
+                else:
+                    mn, mx = (-64, -r0 - 20, 0), (64, -r0 + run, z1)
+                self.box(mn, mx, "marble_white")
         self.place("item_quad", 0, 0, top + 24)
         self.place("item_armor_combat", 0, -(base - step) - 40, rise * 2 + 24)
         self.place("item_health_large", 0, (base - step) + 40, rise * 2 + 24)
@@ -96,7 +116,8 @@ class Granite(Marble):
                 self.box((x0, y0, 48), (x1, y1, 368), "granite_grey")
             # launch block at the inner end: 96u up, reaches tier 2 (192) with an air jump
             lr = 612.0
-            lx, ly = ca * lr, sa * lr
+            # offset 140u to the side so it doesn't block the stairway's foot
+            lx, ly = ca * lr - sa * 140, sa * lr + ca * 140
             self.box((lx - 48, ly - 48, 0), (lx + 48, ly + 48, 96), "marble_black",
                      faces={"+z": "granite_flamed"})
             for rr in range(680, 901, 80):        # a line of discs along the run
@@ -112,7 +133,10 @@ class Granite(Marble):
                      (sx + 112, sy + (224 if sy > 0 else -96), 256), "marble_black",
                      faces={"+z": "granite_flamed"})
             self.neon((sx - 3, sy - 90, 16), (sx + 3, sy + 90, 19))
-            self.place("weapon_railgun", sx, sy + (160 if sy > 0 else -160), 280)
+            # an armor shard rewards the wall-jump; the railgun lives on tier 4
+            # (bots chased it here and stalled under the shafts -- they can't
+            # wall-jump 256u, though AAS thinks they can)
+            self.place("item_armor_shard", sx, sy + (160 if sy > 0 else -160), 280)
             blockers.append((sx, sy, 200))
 
         # ---- spawns -------------------------------------------------------------
@@ -126,7 +150,8 @@ class Granite(Marble):
             yaw = math.degrees(math.atan2(-y, -x)) % 360
             self.place("info_player_deathmatch", x, y, 40, angle=f"{yaw:.0f}")
         self.place("info_player_intermission", -760, 0, 700, angle="0")
-        self.place("weapon_rocketlauncher", 0, -(base) - 60, 24)
+        # (r 620 put it INSIDE the south launch block -- "in solid, not reachable")
+        self.place("weapon_rocketlauncher", 160, -(base) - 80, 24)
         # weapons + health ON the tiers: bots go where the items are, and the
         # tiers are where the vertical fights should happen (playtest 1: they
         # loitered at the plaza edge instead)
@@ -136,7 +161,8 @@ class Granite(Marble):
                              ("weapon_lightning", h2, -h2, rise * 2),
                              ("weapon_grenadelauncher", -h2, h2, rise * 2),
                              ("item_health", h3, 0, rise * 3), ("item_health", -h3, 0, rise * 3),
-                             ("item_armor_shard", 0, h3, rise * 3), ("item_armor_shard", 0, -h3, rise * 3)):
+                             ("item_armor_shard", 0, h3, rise * 3), ("item_armor_shard", 0, -h3, rise * 3),
+                             ("weapon_railgun", h3 - step, h3 - step, rise * 4)):
             self.place(cls, x, y, z + 24)
 
         hull = make_skybox(-2560, -2560, -420, 2560, 2560, 2600)
