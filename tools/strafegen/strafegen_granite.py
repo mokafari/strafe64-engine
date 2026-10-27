@@ -94,8 +94,9 @@ class Granite(Marble):
                         mn, mx = (-64, -o1, 0), (64, -o0, zt)
                     self.box(mn, mx, "marble_white")
         self.place("item_quad", 0, 0, top + 24)
-        self.place("item_armor_combat", 0, -(base - step) - 40, rise * 2 + 24)
-        self.place("item_health_large", 0, (base - step) + 40, rise * 2 + 24)
+        # off-axis: the per-tier stair flights now occupy the centre lines
+        self.place("item_armor_combat", 180, -(base - step) - 40, rise * 2 + 24)
+        self.place("item_health_large", -180, (base - step) + 40, rise * 2 + 24)
 
         # summit crown: a black marble ring of four posts with neon caps
         for (x, y) in ((-80, -80), (80, -80), (-80, 80), (80, 80)):
@@ -165,7 +166,13 @@ class Granite(Marble):
             self.place("info_player_deathmatch", x, y, 40, angle=f"{yaw:.0f}")
         self.place("info_player_intermission", -760, 0, 700, angle="0")
         # (r 620 put it INSIDE the south launch block -- "in solid, not reachable")
-        self.place("weapon_rocketlauncher", 160, -(base) - 80, 24)
+        self.place("weapon_rocketlauncher", -240, -(base) - 80, 24)   # clear of the launch block
+        # a strong weapon at every corridor mouth: the choke where corridor
+        # runs meet the stair feet (playtests were all machinegun/gauntlet --
+        # bots weren't holding anything that finishes a fight)
+        for cls, x, y in (("weapon_shotgun", 160, base + 80), ("weapon_plasmagun", base + 80, -160),
+                          ("weapon_lightning", -(base + 80), 160), ("weapon_rocketlauncher", 240, base + 80)):
+            self.place(cls, x, y, 24)
         # weapons + health ON the tiers: bots go where the items are, and the
         # tiers are where the vertical fights should happen (playtest 1: they
         # loitered at the plaza edge instead)
@@ -174,8 +181,9 @@ class Granite(Marble):
                              ("weapon_plasmagun", -h1, -h1, rise * 1),
                              ("weapon_lightning", h2, -h2, rise * 2),
                              ("weapon_grenadelauncher", -h2, h2, rise * 2),
-                             ("item_health", h3, 0, rise * 3), ("item_health", -h3, 0, rise * 3),
-                             ("item_armor_shard", 0, h3, rise * 3), ("item_armor_shard", 0, -h3, rise * 3),
+                             # off the centre axes (the stair flights live there)
+                             ("item_health", h3, 140, rise * 3), ("item_health", -h3, -140, rise * 3),
+                             ("item_armor_shard", -140, h3, rise * 3), ("item_armor_shard", 140, -h3, rise * 3),
                              ("weapon_railgun", h3 - step, h3 - step, rise * 4)):
             self.place(cls, x, y, z + 24)
 
