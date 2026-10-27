@@ -335,6 +335,105 @@ If a new asset or effect doesn't sit naturally on that board, it's off-brand.
 
 ---
 
+## 12. Ethereal brutalism — the identity layer (2026-10)
+
+The pillars above still hold; this section pins down the *material* the world
+is made of and the one idea everything hangs on. Before it, the game borrowed
+its look from too many sources at once (stock OpenArena maps and pickups,
+Source dev textures, NERV menus, a Bryce sky, a PSX preset, a bodycam filter)
+and read as "a Quake mod". The identity is:
+
+> **Time is the material.** Raw brutalist concrete, lit at a violet dusk,
+> where the only saturated colour is neon, and where the frame itself shows
+> the state of the world clock.
+
+| Full speed | Same view, world frozen (bullet-time) |
+|---|---|
+| ![full speed](screenshots/identity/ethereal-full-speed.jpg) | ![frozen](screenshots/identity/ethereal-frozen.jpg) |
+
+### 12.1 The four rules
+
+1. **Concrete is the only bulk material.** Board-formed brutalist concrete
+   (`crete_eth`: timber-board grain + tie-hole grid), clad in offset blocks at
+   many scales the way lun3dm5 is — never fine teeth, never painted. Form
+   comes from light, not from colour.
+2. **Light, not paint, carries colour.** Baked lightmaps (q3map2) with a hard
+   warm-white sun throwing a shadow off every cladding step, blue-grey shade
+   that stays readable (never black), cyan spill from the neon, a close
+   lavender haze for depth. The
+   concrete itself stays grey; if a surface reads as pink or blue *paint*, the
+   lighting is too strong.
+3. **Neon is the only saturated colour, and it always means something.**
+   Ledges and trim are cyan glow strips (wayfinding), accents keep their glow
+   (pads, gates, hazards), pickups are tinted holograms. Nothing decorative is
+   allowed to be saturated.
+4. **The frame wears the clock.** Bullet-time drains the grade cool and
+   desaturated; momentum pushes it warm and vivid. You can read the world's
+   speed from colour alone.
+
+### 12.2 Palette (authoritative)
+
+| Role | Value | Where |
+|---|---|---|
+| Concrete material | board-formed, Codex image gen, mirror-tiled 1024, ~13u boards | `skytex/crete_eth.tga`, shader `crete_eth` / `crete_eth_lm` |
+| Concrete walls / bulk | vertex `(214,216,228)` × `crete_eth` | `strafegen_palettes.PAL_ETHER` |
+| Concrete floors | vertex `(222,220,226)` | `PAL_ETHER_FLOOR` |
+| Key light (raking sunset) | `(0.40,0.31,0.25)`, elevation ~28° | `strafegen_bsp._ETH_KEY_RGB` |
+| Skylight / shadow fill | `(0.19,0.21,0.29)` / cyan spill `(0.04,0.09,0.13)` | `_ETH_SKY_AMB`, `_ETH_FILL_RGB` |
+| Runtime sun (unbaked maps) | `(1.0,0.74,0.62)` ×38, az 30°, el 22° | `strafegen_gfx.ETHER_SUN_*` (`sky_ether`) |
+| Baked sun / skylight | `(1.0,0.88,0.78)` ×240, el 48° / skylight 220 | `strafegen_gfx.ETHER_BAKE_*` (q3map_sun in `sky_ether_bk`) |
+| Baked shade floor | `_ambient 30`, `_color 0.60 0.65 0.78`, `-scale 2.5` | `strafegen_bake.BAKE_AMBIENT` / `BAKE_SCALE` |
+| Neon as light | cyan `q3map_lightRGB 0.35 0.85 1.0`; strips ×900, pads ×150 | `glow_wall` / `glow_floor` (bake only) |
+| Haze | `( 0.34 0.30 0.48 )` @ 3400u | `fog_ether` shader |
+| Neon trim (wayfinding) | `(80,220,255)` cyan, glow | `PAL_NEON_TRIM` |
+| Pickups: health / armor / powerup / other | cyan / magenta / amber / cool white | `cg_ents.c CG_ItemHolo` |
+| Character rim | `(0.35,0.85,1.0)`, scale 0.7, exp 4.0 | `r_rimColor*`, `r_rimScale`, `r_rimExp` |
+
+### 12.3 The pieces in code
+
+- **World:** ethereal is the generator default; bake it for the real look:
+  `strafegen.py 8224 --killbox --bake --pk3` (~2–3 min per map). The block
+  cladding is `strafegen_geom.greeble_brutal`. `tools/strafegen/regen_shipped.py`
+  rebuilds every shipped map from one manifest. `--theme default` / `concrete`
+  still reproduce the old looks byte-identically. Always ship the regenerated
+  shared `zzz_strafe64_shader.pk3`: it carries `sky_ether`, `fog_ether`,
+  `s64itemHolo`, `crete_eth`, and the baked-map `*_lm` / `*_bk` variants.
+  (Baked maps must use those uniquely named variants: a map pk3's own
+  `strafe64.shader` always loses to the shared pak's.)
+- **Time-grade:** `cg_timeGrade 1` (default) drives the renderer's
+  non-archived `r_gradeLiveSat` / `r_gradeLiveTemp` from the world timescale
+  and `CG_Flow`. Tune with `cg_timeGradeFreezeSat/Temp` (0.62 / −0.14) and
+  `cg_timeGradeSurgeSat/Temp` (1.22 / +0.08). The killcam owns the grade
+  while it runs.
+- **Pickups:** `cg_itemHolo 1` (default) renders every item, barrel and ring as
+  an additive tinted hologram with the NERV matrix pattern scrolling over it.
+  `cg_itemHolo 0` gives the stock OpenArena look.
+
+  | Stock | Hologram |
+  |---|---|
+  | ![stock](screenshots/identity/item-stock.jpg) | ![holo](screenshots/identity/item-holograms.jpg) |
+
+- **Silhouettes:** the fresnel rim is neon cyan and tight, so bodies cut out of
+  the concrete. Below, left = scale 0.45 / exp 2.7, right = scale 0.9 / exp 4.5;
+  the shipped default sits between them (0.7 / 4.0). The old default was a
+  fainter pale blue (0.32 / 2.7).
+  ![rim](screenshots/identity/rim-silhouette.jpg)
+
+### 12.4 Still open
+
+- The stock OA maps (e.g. `aggressor`) still break the look; ship only
+  strafegen maps. The `dojo_*` baselines stay in the old look on purpose.
+- A Codex-generated sky (cloud sea under a dusk megastructure skyline) to
+  replace the Bryce dusk, like lun3dm5's photo sky.
+- Replace the HUD weapon icons (still stock OpenArena) with line icons in the
+  neon/matrix style.
+- Give each signature moment (perfect parry, speed milestone, killcam) one
+  fixed visual treatment drawn from this palette.
+- Put audio-reactive shader stages on the neon trim so the wayfinding pulses
+  with the music.
+
+---
+
 *Maintainer note: this file is the intent. When you change a palette value,
 font, or threshold in code, update the authoritative tables here so this stays
 the single source of truth for the look.*

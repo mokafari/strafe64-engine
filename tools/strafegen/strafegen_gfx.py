@@ -212,10 +212,71 @@ def gfx_shaders():
     return COMPONENT_SHADERS
 
 
+# Ethereal theme sun: low, dim and peach, raking in near the horizon. The shared
+# dusk sun (intensity 100 at 38deg) floods up-facing concrete to white under HDR
+# + bloom; the ethereal look wants the floors to sit in violet shade with only
+# the raking light catching the cube faces.
+ETHER_SUN_COLOR     = (1.00, 0.74, 0.62)
+ETHER_SUN_INTENSITY = 38.0
+ETHER_SUN_AZIMUTH   = 90.0    # the photo sky's sun lands at az +90 (ethsky_from_pano)
+ETHER_SUN_ELEVATION = 22.0
+ETHER_SUN_SHADOW    = 0.6
+# The BAKE (q3map2: q3map_sun / q3map_skylight) is tuned separately from the
+# runtime sun above: q3map2 needs a much stronger, higher sun to clear arena
+# walls and reach the floors, or enclosed layouts bake near-black.
+ETHER_BAKE_SUN       = 240.0
+ETHER_BAKE_ELEVATION = 48.0
+ETHER_BAKE_SKYLIGHT  = (220, 4)
+ETHER_BAKE_COLOR     = (1.00, 0.88, 0.78)   # warm WHITE: peach x concrete read orange
+
+
+def ether_sky(shader_script, with_sun=True):
+    """Append textures/strafe64/sky_ether: the ethereal photo sky (Codex image gen
+    -> ethsky_from_pano.py: cirrus over a low gold sun, a cloud sea below, faint
+    megastructures on the horizon) as a static skybox, with the theme's sun
+    keywords (runtime q3gl2_sun + baked q3map_sun/skylight), or none when gfx is
+    off. Its photo sun sits at az ~29deg, matching ETHER_SUN_AZIMUTH.
+    Idempotent."""
+    if "textures/strafe64/sky_ether" in shader_script:
+        return shader_script
+    sun = ""
+    if with_sun:
+        r, g, b = ETHER_SUN_COLOR
+        sun = ("\tq3gl2_sun %g %g %g %g %g %g %g\n"
+               % (r, g, b, ETHER_SUN_INTENSITY, ETHER_SUN_AZIMUTH,
+                  ETHER_SUN_ELEVATION, ETHER_SUN_SHADOW)
+               + "\tq3map_sun %g %g %g %g %g %g\n"
+               % (ETHER_BAKE_COLOR + (ETHER_BAKE_SUN, ETHER_SUN_AZIMUTH,
+                                      ETHER_BAKE_ELEVATION))
+               + "\tq3map_skylight %g %g\n" % ETHER_BAKE_SKYLIGHT
+               # neutral sky bounce so the warm/blue photo doesn't tint it all
+               + "\tq3map_lightRGB 0.82 0.86 1.0\n")
+    block = ("textures/strafe64/sky_ether\n{\n"
+             "\tqer_editorimage textures/strafe64/env/ethsky_ft.tga\n"
+             "\tsurfaceparm noimpact\n\tsurfaceparm nolightmap\n"
+             "\tsurfaceparm nomarks\n\tsurfaceparm sky\n"
+             + sun +
+             "\tskyparms textures/strafe64/env/ethsky - -\n}\n")
+    night = ""
+    if with_sun:
+        # moon key: cool, dim, high enough to rim the masses; the neon carries
+        # the rest. Photo moon sits at the same bearing as the dusk sun.
+        night = ("\tq3map_sun 0.70 0.80 1.0 70 90 38\n"   # photo moon at az +90
+                 + "\tq3map_skylight 45 4\n\tq3map_lightRGB 0.55 0.65 1.0\n")
+    night_block = ("textures/strafe64/sky_ether_night\n{\n"
+                   "\tqer_editorimage textures/strafe64/env/ethnight_ft.tga\n"
+                   "\tsurfaceparm noimpact\n\tsurfaceparm nolightmap\n"
+                   "\tsurfaceparm nomarks\n\tsurfaceparm sky\n"
+                   + night +
+                   "\tskyparms textures/strafe64/env/ethnight - -\n}\n")
+    return (shader_script + "\n// ETHEREAL SKY - Codex photo sky: cloud sea, low gold sun\n"
+            + block + "// ETHEREAL NIGHT SKY - moonlit cloud sea, lit megastructures\n"
+            + night_block)
+
 def augment(shader_script):
     """Full transform applied by strafegen at pk3-build time: arm the sun on the
     sky shader and append the component materials."""
-    return inject_sun(shader_script) + "\n" + COMPONENT_SHADERS
+    return ether_sky(inject_sun(shader_script)) + "\n" + COMPONENT_SHADERS
 
 
 # ======================================================================

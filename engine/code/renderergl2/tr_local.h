@@ -1636,6 +1636,7 @@ typedef struct {
 	shaderProgram_t ssaoShader;
 	shaderProgram_t depthBlurShader[4];
 	shaderProgram_t depthOfFieldShader;	// STRAFE 64 cinematic DoF
+	shaderProgram_t bloomShader;		// STRAFE 64 bloom bright-pass / blur / composite
 	shaderProgram_t colorGradeShader;	// STRAFE 64 FXAA + grade + vignette + grain
 	shaderProgram_t bodycamShader;		// STRAFE 64 bodycam: warp/chroma/crunch/scanline/grain
 	shaderProgram_t testcubeShader;
@@ -1767,6 +1768,7 @@ extern  cvar_t  *r_arb_vertex_array_object;
 extern  cvar_t  *r_ext_direct_state_access;
 
 extern	cvar_t	*r_nobind;						// turns off binding to appropriate textures
+extern	cvar_t	*r_gpuTimers;					// STRAFE 64: average GPU pass timestamps over N frames
 extern	cvar_t	*r_singleShader;				// make most world faces use default shader
 extern	cvar_t	*r_roundImagesDown;
 extern	cvar_t	*r_colorMipLevels;				// development aid to see texture mip usage
@@ -1864,6 +1866,8 @@ extern  cvar_t  *r_fxaa;			// antialias inside the grade pass
 extern  cvar_t  *r_gradeContrast;	// S-curve contrast (1 = neutral)
 extern  cvar_t  *r_gradeSaturation;	// saturation (1 = neutral)
 extern  cvar_t  *r_gradeTemp;		// white balance (+ = warmer)
+extern  cvar_t  *r_gradeLiveSat;	// game-driven saturation multiplier (time-grade)
+extern  cvar_t  *r_gradeLiveTemp;	// game-driven white-balance offset (time-grade)
 extern  cvar_t  *r_vignette;		// edge darkening strength
 extern  cvar_t  *r_filmGrain;		// animated film grain strength
 
@@ -2588,5 +2592,22 @@ void RE_TakeVideoFrame( int width, int height,
 
 void R_ConvertTextureFormat( const byte *in, int width, int height, GLenum format, GLenum type, byte *out );
 
+
+// STRAFE 64 GPU pass timers (tr_gputimer.c)
+typedef enum {
+	GPUT_FRAME,		// backend frame start
+	GPUT_SCENE,		// post-process start: shadows + world + entities done
+	GPUT_TONEMAP,	// MSAA resolve + SSAO + tonemap/autoexposure done
+	GPUT_BLOOM,		// bloom + sunrays done
+	GPUT_DOF,		// depth of field done
+	GPUT_HUD,		// present start: bokeh + 2D/HUD done
+	GPUT_PRESENT,	// grade/FXAA/bodycam present blit done
+	GPUT_COUNT
+} gpuTimerMark_t;
+
+void R_GpuTimerInit(void);
+void R_GpuTimerShutdown(void);
+void R_GpuMark(gpuTimerMark_t mark);
+void R_GpuTimerEndFrame(void);
 
 #endif //TR_LOCAL_H

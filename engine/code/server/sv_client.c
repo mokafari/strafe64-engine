@@ -339,7 +339,14 @@ void SV_DirectConnect( netadr_t from ) {
 #endif
 
 	Com_DPrintf ("SVC_DirectConnect ()\n");
-	
+
+	// Prevent using connect as an amplifier (from Quake3e)
+	if ( SVC_RateLimitAddress( from, 10, 1000 ) ) {
+		Com_DPrintf( "SV_DirectConnect: rate limit from %s exceeded, dropping request\n",
+			NET_AdrToString( from ) );
+		return;
+	}
+
 	// Check whether this client is banned.
 	if(SV_IsBanned(&from, qfalse))
 	{
@@ -385,7 +392,33 @@ void SV_DirectConnect( netadr_t from ) {
 			break;
 		}
 	}
-	
+
+	// cap simultaneous connections per IP so one host can't fill the server
+	// (from Quake3e). The slot a reconnecting client will reuse doesn't count.
+	if ( !NET_IsLocalAddress( from ) ) {
+		static leakyBucket_t bucket;
+
+		for ( i = 0, count = 0, cl = svs.clients; i < sv_maxclients->integer; i++, cl++ ) {
+			if ( cl->state < CS_CONNECTED || cl->netchan.remoteAddress.type == NA_BOT ) {
+				continue;
+			}
+			if ( !NET_CompareBaseAdr( from, cl->netchan.remoteAddress ) ) {
+				continue;
+			}
+			if ( cl->netchan.qport == qport || from.port == cl->netchan.remoteAddress.port ) {
+				continue;
+			}
+			count++;
+		}
+		if ( count >= sv_maxclientsPerIP->integer ) {
+			// avoid excessive outgoing traffic
+			if ( !SVC_RateLimit( &bucket, 10, 200 ) ) {
+				NET_OutOfBandPrint( NS_SERVER, from, "print\nToo many connections from your address.\n" );
+			}
+			return;
+		}
+	}
+
 	// don't let "ip" overflow userinfo string
 	if ( NET_IsLocalAddress (from) )
 		ip = "localhost";

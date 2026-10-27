@@ -635,6 +635,7 @@ void	FS_GetModDescription( const char *modDir, char *description, int descriptio
 
 fileHandle_t	FS_FOpenFileWrite_HomeConfig( const char *filename );
 fileHandle_t	FS_FOpenFileWrite_HomeData( const char *filename );
+const char	*FS_HomeDataOSPathForWrite( const char *filename );
 fileHandle_t	FS_FOpenFileWrite_HomeState( const char *filename );
 fileHandle_t	FS_FOpenFileAppend_HomeData( const char *filename );
 fileHandle_t	FS_FCreateOpenPipeFile( const char *filename );

@@ -331,6 +331,9 @@ static void CG_Obituary( entityState_t *ent ) {
 		case MOD_KICK:
 			message = "ate a flying kick from";
 			break;
+		case MOD_SWORD:
+			message = "was cut down by";
+			break;
 		default:
 			message = "was killed by";
 			break;

@@ -45,6 +45,10 @@ textures/strafe64/wall
 // so one shared pak serves both themes.
 textures/strafe64/crete
 {
+	// 64px editor image: q3map2 projects baked .map faces by IMAGE size, so the
+	// 1024 photo would repeat every 512u in a bake (16x too big); this pins it
+	// to the same 64u grid the direct BSP writer uses (write_map scale 1.0)
+	qer_editorimage textures/strafe64/d_wall.tga
 	surfaceparm nolightmap
 	{
 		map textures/strafe64/crete.tga
@@ -79,6 +83,10 @@ textures/strafe64/crete
 textures/strafe64/glow_floor
 {
 	surfaceparm nolightmap
+	// bake only (q3map2): neon pads/gates light the concrete around them
+	q3map_surfacelight 150
+	q3map_lightRGB 0.35 0.85 1.0
+	q3map_lightSubdivide 64
 	{
 		map textures/strafe64/d_floor.tga
 		rgbGen exactVertex
@@ -92,6 +100,10 @@ textures/strafe64/glow_floor
 textures/strafe64/glow_wall
 {
 	surfaceparm nolightmap
+	// bake only (q3map2): the thin neon reveals throw cyan light on the cladding
+	q3map_surfacelight 900
+	q3map_lightRGB 0.35 0.85 1.0
+	q3map_lightSubdivide 32
 	{
 		map textures/strafe64/d_wall.tga
 		rgbGen exactVertex
@@ -152,6 +164,21 @@ textures/strafe64/sky
 		tcMod scroll -0.010 0.0035
 	}
 }
+// CONCRETE (ETHEREAL) - board-formed brutalist concrete: horizontal timber-board
+// grain with a regular tie-hole grid (Codex image gen, mirror-tiled to a seamless
+// 1024 in skytex/crete_eth.tga). Same vertex-lit form as crete; the bake routes
+// it to crete_eth_lm. ~10 boards per tile at scale 0.5 => ~13u boards, close to
+// real formwork against a 56u player.
+textures/strafe64/crete_eth
+{
+	qer_editorimage textures/strafe64/d_wall.tga	// 64u bake projection (see crete)
+	surfaceparm nolightmap
+	{
+		map textures/strafe64/crete_eth.tga
+		tcMod scale 0.5 0.5
+		rgbGen exactVertex
+	}
+}
 // PHOTOREAL SKY — the concrete (lun3dm5) theme's sky. A STATIC photo skybox
 // (env/realsky_{rt,lf,ft,bk,up,dn}, baked from a sky photo by
 // skybox_from_photo.py: bright blue daylight, real cumulus, mountains on the
@@ -180,6 +207,46 @@ textures/strafe64/fog_day
 	surfaceparm nonsolid
 	surfaceparm trans
 	fogparms ( 0.62 0.70 0.82 ) 5200
+}
+// ETHER FOG — the ethereal theme's haze: lavender, and closer than the day fog,
+// so the concrete masses dissolve into soft violet light with distance and the
+// neon strips glow through it. That near-volumetric falloff is most of the
+// "ethereal" read; the time-grade and bloom do the rest.
+textures/strafe64/fog_ether
+{
+	qer_editorimage textures/common/fog
+	surfaceparm fog
+	surfaceparm nolightmap
+	surfaceparm nomarks
+	surfaceparm nonsolid
+	surfaceparm trans
+	// the photo sky's horizon haze (sampled just under the horizon line)
+	fogparms ( 0.58 0.50 0.52 ) 5200
+}
+// ETHER NIGHT FOG - deep indigo haze for the night variant: the cloud sea's
+// moonlit tone, far enough that the neon reads crisp up close.
+textures/strafe64/fog_ether_night
+{
+	qer_editorimage textures/common/fog
+	surfaceparm fog
+	surfaceparm nolightmap
+	surfaceparm nomarks
+	surfaceparm nonsolid
+	surfaceparm trans
+	fogparms ( 0.10 0.12 0.20 ) 4200
+}
+// PLAYER CLIP - invisible wall that stops players and bots only (shots pass).
+// Our own name, not common/playerclip: q3map2 bakes against this script alone.
+textures/strafe64/clip
+{
+	qer_trans 0.4
+	surfaceparm nodraw
+	surfaceparm nolightmap
+	surfaceparm nonsolid
+	surfaceparm trans
+	surfaceparm nomarks
+	surfaceparm noimpact
+	surfaceparm playerclip
 }
 // global atmospheric fog volume. The whole play area is wrapped in one
 // CONTENTS_FOG brush (see write()), and every non-sky world surface is tagged
@@ -308,6 +375,31 @@ s64console
 	}
 }
 
+// ITEM HOLOGRAM - every pickup renders through this (cgame CG_ItemHolo,
+// cg_itemHolo 1) instead of its stock OpenArena skin: a faint additive body in
+// the item's tint (rgbGen entity: health cyan, armor magenta, powerups amber)
+// with the NERV matrix pattern env-mapped over it, scrolling, so pickups read
+// as projected light in the dusk haze rather than plastic props. Additive, so
+// it blooms and never darkens the scene.
+s64itemHolo
+{
+	nopicmip
+	cull none
+	{
+		map $whiteimage
+		blendFunc GL_SRC_ALPHA GL_ONE
+		rgbGen entity
+		alphaGen const 0.30
+	}
+	{
+		map textures/strafe64/matrix.tga
+		blendFunc GL_SRC_ALPHA GL_ONE
+		rgbGen entity
+		alphaGen const 0.9
+		tcGen environment
+		tcMod scroll 0 0.35
+	}
+}
 // Main-menu background: same NERV terminal plate (slightly deeper, slower
 // drift). Replaces OA's logo menuback via the same unique-name mechanism.
 s64menuback
@@ -333,4 +425,12 @@ s64menuback
 def build_shader(gfx_on=True):
     """The scripts/strafe64.shader text. With gfx_on, inject the q3gl2 sun and
     append the component materials (strafegen_gfx.augment); else vanilla identity."""
-    return gfx.augment(SHADER_SCRIPT) if gfx_on else SHADER_SCRIPT
+    import strafegen_materials as mats
+    base = (gfx.augment(SHADER_SCRIPT) if gfx_on
+            else gfx.ether_sky(SHADER_SCRIPT, with_sun=False)) + mats.shader_blocks()
+    # baked-map materials ride in the SAME shared pak under their own names
+    # (*_lm lightmapped, *_bk sun-less sky) so nothing can override them: a
+    # baked map pk3 shipping its own scripts/strafe64.shader always lost to the
+    # shared pak's, and its surfaces silently rendered with the vertex shaders.
+    import strafegen_bake as bake
+    return base + bake.baked_variants(base)

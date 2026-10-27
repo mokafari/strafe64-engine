@@ -76,10 +76,16 @@ void main()
 	vec3  accum = center;
 	float wsum  = 1.0;
 
+	// taps scale with the disc's area (~0.6 per px^2, 8..DOF_TAPS): the default
+	// 6px max blur needs ~22, so the full 43 only runs on big cinematic racks
+	float taps = clamp(ceil(radius * radius * 0.6), 8.0, float(DOF_TAPS));
+
 	for (int i = 1; i <= DOF_TAPS; i++)
 	{
 		float t = float(i);
-		float r = radius * sqrt(t / float(DOF_TAPS));
+		if (t > taps)
+			break;
+		float r = radius * sqrt(t / taps);
 		float a = t * GOLDEN_ANGLE + rot;
 		vec2  suv = uv + vec2(cos(a), sin(a)) * r * texel;
 

@@ -131,10 +131,11 @@ def compile_aas(bsp_path):
     # bot as able to jump anywhere; combined with the enhanced moveset that
     # over-optimism navigates better than a realistic model. So: no -cfg.
     # (dojo_runs.jsonl iter2/iter3 — hypothesis rejected by no-regression.)
+    # Keep paths short for bspc's fixed buffers, including deep bake temp dirs.
     try:
         r = subprocess.run(
-            [bspc, "-forcesidesvisible", "-bsp2aas",
-             os.path.abspath(bsp_path), "-output", out_dir],
+            [os.path.abspath(bspc), "-forcesidesvisible", "-bsp2aas",
+             os.path.basename(bsp_path), "-output", "."],
             capture_output=True, text=True, cwd=out_dir)
     except OSError as e:
         # bspc isn't runnable on this host (e.g. the committed binary is built

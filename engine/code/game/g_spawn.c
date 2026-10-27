@@ -127,6 +127,7 @@ void SP_func_plat (gentity_t *ent);
 void SP_func_static (gentity_t *ent);
 void SP_func_rotating (gentity_t *ent);
 void SP_func_bobbing (gentity_t *ent);
+void SP_func_truck (gentity_t *ent);
 void SP_func_pendulum( gentity_t *ent );
 void SP_func_button (gentity_t *ent);
 void SP_func_door (gentity_t *ent);
@@ -200,6 +201,7 @@ spawn_t	spawns[] = {
 	{"func_static", SP_func_static},
 	{"func_rotating", SP_func_rotating},
 	{"func_bobbing", SP_func_bobbing},
+	{"func_truck", SP_func_truck},
 	{"func_pendulum", SP_func_pendulum},
 	{"func_train", SP_func_train},
 	{"func_group", SP_info_null},

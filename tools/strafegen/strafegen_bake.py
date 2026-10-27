@@ -27,8 +27,15 @@ import subprocess
 import tempfile
 import zipfile
 
+import strafegen_config as cfg
+from strafegen_palettes import theme_remap
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-Q3MAP2 = os.path.join(HERE, "q3map2")
+# $Q3MAP2 first (any OS: point it at your own netradiant-custom build), then the
+# macOS binary build-q3map2.sh leaves here, then q3map2 on PATH
+Q3MAP2 = (os.environ.get("Q3MAP2")
+          or (os.path.join(HERE, "q3map2") if os.path.isfile(os.path.join(HERE, "q3map2"))
+              else shutil.which("q3map2") or os.path.join(HERE, "q3map2")))
 
 
 def have_q3map2():
@@ -58,7 +65,111 @@ def lightmap_world_shaders(shader_script):
             "\t\tmap textures/strafe64/%s.tga\n\t\trgbGen exactVertex" % img,
             "\t\tmap textures/strafe64/%s.tga\n\t\tblendFunc filter\n\t\trgbGen exactVertex" % img)
         out = out[:h] + nb + out[e:]
+    # theme materials (concrete): lightmap first, then the photo stage(s) as a
+    # filter. Map-less stages (the vertex shader's faint wave overlay) are
+    # dropped -- with no blendFunc they would REPLACE the lit result with white.
+    for full in ("textures/strafe64/crete", "textures/strafe64/crete_eth") + _mats.ALL_TEX:
+        head = full + "\n{\n"
+        h = out.find(head)
+        if h < 0:
+            continue
+        e = out.find("\n}\n", h) + 3
+        body = out[h + len(head):e - 2]
+        params, stages, depth, cur = [], [], 0, []
+        for ln in body.splitlines(keepends=True):
+            st = ln.strip()
+            if depth == 0 and st == "{":
+                depth, cur = 1, [ln]
+            elif depth == 1 and st == "}":
+                cur.append(ln)
+                stages.append("".join(cur))
+                depth = 0
+            elif depth == 1:
+                cur.append(ln)
+            elif st != "surfaceparm nolightmap":
+                params.append(ln)
+        kept = []
+        for stg in stages:
+            if "map textures/" not in stg:
+                continue
+            lines = [l for l in stg.splitlines(keepends=True)
+                     if not l.strip().startswith("blendFunc")]
+            for i, l in enumerate(lines):
+                if l.strip().startswith("map textures/"):
+                    lines.insert(i + 1, "\t\tblendFunc filter\n")
+                    break
+            kept.append("".join(lines))
+        nb = (head + "".join(params) + "\t{\n\t\tmap $lightmap\n\t\trgbGen identity\n\t}\n"
+              + "".join(kept) + "}\n")
+        out = out[:h] + nb + out[e:]
     return out
+
+
+# Materials a baked map routes to lightmapped / sun-less variants. The variants
+# live in the shared pak (strafegen_shaders.build_shader -> baked_variants) under
+# distinct names, so the shared vertex-lit originals can never shadow them.
+import strafegen_materials as _mats
+LM_TEX = ("textures/strafe64/surf", "textures/strafe64/wall",
+          "textures/strafe64/crete", "textures/strafe64/crete_eth") + _mats.ALL_TEX
+BK_SKY = ("textures/strafe64/sky", "textures/strafe64/sky_ether",
+          "textures/strafe64/sky_ether_night", "textures/strafe64/skyreal")
+
+
+def baked_tex(tex):
+    """Shader name a baked map uses for a (theme-remapped, glow-routed) tex."""
+    if tex in LM_TEX:
+        return tex + "_lm"
+    if tex in BK_SKY:
+        return tex + "_bk"
+    return tex
+
+
+def _block(script, name):
+    head = name + "\n{\n"
+    h = script.find(head)
+    if h < 0:
+        return None
+    return script[h:script.find("\n}\n", h) + 3]
+
+
+def baked_variants(shader_script):
+    """Shader text for the baked-map variants of LM_TEX / BK_SKY.
+
+    *_lm = the lightmapped form (lightmap_world_shaders) of each material;
+    *_bk = each sky without its runtime q3gl2_sun (the sun + shadows are in the
+    lightmap; a live sun on top is double light and ~3ms of shadow maps). The
+    q3map_sun / q3map_skylight stay -- q3map2 bakes from them."""
+    lit = lightmap_world_shaders(shader_script)
+    out = ["\n// ---- baked-map variants (strafegen_bake.baked_variants) ----\n"]
+    for t in LM_TEX:
+        blk = _block(lit, t)
+        if blk and "$lightmap" in blk:
+            blk = blk.replace(t + "\n", t + "_lm\n", 1)
+            if t in _mats.ALL_TEX:          # explicit relief, not rend2's auto _nh
+                name = t[len(_mats.TEX_M):]
+                blk = blk[:blk.rstrip().rfind("}")] + _mats.relief_stage(name) + "}\n"
+            out.append(blk)
+    for t in BK_SKY:
+        blk = _block(shader_script, t)
+        if blk:
+            blk = "".join(l for l in blk.splitlines(keepends=True)
+                          if not l.lstrip().startswith("q3gl2_sun"))
+            out.append(blk.replace(t + "\n", t + "_bk\n", 1))
+    return "".join(out)
+
+
+# Flat ambient floor per theme (q3map2 worldspawn _ambient/_color) so enclosed
+# layouts that the sky can't reach aren't black; the neon surfacelights and the
+# bounce do the rest.
+BAKE_AMBIENT = {
+    "default":  ("6", "0.80 0.80 0.85"),
+    "concrete": ("8", "0.85 0.88 0.95"),
+    "ethereal": ("30", "0.60 0.65 0.78"),   # blue-grey shade, not black
+}
+
+
+# global q3map2 light multiplier per theme (domtest's hand bake used 1.7)
+BAKE_SCALE = {"default": 1.7, "concrete": 1.7, "ethereal": 2.5}
 
 
 # ---------------------------------------------------------------------------
@@ -89,8 +200,9 @@ def _face_proj(course):
         for f in b.faces:
             ax = _dom_axis(f.normal)
             o = [(1, 2), (0, 2), (0, 1)][ax]
+            _t, pal = theme_remap(f.tex, f.palette, cfg.THEME)
             proj.append((f.normal, f.dist, o,
-                         [(p[o[0]], p[o[1]]) for p in f.poly], f.palette))
+                         [(p[o[0]], p[o[1]]) for p in f.poly], pal))
     return proj
 
 
@@ -160,6 +272,8 @@ def _run(args):
 
 
 def bake_bsp(name, course, map_path, bake_pk3_path, dest_bsp, bounce=3):
+    scale = getattr(course, "bake_scale", None) or \
+        BAKE_SCALE.get(cfg.THEME, BAKE_SCALE["default"])
     """Compile + light `map_path` in isolation, re-inject palette, write to
     dest_bsp. bake_pk3_path = a pk3 with the lightmapped shader + textures."""
     tmp = tempfile.mkdtemp(prefix="s64bake_")
@@ -176,8 +290,24 @@ def bake_bsp(name, course, map_path, bake_pk3_path, dest_bsp, bounce=3):
         # NOTE: no -vis. It only builds runtime PVS (culling) and -light doesn't
         # need it; strafegen's direct BSPs never had vis either. (-vis also
         # crashes on some of these brush layouts.) The engine renders unvised.
-        light = _run(["-light", "-bounce", str(bounce), "-dirty", "-fast",
-                      "-patchshadows", "-samples", "2"] + common + [bb])
+        # -scale / -bouncescale as the hand-tuned domtest bake used: without
+        # them sky light alone leaves enclosed layouts near-black
+        light_args = ["-light", "-bounce", str(bounce),
+                      "-bouncescale", "2",
+                      "-scale", str(scale),
+                      # 8u luxels + 2x supersampling: crisp sun-shadow edges
+                      # (16u default stair-stepped them across the cladding)
+                      "-samplesize", "8", "-super", "2",
+                      # deluxe maps (per-luxel light direction) so the _nh
+                      # normal maps respond to the BAKED sun, not just dlights
+                      "-deluxe",
+                      "-dirty", "-fast", "-patchshadows", "-samples", "2"]
+        try:
+            light = _run(light_args + common + [bb])
+        except RuntimeError:
+            # q3map2's threaded TraceGrid intermittently crashes on these
+            # layouts (same input passes on a rerun); retry single-threaded
+            light = _run(light_args + ["-threads", "1"] + common + [bb])
         matched, nsurf = reinject_palette(bb, course)
         shutil.copy(bb, dest_bsp)
         suns = "?"
@@ -208,18 +338,21 @@ def build_baked_pk3(name, course, out_dir, bounce=3):
     try:
         # 1. emit .map + the lightmapped bake shader + textures
         map_path = os.path.join(work, name + ".map")
-        sg.write_map(course, map_path)
-        # COMPILE shader: full augment (q3gl2_sun + q3map_sun + component mats).
-        # q3map2 bakes the lightmap sun from q3map_sun, so this MUST keep the sun.
-        shader = lightmap_world_shaders(gfx.augment(shaders.SHADER_SCRIPT))
-        # SHIP shader: same, minus the runtime q3gl2_sun line. The sun (direction
-        # + shadows + bounce) is already in the lightmap, so a real-time
-        # directional light + cascaded shadow maps on top is pure redundant GPU
-        # cost (~2-4ms/frame at 1440p, scales with resolution). Strip ONLY the
-        # q3gl2_sun line; q3map_sun stays (the engine ignores it at runtime).
-        ship_shader = "".join(
-            ln for ln in shader.splitlines(keepends=True)
-            if not ln.lstrip().startswith("q3gl2_sun"))
+        # a course can override the theme's bake exposure: open-air maps take far
+        # more sky light than enclosed killboxes and blow out at their settings
+        amb, col = getattr(course, "bake_ambient", None) or \
+            BAKE_AMBIENT.get(cfg.THEME, BAKE_AMBIENT["default"])
+        sg.write_map(course, map_path, baked=True,
+                     extra_world={"_ambient": amb, "_color": col})
+        # COMPILE shader = the shared script: it carries the *_lm lightmapped
+        # materials and the *_bk skies (q3map_sun kept, runtime q3gl2_sun gone).
+        shader = shaders.build_shader(True)
+        # SHIP: the map pk3 carries ONLY the baked variants, under a unique file
+        # name. A scripts/strafe64.shader here always lost to the shared pak's
+        # and the baked surfaces rendered with the vertex-lit shaders (the
+        # "white blowout"); the variants also live in the shared pak, so this
+        # copy just makes the pk3 work standalone.
+        ship_shader = baked_variants(gfx.augment(shaders.SHADER_SCRIPT))
         tex = dict(sg.build_detail_textures())
         tex.update(gfx.gfx_textures())
         bake_pk3 = os.path.join(work, "zzz_bake_assets.pk3")
@@ -249,7 +382,7 @@ def build_baked_pk3(name, course, out_dir, bounce=3):
             if aas:
                 z.write(aas, "maps/%s.aas" % name)
             z.writestr("scripts/%s.arena" % name, arena)
-            z.writestr("scripts/strafe64.shader", ship_shader)
+            z.writestr("scripts/%s_baked.shader" % name, ship_shader)
             for arc, data in tex.items():
                 z.writestr(arc, data)
         stats["pk3"] = pk3

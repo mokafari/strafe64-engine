@@ -50,11 +50,10 @@ $cfgArgs = @('-DBUILD_GAME_QVMS=OFF','-DUSE_CODEC_MOD=OFF','-DUSE_CODEC_MP3=OFF'
 $ftLib = 'C:\vcpkg\installed\x64-windows\lib\freetype.lib'
 $ftVcpkgInc = 'C:\vcpkg\installed\x64-windows\include'
 $ftBin = 'C:\vcpkg\installed\x64-windows\bin'
-$ftInc = 'C:\vcpkg\ft-isolated\include'
+$ftInc = Join-Path $build 'ft-isolated\include'
 $freetypeOn = (Test-Path $ftLib) -and (Test-Path (Join-Path $ftVcpkgInc 'ft2build.h'))
 if ($freetypeOn) {
     # (re)build the isolated include dir: freetype headers only, no jpeglib.h
-    if (Test-Path 'C:\vcpkg\ft-isolated') { Remove-Item -Recurse -Force 'C:\vcpkg\ft-isolated' }
     New-Item -ItemType Directory -Force -Path $ftInc | Out-Null
     Copy-Item (Join-Path $ftVcpkgInc 'ft2build.h') $ftInc -Force
     Copy-Item (Join-Path $ftVcpkgInc 'freetype') $ftInc -Recurse -Force

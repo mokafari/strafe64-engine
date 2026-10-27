@@ -1548,7 +1548,9 @@ const void	*RB_SwapBuffers( const void *data ) {
 		ri.Hunk_FreeTempMemory( stencilReadback );
 	}
 
+	R_GpuMark(GPUT_HUD);
 	RB_PresentToScreen();
+	R_GpuMark(GPUT_PRESENT);
 
 	if ( !glState.finishCalled ) {
 		qglFinish();
@@ -1557,6 +1559,8 @@ const void	*RB_SwapBuffers( const void *data ) {
 	GLimp_LogComment( "***************** RB_SwapBuffers *****************\n\n\n" );
 
 	GLimp_EndFrame();
+
+	R_GpuTimerEndFrame();
 
 	backEnd.projection2D = qfalse;
 
@@ -1616,9 +1620,14 @@ const void *RB_PostProcess(const void *data)
 	if(tess.numIndexes)
 		RB_EndSurface();
 
+	R_GpuMark(GPUT_SCENE);
+
 	if (!glRefConfig.framebufferObject || !r_postProcess->integer)
 	{
 		// do nothing
+		R_GpuMark(GPUT_TONEMAP);
+		R_GpuMark(GPUT_BLOOM);
+		R_GpuMark(GPUT_DOF);
 		return (const void *)(cmd + 1);
 	}
 
@@ -1683,6 +1692,8 @@ const void *RB_PostProcess(const void *data)
 		}
 	}
 
+	R_GpuMark(GPUT_TONEMAP);
+
 	if (srcFbo && r_bloom->value > 0.0f)
 		RB_Bloom(srcFbo, srcBox);
 
@@ -1690,8 +1701,12 @@ const void *RB_PostProcess(const void *data)
 		RB_SunRays(srcFbo, srcBox, srcFbo, srcBox);
 
 	// STRAFE 64 cinematic DoF -- after bloom/sunrays so the glow defocuses too
+	R_GpuMark(GPUT_BLOOM);
+
 	if (r_dof->integer)
 		RB_DepthOfField(srcFbo, srcBox);
+
+	R_GpuMark(GPUT_DOF);
 
 	if (1)
 		RB_BokehBlur(srcFbo, srcBox, srcFbo, srcBox, backEnd.refdef.blurFactor);
@@ -1910,6 +1925,8 @@ void RB_ExecuteRenderCommands( const void *data ) {
 	int		t1, t2;
 
 	t1 = ri.Milliseconds ();
+
+	R_GpuMark(GPUT_FRAME);
 
 	while ( 1 ) {
 		data = PADP(data, sizeof(void *));

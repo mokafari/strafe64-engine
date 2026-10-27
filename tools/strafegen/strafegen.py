@@ -45,6 +45,7 @@ from strafegen_bsp import *
 from strafegen_course import *
 from strafegen_arena import *
 from strafegen_killbox import *
+from strafegen_trucks import *
 from strafegen_surf import *
 from strafegen_pack import *
 
@@ -56,20 +57,36 @@ GFX = cfg.GFX
 def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
              arena=False, name=None, void=True, voidrise=None,
              voiddelay=None, dojo=None, surf=False, killbox=False,
-             latticearena=False, combat=False, archetype=None,
+             latticearena=False, combat=False, archetype=None, trucks=False,
              item_trail=False, standalone=False, backup=False,
              bake=False, bake_bounce=3,
              vscale=1.0, hscale=1.0, density=1.0, sections=None,
-             theme="default", greeble_density=1.0):
+             theme="ethereal", greeble_density=1.0, showcase=False, marble=False, granite=False):
     os.makedirs(out_dir, exist_ok=True)
     cfg.THEME = theme           # read by BspWriter to remap bulk faces to concrete
     mods = cfg.GenMods(vscale=vscale, hscale=hscale, density=density,
                        sections=sections)
-    if latticearena:
+    if granite:
+        from strafegen_granite import Granite
+        name = name or ("strafe64_granite_night" if granite == "night" else "strafe64_granite")
+        course = Granite(seed or 64, night=(granite == "night")).build()
+    elif marble:
+        from strafegen_marble import Marble
+        name = name or ("strafe64_marble_night" if marble == "night" else "strafe64_marble")
+        course = Marble(seed or 64, night=(marble == "night")).build()
+    elif showcase:
+        from strafegen_showcase import Showcase
+        name = name or ("strafe64_showcase_night" if showcase == "night"
+                         else "strafe64_showcase")
+        course = Showcase(seed or 64, night=(showcase == "night")).build()
+    elif latticearena:
         lite = latticearena == "lite"
         base = "lattice_arena_lite" if lite else "lattice_arena"
         name = name or (f"{base}_{seed}" if seed else base)
         course = LatticeArena(seed, weapons=not lite).build()  # 16-pilot heat arena
+    elif trucks:
+        name = name or (f"strafe64tr_{seed}" + ("" if difficulty == 1 else f"_d{difficulty}"))
+        course = Trucks(seed, difficulty).build()
     elif killbox:
         if not name:
             base = f"strafe64kb_{archetype}" if archetype else "strafe64kb"
@@ -104,10 +121,11 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
     # CONCRETE THEME: erode the big masses into lun3dm5-style cube clusters
     # (decorative, gameplay-safe — see greeble_course). The face material remap
     # itself is applied at BSP-emit via cfg.THEME; this adds the silhouette.
-    if theme == "concrete" and greeble_density > 0:
-        n = greeble_course(course, seed=getattr(course, "seed", 0),
-                           density=greeble_density)
-        print(f"    concrete theme: +{n} greeble cubes (density {greeble_density:g})")
+    if theme in ("concrete", "ethereal") and greeble_density > 0:
+        # ethereal: big rhythmic brutalist forms; concrete keeps the lun3dm5 erosion
+        gfn = greeble_brutal if theme == "ethereal" else greeble_course
+        n = gfn(course, seed=getattr(course, "seed", 0), density=greeble_density)
+        print(f"    {theme} theme: +{n} greeble brushes (density {greeble_density:g})")
     # universal post-build resize (identity at 1,1,1 -> byte-unchanged). Runs
     # before bake/write so both paths see the resized geometry.
     scale_course(course, mods.hscale, mods.hscale, mods.vscale)
@@ -232,6 +250,8 @@ def main():
     ap.add_argument("--arena", action="store_true",
                     help="deathmatch arena with a velodrome ring instead "
                          "of a linear run")
+    ap.add_argument("--trucks", action="store_true",
+                    help="endless Clustertruck treadmill (func_truck fleet, ramps with time)")
     ap.add_argument("--killbox", action="store_true",
                     help="futuristic vertical melee arena: wall-jump columns, "
                          "a central spire and momentum portals for the "
@@ -251,6 +271,14 @@ def main():
     ap.add_argument("--surfturn", action="store_true",
                     help="generate a banked surf-TURN test piece (180deg steep "
                          "banked arc — candidate corner geometry, feel-test by hand)")
+    ap.add_argument("--showcase", action="store_true",
+                    help="the hand-composed ethereal showcase map (strafe64_showcase)")
+    ap.add_argument("--granite", action="store_true",
+                    help="the stepped granite ziggurat (strafe64_granite)")
+    ap.add_argument("--marble", action="store_true",
+                    help="the vertical marble & granite temple (strafe64_marble)")
+    ap.add_argument("--night", action="store_true",
+                    help="with --showcase: the moonlit night variant (strafe64_showcase_night)")
     ap.add_argument("--latticearena", action="store_true",
                     help="generate the 16-pilot LATTICE heat arena (big open "
                          "sealed box, 24 SPREAD spawns so a full field has no "
@@ -308,13 +336,15 @@ def main():
                          "guarantee the identity shader pak is present so its "
                          "loose .bsp maps render with real shaders, not grey")
     # ---- art theme ----
-    ap.add_argument("--theme", default="default", choices=("default", "concrete"),
-                    help="art theme. 'default' = Source dev look (orange floors/grey "
+    ap.add_argument("--theme", default="ethereal", choices=("default", "concrete", "ethereal"),
+                    help="art theme (ethereal unless set). 'default' = Source dev look (orange floors/grey "
                          "walls); 'concrete' = lun3dm5 brutalist pale concrete — one "
                          "material + a cube-greeble pass that erodes masses into the "
-                         "stacked-cube silhouette. Accents stay vivid in both")
+                         "stacked-cube silhouette; 'ethereal' = the same concrete at a "
+                         "violet dusk in lavender haze, with cyan neon ledge strips. "
+                         "Accents stay vivid in all themes")
     ap.add_argument("--greeble-density", type=float, default=1.0,
-                    help="with --theme concrete: cube-erosion density (1.0 default, "
+                    help="with --theme concrete/ethereal: cube-erosion density (1.0 default, "
                          "0 = concrete material only / no added cubes, 1.8 = heavier)")
     # ---- geometry modifiers (Stage B) ----
     ap.add_argument("--gen-vscale", type=float, default=1.0,
@@ -384,6 +414,25 @@ def main():
                      item_trail=args.item_trail, name=args.name,
                      standalone=args.standalone, backup=args.backup, **_genmods)
         return
+    if args.granite:
+        generate(args.seed or 64, 1, 1, args.out, args.map, args.pk3,
+                 granite="night" if args.night else True, name=args.name,
+                 theme=args.theme, bake=args.bake, bake_bounce=args.bake_bounce,
+                 standalone=args.standalone, backup=args.backup)
+        return
+    if args.marble:
+        generate(args.seed or 64, 1, 1, args.out, args.map, args.pk3,
+                 marble="night" if args.night else True, name=args.name,
+                 theme=args.theme, bake=args.bake, bake_bounce=args.bake_bounce,
+                 standalone=args.standalone, backup=args.backup)
+        return
+    if args.showcase:
+        generate(args.seed or 64, 1, 1, args.out, args.map, args.pk3,
+                 showcase="night" if args.night else True, name=args.name,
+                 theme=args.theme,
+                 bake=args.bake, bake_bounce=args.bake_bounce,
+                 standalone=args.standalone, backup=args.backup)
+        return
     if args.latticearena:
         seed = args.seed if args.seed is not None else 64
         generate(seed, args.difficulty, 1, args.out, args.map, args.pk3,
@@ -405,7 +454,7 @@ def main():
     if args.seed is None:
         ap.error("a seed is required (or use --daily / --check / --selftest)")
     generate(args.seed, args.difficulty, length, args.out,
-             args.map, args.pk3, arena=args.arena, killbox=args.killbox,
+             args.map, args.pk3, arena=args.arena, killbox=args.killbox, trucks=args.trucks,
              combat=args.combat, archetype=args.arch,
              name=args.name or name, void=not args.no_void,
              voidrise=args.voidrise, voiddelay=args.voiddelay,

@@ -290,6 +290,36 @@ static void CG_Speaker( centity_t *cent ) {
 CG_Item
 ==================
 */
+/*
+==================
+CG_ItemHolo
+
+STRAFE 64 identity: pickups are not stock OpenArena props but neon
+holograms -- every item model (and its barrel / ring / sphere) is drawn with
+one additive scanning shader, tinted by what it gives you, so the colour code
+reads at a glance in the dusk haze: health cyan, armor magenta, powerups
+amber, weapons and the rest cool white. cg_itemHolo 0 restores the stock look.
+==================
+*/
+static void CG_ItemHolo( refEntity_t *ent, const gitem_t *item ) {
+	byte	c[3];
+
+	if ( !cg_itemHolo.integer || !cgs.media.itemHoloShader ) {
+		return;
+	}
+	switch ( item->giType ) {
+	case IT_HEALTH:		c[0] =  60; c[1] = 200; c[2] = 230; break;
+	case IT_ARMOR:		c[0] = 210; c[1] =  70; c[2] = 220; break;
+	case IT_POWERUP:	c[0] = 240; c[1] = 170; c[2] =  60; break;
+	default:			c[0] = 170; c[1] = 190; c[2] = 220; break;
+	}
+	ent->customShader = cgs.media.itemHoloShader;
+	ent->shaderRGBA[0] = c[0];
+	ent->shaderRGBA[1] = c[1];
+	ent->shaderRGBA[2] = c[2];
+	ent->shaderRGBA[3] = 255;
+}
+
 static void CG_Item( centity_t *cent ) {
 	refEntity_t		ent;
 	entityState_t	*es;
@@ -412,6 +442,8 @@ static void CG_Item( centity_t *cent ) {
 	}
 #endif
 
+	CG_ItemHolo( &ent, item );
+
 	// add to refresh list
 	trap_R_AddRefEntityToScene(&ent);
 
@@ -435,6 +467,7 @@ static void CG_Item( centity_t *cent ) {
 		CG_PositionRotatedEntityOnTag( &barrel, &ent, wi->weaponModel, "tag_barrel" );
 
 		barrel.nonNormalizedAxes = ent.nonNormalizedAxes;
+		CG_ItemHolo( &barrel, item );
 
 		trap_R_AddRefEntityToScene( &barrel );
 	}

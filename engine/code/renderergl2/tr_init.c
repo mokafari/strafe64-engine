@@ -168,6 +168,8 @@ cvar_t  *r_fxaa;
 cvar_t  *r_gradeContrast;
 cvar_t  *r_gradeSaturation;
 cvar_t  *r_gradeTemp;
+cvar_t  *r_gradeLiveSat;
+cvar_t  *r_gradeLiveTemp;
 cvar_t  *r_vignette;
 cvar_t  *r_filmGrain;
 cvar_t  *r_legacySpecular;
@@ -212,6 +214,7 @@ cvar_t	*r_shadows;
 cvar_t	*r_flares;
 cvar_t	*r_mode;
 cvar_t	*r_nobind;
+cvar_t	*r_gpuTimers;
 cvar_t	*r_singleShader;
 cvar_t	*r_roundImagesDown;
 cvar_t	*r_colorMipLevels;
@@ -1279,9 +1282,9 @@ void R_Register( void )
 
 	r_ext_texture_filter_anisotropic = ri.Cvar_Get( "r_ext_texture_filter_anisotropic",
 			"0", CVAR_ARCHIVE | CVAR_LATCH );
-	r_ext_max_anisotropy = ri.Cvar_Get( "r_ext_max_anisotropy", "2", CVAR_ARCHIVE | CVAR_LATCH );
+	r_ext_max_anisotropy = ri.Cvar_Get( "r_ext_max_anisotropy", "16", CVAR_ARCHIVE | CVAR_LATCH );
 
-	r_picmip = ri.Cvar_Get ("r_picmip", "1", CVAR_ARCHIVE | CVAR_LATCH );
+	r_picmip = ri.Cvar_Get ("r_picmip", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_roundImagesDown = ri.Cvar_Get ("r_roundImagesDown", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_colorMipLevels = ri.Cvar_Get ("r_colorMipLevels", "0", CVAR_LATCH );
 	ri.Cvar_CheckRange( r_picmip, 0, 16, qtrue );
@@ -1390,6 +1393,11 @@ void R_Register( void )
 	r_gradeContrast = ri.Cvar_Get( "r_gradeContrast", "1.06", CVAR_ARCHIVE );
 	r_gradeSaturation = ri.Cvar_Get( "r_gradeSaturation", "1.08", CVAR_ARCHIVE );
 	r_gradeTemp = ri.Cvar_Get( "r_gradeTemp", "0.04", CVAR_ARCHIVE );
+	// per-frame offsets the game drives (time-grade: cool when the world freezes,
+	// warm in a surge). Not archived, so animating them never rewrites q3config.cfg
+	// and never pollutes the user's base grade.
+	r_gradeLiveSat = ri.Cvar_Get( "r_gradeLiveSat", "1", CVAR_TEMP );
+	r_gradeLiveTemp = ri.Cvar_Get( "r_gradeLiveTemp", "0", CVAR_TEMP );
 	r_vignette = ri.Cvar_Get( "r_vignette", "0.18", CVAR_ARCHIVE );
 	r_filmGrain = ri.Cvar_Get( "r_filmGrain", "0.03", CVAR_ARCHIVE );
 
@@ -1403,10 +1411,10 @@ void R_Register( void )
 	// skips it). Defaults are deliberately subtle.
 	r_legacySpecular = ri.Cvar_Get( "r_legacySpecular", "0", CVAR_ARCHIVE );
 	r_rimLight = ri.Cvar_Get( "r_rimLight", "1", CVAR_ARCHIVE );
-	r_rimScale = ri.Cvar_Get( "r_rimScale", "0.32", CVAR_ARCHIVE );
-	r_rimExp = ri.Cvar_Get( "r_rimExp", "2.7", CVAR_ARCHIVE );
-	r_rimColorR = ri.Cvar_Get( "r_rimColorR", "0.42", CVAR_ARCHIVE );
-	r_rimColorG = ri.Cvar_Get( "r_rimColorG", "0.66", CVAR_ARCHIVE );
+	r_rimScale = ri.Cvar_Get( "r_rimScale", "0.7", CVAR_ARCHIVE );
+	r_rimExp = ri.Cvar_Get( "r_rimExp", "4.0", CVAR_ARCHIVE );
+	r_rimColorR = ri.Cvar_Get( "r_rimColorR", "0.35", CVAR_ARCHIVE );
+	r_rimColorG = ri.Cvar_Get( "r_rimColorG", "0.85", CVAR_ARCHIVE );
 	r_rimColorB = ri.Cvar_Get( "r_rimColorB", "1.0", CVAR_ARCHIVE );
 
 	// STRAFE 64 bodycam finish pass: a real-camera/vest-cam look (wide-lens
@@ -1459,6 +1467,8 @@ void R_Register( void )
 	r_fullbright = ri.Cvar_Get ("r_fullbright", "0", CVAR_LATCH|CVAR_CHEAT );
 	r_mapOverBrightBits = ri.Cvar_Get ("r_mapOverBrightBits", "2", CVAR_LATCH );
 	r_intensity = ri.Cvar_Get ("r_intensity", "1", CVAR_LATCH );
+	r_gpuTimers = ri.Cvar_Get ("r_gpuTimers", "0", CVAR_TEMP );
+	ri.Cvar_SetDescription( r_gpuTimers, "STRAFE 64: print average GPU time per render pass every N frames (0 = off)" );
 	r_singleShader = ri.Cvar_Get ("r_singleShader", "0", CVAR_CHEAT | CVAR_LATCH );
 
 	//
@@ -1721,6 +1731,7 @@ void RE_Shutdown( qboolean destroyWindow ) {
 		if (glRefConfig.framebufferObject)
 			FBO_Shutdown();
 		R_DeleteTextures();
+		R_GpuTimerShutdown();
 		R_ShutdownVaos();
 		GLSL_ShutdownGPUShaders();
 	}

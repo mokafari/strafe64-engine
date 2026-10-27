@@ -678,6 +678,8 @@ void SV_Init (void)
 		sv_master[index] = Cvar_Get(va("sv_master%d", index + 1), "", CVAR_ARCHIVE);
 
 	sv_reconnectlimit = Cvar_Get ("sv_reconnectlimit", "3", 0);
+	sv_maxclientsPerIP = Cvar_Get ("sv_maxclientsPerIP", "3", CVAR_ARCHIVE);
+	Cvar_CheckRange( sv_maxclientsPerIP, 1, MAX_CLIENTS, qtrue );
 	sv_showloss = Cvar_Get ("sv_showloss", "0", 0);
 	sv_padPackets = Cvar_Get ("sv_padPackets", "0", 0);
 	sv_killserver = Cvar_Get ("sv_killserver", "0", 0);

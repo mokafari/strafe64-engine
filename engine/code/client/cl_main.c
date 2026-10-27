@@ -77,6 +77,7 @@ cvar_t	*cl_timedemoLog;
 cvar_t	*cl_autoRecordDemo;
 cvar_t	*cl_aviFrameRate;
 cvar_t	*cl_aviMotionJpeg;
+cvar_t	*cl_aviPipeFormat;
 cvar_t	*cl_forceavidemo;
 
 cvar_t	*cl_freelook;
@@ -3385,25 +3386,57 @@ void CL_SetModel_f( void ) {
 ===============
 CL_Video_f
 
-video
 video [filename]
+video-pipe [filename]   encode through ffmpeg with cl_aviPipeFormat
 ===============
 */
 void CL_Video_f( void )
 {
-  char  filename[ MAX_OSPATH ];
-  int   i, last;
+  char        filename[ MAX_OSPATH ];
+  char        pipeFormat[ MAX_CVAR_VALUE_STRING ];
+  const char  *ext = "avi";
+  qboolean    pipe;
+  int         i, last;
+
+  pipe = !Q_stricmp( Cmd_Argv( 0 ), "video-pipe" );
 
   if( !clc.demoplaying )
   {
-    Com_Printf( "The video command can only be used when playing back demos\n" );
+    Com_Printf( "The %s command can only be used when playing back demos\n", Cmd_Argv( 0 ) );
     return;
+  }
+
+  if( pipe )
+  {
+    char *bar;
+
+    if( !CL_ValidatePipeFormat( cl_aviPipeFormat->string ) )
+    {
+      Com_Printf( S_COLOR_RED "ERROR: invalid cl_aviPipeFormat: %s\n", cl_aviPipeFormat->string );
+      return;
+    }
+
+    // "options|ext" picks the container by extension (default mp4)
+    Q_strncpyz( pipeFormat, cl_aviPipeFormat->string, sizeof( pipeFormat ) );
+    ext = "mp4";
+    if( ( bar = strchr( pipeFormat, '|' ) ) != NULL )
+    {
+      char *e;
+
+      *bar++ = '\0';
+      while( *bar == ' ' )
+        bar++;
+      for( e = bar + strlen( bar ); e > bar && e[-1] == ' '; )
+        *--e = '\0';
+      if( *bar )
+        ext = bar;
+    }
   }
 
   if( Cmd_Argc( ) == 2 )
   {
     // explicit filename
-    Com_sprintf( filename, MAX_OSPATH, "videos/%s.avi", Cmd_Argv( 1 ) );
+    Com_sprintf( filename, MAX_OSPATH, "videos/%s.%s", Cmd_Argv( 1 ), ext );
   }
   else
   {
@@ -3422,8 +3455,8 @@ void CL_Video_f( void )
       last -= c * 10;
       d = last;
 
-      Com_sprintf( filename, MAX_OSPATH, "videos/video%d%d%d%d.avi",
-          a, b, c, d );
+      Com_sprintf( filename, MAX_OSPATH, "videos/video%d%d%d%d.%s",
+          a, b, c, d, ext );
 
       if( !FS_FileExists_HomeData( filename ) )
         break; // file doesn't exist
@@ -3436,7 +3469,7 @@ void CL_Video_f( void )
     }
   }
 
-  CL_OpenAVIForWriting( filename );
+  CL_OpenAVIForWriting( filename, pipe ? pipeFormat : NULL );
 }
 
 /*
@@ -3584,6 +3617,11 @@ void CL_Init( void ) {
 	cl_autoRecordDemo = Cvar_Get ("cl_autoRecordDemo", "0", CVAR_ARCHIVE);
 	cl_aviFrameRate = Cvar_Get ("cl_aviFrameRate", "25", CVAR_ARCHIVE);
 	cl_aviMotionJpeg = Cvar_Get ("cl_aviMotionJpeg", "1", CVAR_ARCHIVE);
+	// ffmpeg output options for video-pipe; text after a '|' sets the extension
+	cl_aviPipeFormat = Cvar_Get ("cl_aviPipeFormat",
+		"-preset medium -crf 23 -c:v libx264 -flags +cgop -pix_fmt yuv420p "
+		"-bf 2 -c:a aac -b:a 160k -movflags faststart",
+		CVAR_ARCHIVE | CVAR_PROTECTED);
 	cl_forceavidemo = Cvar_Get ("cl_forceavidemo", "0", 0);
 
 	rconAddress = Cvar_Get ("rconAddress", "", 0);
@@ -3743,6 +3781,7 @@ void CL_Init( void ) {
 	Cmd_AddCommand ("fs_referencedList", CL_ReferencedPK3List_f );
 	Cmd_AddCommand ("model", CL_SetModel_f );
 	Cmd_AddCommand ("video", CL_Video_f );
+	Cmd_AddCommand ("video-pipe", CL_Video_f );
 	Cmd_AddCommand ("stopvideo", CL_StopVideo_f );
 	if( !com_dedicated->integer ) {
 		Cmd_AddCommand ("sayto", CL_Sayto_f );
@@ -3820,6 +3859,7 @@ void CL_Shutdown(char *finalmsg, qboolean disconnect, qboolean quit)
 	Cmd_RemoveCommand ("fs_referencedList");
 	Cmd_RemoveCommand ("model");
 	Cmd_RemoveCommand ("video");
+	Cmd_RemoveCommand ("video-pipe");
 	Cmd_RemoveCommand ("stopvideo");
 
 	CL_ShutdownInput();

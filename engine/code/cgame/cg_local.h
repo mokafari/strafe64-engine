@@ -997,6 +997,7 @@ typedef struct {
 	sfxHandle_t	swordHeavySound;	// STRAFE 64: heavier finisher swing whoosh
 	sfxHandle_t	kickWhooshSound;	// STRAFE 64: melee kick swing whoosh (EV_KICK)
 	sfxHandle_t	kickHitSound;		// STRAFE 64: melee kick connect thud
+	qhandle_t	itemHoloShader;		// STRAFE 64: neon hologram look for every pickup (cg_itemHolo)
 	qhandle_t	swordSlashShader;	// STRAFE 64: additive FP swing-trail ribbon ($whiteimage)
 	qhandle_t	swordCutShader;		// STRAFE 64: textured kill slash-arc streak (CG_AddSwordCuts)
 	sfxHandle_t	gibSound;
@@ -1313,10 +1314,16 @@ extern	vmCvar_t		cg_tracerLength;
 extern	vmCvar_t		cg_autoswitch;
 extern	vmCvar_t		cg_ignore;
 extern	vmCvar_t		cg_simpleItems;
+extern	vmCvar_t		cg_itemHolo;
 extern	vmCvar_t		cg_fov;
 extern	vmCvar_t		cg_drawSpeed;
 extern	vmCvar_t		cg_speedFov;
 extern	vmCvar_t		cg_flowColor;
+extern	vmCvar_t		cg_timeGrade;
+extern	vmCvar_t		cg_timeGradeFreezeSat;
+extern	vmCvar_t		cg_timeGradeFreezeTemp;
+extern	vmCvar_t		cg_timeGradeSurgeSat;
+extern	vmCvar_t		cg_timeGradeSurgeTemp;
 extern	vmCvar_t		cg_stillVignette;	// cold edge vignette when slow (off = clean full-bleed)
 extern	vmCvar_t		cg_glitch;
 extern	vmCvar_t		cg_glitchAmount;

@@ -154,10 +154,16 @@ vmCvar_t	cg_tracerLength;
 vmCvar_t	cg_autoswitch;
 vmCvar_t	cg_ignore;
 vmCvar_t	cg_simpleItems;
+vmCvar_t	cg_itemHolo;
 vmCvar_t	cg_fov;
 vmCvar_t	cg_drawSpeed;
 vmCvar_t	cg_speedFov;
 vmCvar_t	cg_flowColor;
+vmCvar_t	cg_timeGrade;
+vmCvar_t	cg_timeGradeFreezeSat;
+vmCvar_t	cg_timeGradeFreezeTemp;
+vmCvar_t	cg_timeGradeSurgeSat;
+vmCvar_t	cg_timeGradeSurgeTemp;
 vmCvar_t	cg_stillVignette;
 vmCvar_t	cg_glitch;
 vmCvar_t	cg_glitchAmount;
@@ -283,6 +289,12 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_drawSpeed, "cg_drawSpeed", "1", CVAR_ARCHIVE },
 	{ &cg_speedFov, "cg_speedFov", "1", CVAR_ARCHIVE },
 	{ &cg_flowColor, "cg_flowColor", "0", CVAR_ARCHIVE },
+	// time is the material: frozen world grades cool/drained, a surge warm/vivid
+	{ &cg_timeGrade, "cg_timeGrade", "1", CVAR_ARCHIVE },
+	{ &cg_timeGradeFreezeSat, "cg_timeGradeFreezeSat", "0.62", CVAR_ARCHIVE },
+	{ &cg_timeGradeFreezeTemp, "cg_timeGradeFreezeTemp", "-0.14", CVAR_ARCHIVE },
+	{ &cg_timeGradeSurgeSat, "cg_timeGradeSurgeSat", "1.22", CVAR_ARCHIVE },
+	{ &cg_timeGradeSurgeTemp, "cg_timeGradeSurgeTemp", "0.08", CVAR_ARCHIVE },
 	{ &cg_stillVignette, "cg_stillVignette", "0", CVAR_ARCHIVE },
 	{ &cg_glitch, "cg_glitch", "1", CVAR_ARCHIVE },
 	{ &cg_glitchAmount, "cg_glitchAmount", "0.6", CVAR_ARCHIVE },
@@ -341,6 +353,8 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_crosshairY, "cg_crosshairY", "0", CVAR_ARCHIVE },
 	{ &cg_brassTime, "cg_brassTime", "2500", CVAR_ARCHIVE },
 	{ &cg_simpleItems, "cg_simpleItems", "0", CVAR_ARCHIVE },
+	// pickups render as tinted neon holograms instead of stock OpenArena models
+	{ &cg_itemHolo, "cg_itemHolo", "1", CVAR_ARCHIVE },
 	{ &cg_addMarks, "cg_marks", "1", CVAR_ARCHIVE },
 	{ &cg_lagometer, "cg_lagometer", "1", CVAR_ARCHIVE },
 	{ &cg_railTrailTime, "cg_railTrailTime", "400", CVAR_ARCHIVE  },
@@ -974,6 +988,9 @@ static void CG_RegisterGraphics( void ) {
 	// clear any references to old media
 	memset( &cg.refdef, 0, sizeof( cg.refdef ) );
 	trap_R_ClearScene();
+
+	// shipped in the shared zzz_strafe64_shader.pk3 (strafegen_shaders.SHADER_SCRIPT)
+	cgs.media.itemHoloShader = trap_R_RegisterShader( "s64itemHolo" );
 
 	CG_LoadingString( cgs.mapname );
 

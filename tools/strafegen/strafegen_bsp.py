@@ -138,6 +138,17 @@ _DAY_KEY_RGB  = (0.50, 0.49, 0.45)         # warm-white sun key
 _DAY_FILL_RGB = (0.16, 0.18, 0.24)         # cool sky fill on shadow walls
 
 
+# Ethereal theme: a low violet dusk. Deep blue-violet skylight on the floors, a
+# low warm peach key raking in near the horizon so cube faces split into lit and
+# shadow planes (that raking light is what makes raw concrete look sculpted),
+# and cool cyan fills that echo the neon so shadow sides aren't dead black.
+_ETH_SUN_DIR  = (0.7660, 0.4420, 0.4663)   # az +30, el ~28 (low, raking)
+_ETH_SKY_AMB  = (0.19, 0.21, 0.29)         # dim blue-violet dusk skylight
+_ETH_GND_AMB  = (0.07, 0.07, 0.11)         # near-dark bounce: masses read heavy
+_ETH_KEY_RGB  = (0.40, 0.31, 0.25)         # warm peach sunset key (raking)
+_ETH_FILL_RGB = (0.04, 0.09, 0.13)         # cyan neon spill on shadow walls
+
+
 def build_light_model(seed):
     """Build the vertex-light dome for the active theme.
 
@@ -148,6 +159,11 @@ def build_light_model(seed):
         for d in _DOME_FILL_DIRS:
             suns.append((d, _DAY_FILL_RGB))
         return LightModel("concrete-day", _DAY_SKY_AMB, _DAY_GND_AMB, suns)
+    if cfg.THEME == "ethereal":
+        suns = [(_ETH_SUN_DIR, _ETH_KEY_RGB)]
+        for d in _DOME_FILL_DIRS:
+            suns.append((d, _ETH_FILL_RGB))
+        return LightModel("ethereal-dusk", _ETH_SKY_AMB, _ETH_GND_AMB, suns)
     fam = _HUE_ORDER[seed % len(_HUE_ORDER)]
     sky, gnd, key, fill = _HUE_FAMILIES[fam]
     suns = [(_SUN_DIR, key)]
@@ -195,6 +211,8 @@ class BspWriter:
     def __init__(self, course):
         self.c = course
         self.theme = cfg.THEME          # art theme: remaps bulk dev faces (concrete)
+        # a course may pin its own fog (e.g. the showcase's night variant)
+        self.fog_tex = getattr(course, "fog_tex", None) or theme_fog(cfg.THEME)
         self.light = build_light_model(getattr(course, "seed", 64))
         self.shaders = _Store()
         self.planes = _Store()
@@ -229,7 +247,9 @@ class BspWriter:
         is_trigger = brush.contents == CONTENTS_TRIGGER
         # triggers and fog volumes are non-solid + non-drawing; only their
         # content flag and (for fog) their axial bounds matter to the engine
-        is_nonsolid = brush.contents in (CONTENTS_TRIGGER, CONTENTS_FOG)
+        # (player clip too: it blocks players/bots via its own content flag but
+        # must not become CONTENTS_SOLID, which would also stop shots)
+        is_nonsolid = brush.contents in (CONTENTS_TRIGGER, CONTENTS_FOG, CONTENTS_PLAYERCLIP)
         cflags = brush.contents if is_nonsolid else CONTENTS_SOLID
         m_tex, m_pal = theme_remap(brush.faces[0].tex, brush.faces[0].palette,
                                    self.theme)
@@ -400,7 +420,7 @@ class BspWriter:
             fzs = [b.mins[2] for b in c.solids] + [b.maxs[2] for b in c.solids]
             fog = make_box((min(fxs), min(fys), min(fzs)),
                            (max(fxs), max(fys), max(fzs)),
-                           tex=theme_fog(self.theme), contents=CONTENTS_FOG,
+                           tex=self.fog_tex, contents=CONTENTS_FOG,
                            draw=set())
             c.solids.append(fog)
             self.has_fog = True
@@ -430,11 +450,15 @@ class BspWriter:
         movers = getattr(c, "movers", [])
         n_trig = len(c.triggers)
         for mi, (mb, ent) in enumerate(movers):
+            # a mover may be one brush or a list (multi-part func_truck)
+            parts = mb if isinstance(mb, (list, tuple)) else [mb]
             first = len(self.brushes)
             first_surf = len(self.surfaces)
-            surf_ids = self.emit_brush(mb)
+            n_surf = sum(len(self.emit_brush(b)) for b in parts)
+            mmins = [min(b.mins[i] for b in parts) for i in range(3)]
+            mmaxs = [max(b.maxs[i] for b in parts) for i in range(3)]
             self.models.append(struct.pack(
-                "<6f4i", *mb.mins, *mb.maxs, first_surf, len(surf_ids), first, 1))
+                "<6f4i", *mmins, *mmaxs, first_surf, n_surf, first, len(parts)))
             ent["model"] = f"*{n_trig + mi + 1}"
 
         ent_text = ""
@@ -463,7 +487,7 @@ class BspWriter:
             f"<{len(self.indexes)}i", *self.indexes)
         if self.fog_brush_index is not None:
             lumps[LUMP_FOGS] = struct.pack(
-                "<64s2i", theme_fog(self.theme).encode(),
+                "<64s2i", self.fog_tex.encode(),
                 self.fog_brush_index, -1)
         else:
             lumps[LUMP_FOGS] = b""
@@ -497,7 +521,7 @@ class BspWriter:
 # ======================================================================
 # .map writer (optional, for tweaking a course in Radiant)
 # ======================================================================
-def write_map(course, path):
+def write_map(course, path, baked=False, extra_world=None):
     def brush_text(b):
         out = "{\n"
         for f in b.faces:
@@ -506,15 +530,26 @@ def write_map(course, path):
             n = vcross(vsub(p0, p1), vsub(p2, p1))
             if vdot(n, f.normal) < 0:
                 p0, p2 = p2, p0
-            tex = f.tex[len("textures/"):]
+            # same material routing as BspWriter: theme remap, then accent glow
+            ftex, fpal = theme_remap(f.tex, f.palette, cfg.THEME)
+            ftex = _glow_tex(ftex, fpal)
+            if baked:                       # lightmapped / sun-less variants
+                import strafegen_bake
+                ftex = strafegen_bake.baked_tex(ftex)
+            tex = ftex[len("textures/"):]
             pts = " ".join(
                 f"( {q[0]:g} {q[1]:g} {q[2]:g} )" for q in (p0, p1, p2))
-            out += f"{pts} {tex} 0 0 0 0.5 0.5 0 0 0\n"
+            # 64px-editor-image materials (crete*, m/*): scale 1 => one repeat
+            # per 64u, matching the direct BSP writer's ST
+            sc = 1.0 if ("crete" in tex or "/m/" in tex) else 0.5
+            out += f"{pts} {tex} 0 0 0 {sc:g} {sc:g} 0 0 0\n"
         return out + "}\n"
 
     with open(path, "w") as fh:
         fh.write("{\n")
         for k, v in course.entities[0].items():
+            fh.write(f'"{k}" "{v}"\n')
+        for k, v in (extra_world or {}).items():
             fh.write(f'"{k}" "{v}"\n')
         for b in course.solids:
             fh.write(brush_text(b))
@@ -536,7 +571,8 @@ def write_map(course, path):
             for k, v in ent.items():
                 if k != "model":
                     fh.write(f'"{k}" "{v}"\n')
-            fh.write(brush_text(mb))
+            for b in (mb if isinstance(mb, (list, tuple)) else [mb]):
+                fh.write(brush_text(b))
             fh.write("}\n")
 
 
