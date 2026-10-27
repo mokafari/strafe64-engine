@@ -257,7 +257,7 @@ class Marble(Showcase):
         for cls, x, y, z in (("weapon_shotgun", 0, -A - 140, 24),
                              ("weapon_rocketlauncher", A - 64, -(A - 64), AH + 48),   # earned: SE corner of the rooftop ring walkway
                              ("item_armor_combat", 0, A + 140, 24),
-                             ("item_quad", 0, 0, AH + 48),
+                             ("item_quad", -(A - 64), A - 64, AH + 48),   # NW ring corner, opposite the rocket
                              # E/W counterweights so the rocket isn't the only gun
                              ("weapon_plasmagun", A + 140, 0, 24),
                              ("weapon_lightning", -A - 140, 120, 24)):
