@@ -218,7 +218,7 @@ def gfx_shaders():
 # the raking light catching the cube faces.
 ETHER_SUN_COLOR     = (1.00, 0.74, 0.62)
 ETHER_SUN_INTENSITY = 38.0
-ETHER_SUN_AZIMUTH   = 30.0
+ETHER_SUN_AZIMUTH   = 90.0    # the photo sky's sun lands at az +90 (ethsky_from_pano)
 ETHER_SUN_ELEVATION = 22.0
 ETHER_SUN_SHADOW    = 0.6
 # The BAKE (q3map2: q3map_sun / q3map_skylight) is tuned separately from the
@@ -261,7 +261,7 @@ def ether_sky(shader_script, with_sun=True):
     if with_sun:
         # moon key: cool, dim, high enough to rim the masses; the neon carries
         # the rest. Photo moon sits at the same bearing as the dusk sun.
-        night = ("\tq3map_sun 0.70 0.80 1.0 70 0 38\n"   # photo moon at az 0
+        night = ("\tq3map_sun 0.70 0.80 1.0 70 90 38\n"   # photo moon at az +90
                  + "\tq3map_skylight 45 4\n\tq3map_lightRGB 0.55 0.65 1.0\n")
     night_block = ("textures/strafe64/sky_ether_night\n{\n"
                    "\tqer_editorimage textures/strafe64/env/ethnight_ft.tga\n"

@@ -12,6 +12,8 @@ horizon) keeps its best part BELOW the horizon, so this projects it as:
   * below the horizon: elevation 0..-EL_BOT maps the cloud sea
     (horizon_v .. bottom row), then fades to the sea's own deep tone;
   * azimuth: the photo spans `fov` degrees, triangle-mirrored around the back.
+    The mirror is only seamless at the back (+-180deg) when 360 is a multiple of
+    2*fov, so fov is 180 (200 left a hard seam behind the sun).
 
 Same tr_sky.c face basis as skybox_from_photo (FACES), so it can't shear.
 
@@ -30,8 +32,16 @@ EL_TOP = np.radians(55.0)
 EL_BOT = np.radians(22.0)
 
 
-def build(src, horizon_v=0.80, fov_deg=200.0, size=1024, prefix="ethsky", out_dir=None):
-    im = np.asarray(Image.open(src).convert("RGB"), np.float32)
+def build(src, horizon_v=0.80, fov_deg=180.0, size=1024, prefix="ethsky", out_dir=None,
+          sun_u=None):
+    """sun_u: the sun/moon's horizontal position in the photo (0..1). The mirror
+    wrap shows every column twice except the photo's two EDGES, so the photo is
+    cropped to start at the sun: it then appears exactly once, at azimuth +90deg
+    (aim the baked/runtime sun there)."""
+    pil = Image.open(src).convert("RGB")
+    if sun_u is not None:
+        pil = pil.crop((int(sun_u * pil.width), 0, pil.width, pil.height))
+    im = np.asarray(pil, np.float32)
     H, W, _ = im.shape
     top = im[: max(2, H // 40)].mean(axis=(0, 1))          # zenith tone
     deep = im[-max(2, H // 30):].mean(axis=(0, 1)) * 0.80  # cloud-sea depths
@@ -72,7 +82,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("src")
     ap.add_argument("--horizon", type=float, default=0.80)
-    ap.add_argument("--fov", type=float, default=200.0)
+    ap.add_argument("--fov", type=float, default=180.0)
     ap.add_argument("--size", type=int, default=1024)
     a = ap.parse_args()
     build(a.src, a.horizon, a.fov, a.size)
