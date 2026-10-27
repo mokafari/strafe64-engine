@@ -22,7 +22,7 @@ platform lips, inside the shaft, under the ring walkway.
 import math
 
 from strafegen_geom import make_box, avoid_footprints
-from strafegen_palettes import TEX_TRIGGER, CONTENTS_TRIGGER
+from strafegen_palettes import TEX_TRIGGER, CONTENTS_TRIGGER, TEX_CLIP, CONTENTS_PLAYERCLIP
 from strafegen_showcase import Showcase
 
 
@@ -89,6 +89,14 @@ class Marble(Showcase):
                          ((P - 24, -P + 24, 0), (P, P - 24, 32))):
             self.box(mn, mx, "granite_flamed")
             self.box((mn[0], mn[1], 32), (mx[0], mx[1], 36), "brass")
+        # invisible player clip rising from the parapet: rocket/splash knockback
+        # flung bots over the 32u wall into the void (3 of 7 deaths, playtest 5)
+        for (mn, mx) in (((-P, -P, 36), (P, -P + 8, 1200)), ((-P, P - 8, 36), (P, P, 1200)),
+                         ((-P, -P + 8, 36), (-P + 8, P - 8, 1200)),
+                         ((P - 8, -P + 8, 36), (P, P - 8, 1200))):
+            c = make_box(mn, mx, tex=TEX_CLIP, contents=CONTENTS_PLAYERCLIP, draw=set())
+            c.no_clad = True
+            self.solids.append(c)
         self.neon((-P - 35, -P - 35, -28), (P + 35, -P - 32, -24))
         self.neon((-P - 35, P + 32, -28), (P + 35, P + 35, -24))
         self.neon((-P - 35, -P - 32, -28), (-P - 32, P + 32, -24))

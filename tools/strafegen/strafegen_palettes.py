@@ -8,6 +8,7 @@ constants and one small router; a leaf module everything else imports.
 CONTENTS_SOLID   = 0x00000001
 CONTENTS_FOG     = 0x00000040   # volumetric fog (non-solid; renderer global fog)
 CONTENTS_TRIGGER = 0x40000000
+CONTENTS_PLAYERCLIP = 0x00010000   # blocks players/bots only, invisible
 SURF_SKY         = 0x00000004
 SURF_NOIMPACT    = 0x00000010
 SURF_NODRAW      = 0x00000080
@@ -18,6 +19,8 @@ TEX_WALL    = "textures/strafe64/wall"
 TEX_SKY     = "textures/strafe64/sky"
 TEX_CAULK   = "textures/common/caulk"
 TEX_TRIGGER = "textures/common/trigger"
+TEX_CLIP    = "textures/strafe64/clip"   # invisible player clip (own shader: the
+                                         # bake only sees strafe64.shader)
 # Concrete material for the lun3dm5 brutalist theme. A single pale-grey shader
 # (one material does the whole map, like lun3dm5's c_crete6gs) on a 64u tile with
 # a faint 16u panel grid. Always shipped in the shared pak; only referenced when

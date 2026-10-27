@@ -247,7 +247,9 @@ class BspWriter:
         is_trigger = brush.contents == CONTENTS_TRIGGER
         # triggers and fog volumes are non-solid + non-drawing; only their
         # content flag and (for fog) their axial bounds matter to the engine
-        is_nonsolid = brush.contents in (CONTENTS_TRIGGER, CONTENTS_FOG)
+        # (player clip too: it blocks players/bots via its own content flag but
+        # must not become CONTENTS_SOLID, which would also stop shots)
+        is_nonsolid = brush.contents in (CONTENTS_TRIGGER, CONTENTS_FOG, CONTENTS_PLAYERCLIP)
         cflags = brush.contents if is_nonsolid else CONTENTS_SOLID
         m_tex, m_pal = theme_remap(brush.faces[0].tex, brush.faces[0].palette,
                                    self.theme)

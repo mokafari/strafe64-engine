@@ -235,6 +235,19 @@ textures/strafe64/fog_ether_night
 	surfaceparm trans
 	fogparms ( 0.10 0.12 0.20 ) 4200
 }
+// PLAYER CLIP - invisible wall that stops players and bots only (shots pass).
+// Our own name, not common/playerclip: q3map2 bakes against this script alone.
+textures/strafe64/clip
+{
+	qer_trans 0.4
+	surfaceparm nodraw
+	surfaceparm nolightmap
+	surfaceparm nonsolid
+	surfaceparm trans
+	surfaceparm nomarks
+	surfaceparm noimpact
+	surfaceparm playerclip
+}
 // global atmospheric fog volume. The whole play area is wrapped in one
 // CONTENTS_FOG brush (see write()), and every non-sky world surface is tagged
 // to this fog, so distance fades the world toward the synthwave horizon colour
