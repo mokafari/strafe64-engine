@@ -29,17 +29,24 @@ class Trucks:
     BASE_TOP = 112.0        # flatbed roof; start pad is flush with it
 
     # archetype weights per difficulty (easy leans on flatbeds)
+    # The daily-course sections ported onto trailers (slalom, hurdles, tower,
+    # fork, tunnel, bhop pads) sit beside the original six; "long" kinds are
+    # built on 800-1000u trailers so a bhopping runner gets a real stretch.
     WEIGHTS = (
-        {"flatbed": 5, "trailer": 2, "ramp": 2, "walls": 1, "bar": 2, "hurdle": 2},
-        {"flatbed": 3, "trailer": 3, "ramp": 2, "walls": 2, "bar": 2, "hurdle": 2},
-        {"flatbed": 1, "trailer": 3, "ramp": 2, "walls": 3, "bar": 3, "hurdle": 2},
+        {"flatbed": 3, "trailer": 2, "ramp": 2, "walls": 1, "bar": 1, "hurdle": 1,
+         "slalom": 2, "hurdles": 2, "tower": 1, "fork": 1, "tunnel": 1, "bhop": 1},
+        {"flatbed": 1, "trailer": 2, "ramp": 2, "walls": 2, "bar": 1, "hurdle": 1,
+         "slalom": 2, "hurdles": 2, "tower": 2, "fork": 2, "tunnel": 2, "bhop": 2},
+        {"flatbed": 1, "trailer": 2, "ramp": 2, "walls": 3, "bar": 1, "hurdle": 1,
+         "slalom": 2, "hurdles": 2, "tower": 2, "fork": 2, "tunnel": 2, "bhop": 3},
     )
+    LONG = {"slalom", "hurdles", "fork", "tunnel", "bhop"}
 
     def __init__(self, seed, difficulty, fleet=None):
         self.rng = random.Random(seed ^ 0x7C0C)
         self.seed = seed
         self.diff = difficulty
-        self.fleet = fleet or (14, 12, 11)[difficulty]   # fewer trucks = wider gaps
+        self.fleet = fleet or (16, 15, 14)[difficulty]   # fewer trucks = wider gaps
         self.speed = (260, 320, 380)[difficulty]
         self.solids = []
         self.triggers = []
@@ -119,6 +126,89 @@ class Trucks:
                 make_box((-24, -W, top), (24, W, top + h), palette=PAL_DANGER),
                 ], -L / 4, top
 
+    # --- daily-course sections on wheels ---------------------------------
+
+    def truck_slalom(self, L, W):
+        """sec_slalom: long deck studded with staggered tall pillars — weave
+        at full speed, or wall-kick off one to change line."""
+        top = self.BASE_TOP
+        parts = [self._deck(L, W, top)]
+        n = int((L - 160) // 176)
+        for k in range(n):
+            px = -L / 2 + 160 + k * 176
+            py = (W * 0.45) * (1 if k % 2 else -1)
+            parts.append(make_box((px - 20, py - 20, top), (px + 20, py + 20, top + 176),
+                                  palette=PAL_WALLS))
+        return parts, L / 2 - 80, top
+
+    def truck_hurdles(self, L, W):
+        """sec_hurdles: a run of low walls spaced to one bhop each, every wall
+        with an alternating-side gap — vault the line or cut the gap."""
+        top = self.BASE_TOP
+        parts = [self._deck(L, W, top)]
+        n = int((L - 160) // 224)
+        gap = W * 0.8
+        for k in range(n):
+            hx = -L / 2 + 192 + k * 224
+            side = 1 if k % 2 else -1
+            # wall spans the deck except a gap at the alternating edge
+            y0, y1 = (-W, W - gap) if side > 0 else (-W + gap, W)
+            parts.append(make_box((hx - 12, y0, top), (hx + 12, y1, top + 44),
+                                  palette=PAL_DANGER))
+        return parts, L / 2 - 80, top
+
+    def truck_tower(self, L, W):
+        """sec_tower: double-jump steps (68u, just past a single-jump ledge)
+        climbing toward the tail, then the drop onto the next truck."""
+        top = self.BASE_TOP
+        steps = self.rng.choice((2, 3))
+        parts = [self._deck(L, W, top)]
+        run = L / (steps + 1)
+        for k in range(1, steps + 1):
+            x0 = -L / 2 + k * run
+            parts.append(make_box((x0, -W, top), (L / 2, W, top + 68 * k),
+                                  palette=PAL_TOWER if k % 2 else PAL_PILLAR))
+        return parts, L / 2 - run / 2, top + 68 * steps
+
+    def truck_fork(self, L, W):
+        """sec_fork: a wide trailer split by a tall centre wall — the left lane
+        is a slide-bar tunnel, the right lane a hurdle pair. Pick a side early."""
+        top = self.BASE_TOP
+        W = W + 96
+        parts = [self._deck(L, W, top),
+                 make_box((-L / 2 + 96, -12, top), (L / 2, 12, top + 160), palette=PAL_WALLS)]
+        for bx in (-L / 6, L / 6):
+            parts.append(make_box((bx - 12, -W, top + 46), (bx + 12, -12, top + 62),
+                                  palette=PAL_DANGER))
+            parts.append(make_box((bx - 12 + L / 12, 12, top), (bx + 12 + L / 12, W, top + 40),
+                                  palette=PAL_DANGER))
+        return parts, L / 2 - 64, top
+
+    def truck_tunnel(self, L, W):
+        """sec_slide: a covered stretch with a 46u ceiling — standing hull
+        clips it, a slide carries you through the whole length."""
+        top = self.BASE_TOP
+        t0, t1 = -L / 4, L / 4
+        return [self._deck(L, W, top),
+                make_box((t0, -W, top + 46), (t1, W, top + 78), palette=PAL_WALLS),
+                make_box((t0, -W - 16, top), (t1, -W, top + 78), palette=PAL_WALLS),
+                make_box((t0, W, top), (t1, W + 16, top + 78), palette=PAL_WALLS),
+                ], L / 2 - 64, top
+
+    def truck_bhop(self, L, W):
+        """sec_bhop: a skeletal flatbed of small pads over open air — chain
+        hops pad to pad, a miss drops you onto the kill-road."""
+        top = self.BASE_TOP
+        pad, n = 112.0, self.rng.choice((4, 5))
+        gap = (L - n * pad) / (n - 1)
+        parts = []
+        for k in range(n):
+            x0 = -L / 2 + k * (pad + gap)
+            jog = self.rng.uniform(-W * 0.3, W * 0.3)
+            parts.append(make_box((x0, jog - 56, top - 16), (x0 + pad, jog + 56, top),
+                                  palette=PAL_BHOP))
+        return parts, L / 2 - pad / 2, top
+
     def build(self):
         top = self.BASE_TOP
         # start pad: flush with the truck roofs, just short of the recycle line.
@@ -139,7 +229,8 @@ class Trucks:
             # guarantee one of each kind early in the fleet, then weighted
             kind = kinds[i] if i < len(kinds) else self.rng.choices(kinds, wts)[0]
             counts[kind] = counts.get(kind, 0) + 1
-            L = self.rng.choice((352, 416, 480))
+            L = (self.rng.choice((864, 960, 1056)) if kind in self.LONG
+                 else self.rng.choice((480, 576, 672)))
             W = self.rng.choice((64, 80, 96))
             parts, rx, rz = getattr(self, f"truck_{kind}")(L, W)
             self.movers.append((parts, {
@@ -152,12 +243,22 @@ class Trucks:
         self.sections.append(("truck fleet", dict(count=self.fleet,
                                                   speed=self.speed, **counts)))
 
-        # void kill-pit under the whole road
-        self.sections.append(("void pit", {}))
-        x0, x1, w = -1280.0, 2 * self.ROAD_LEN, 1280.0  # room for the queue ahead after a wrap
-        pit = make_box((x0, -w, -768), (x1, w, -512), tex=TEX_TRIGGER,
-                       contents=CONTENTS_TRIGGER, draw=set())
-        self.triggers.append((pit, {"classname": "trigger_hurt", "dmg": "10000"}))
+        # the highway: a lethal road under the fleet (Clustertruck's "the
+        # ground kills you"). Uniform along x so the game's wrap can't be seen;
+        # dashed lane lines give the eye a speed reference. A thin trigger
+        # skin on the asphalt kills on touch.
+        self.sections.append(("kill road", {}))
+        x0, x1, w = -1280.0, 4 * self.ROAD_LEN, 1280.0  # room for the queue ahead after a wrap
+        self.solids.append(make_box((x0, -w, -64), (x1, w, 0), palette=PAL_WALLS))
+        for ly in (-480, -160, 160, 480):
+            x = x0
+            while x < x1:
+                self.solids.append(make_box((x, ly - 6, 0), (x + 160, ly + 6, 1),
+                                            palette=PAL_GATE))
+                x += 480
+        kill = make_box((x0, -w, 1), (x1, w, 24), tex=TEX_TRIGGER,
+                        contents=CONTENTS_TRIGGER, draw=set())
+        self.triggers.append((kill, {"classname": "trigger_hurt", "dmg": "10000"}))
         self.solids += make_skybox(x0 - 64, -w - 64, -832, x1 + 64, w + 64, 2048)
         self.entities.insert(0, {
             "classname": "worldspawn",

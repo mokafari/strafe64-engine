@@ -1699,7 +1699,7 @@ static void Truck_RollRider( gentity_t *truck ) {
 	if ( !rider ) {
 		return;
 	}
-	chance = 0.15f * ( truckStage - 1 );
+	chance = g_truckRiders.integer ? 0.15f * ( truckStage - 1 ) : 0;
 	gunner = 0.2f * ( truckStage - 2 );
 	if ( random() >= ( chance > 0.7f ? 0.7f : chance ) ) {
 		TruckRider_Die( rider, NULL, NULL, 0, 0 );
@@ -1851,11 +1851,19 @@ static void Truck_Wrap( gentity_t *runner, float dx ) {
 	gentity_t	*e;
 	int			i;
 
-	runner->client->ps.origin[0] -= dx;
-	runner->r.currentOrigin[0] -= dx;
-	runner->s.pos.trBase[0] -= dx;
-	runner->client->ps.eFlags ^= EF_TELEPORT_BIT;
-	trap_LinkEntity( runner );
+	// every client rides the shift: the runner and the dropped-in bots
+	for ( i = 0; i < level.maxclients; i++ ) {
+		e = &g_entities[i];
+		if ( !e->inuse || !e->client || e->client->pers.connected != CON_CONNECTED
+				|| e->client->sess.sessionTeam == TEAM_SPECTATOR ) {
+			continue;
+		}
+		e->client->ps.origin[0] -= dx;
+		e->r.currentOrigin[0] -= dx;
+		e->s.pos.trBase[0] -= dx;
+		e->client->ps.eFlags ^= EF_TELEPORT_BIT;
+		trap_LinkEntity( e );
+	}
 
 	for ( i = MAX_CLIENTS, e = g_entities + MAX_CLIENTS; i < level.num_entities; i++, e++ ) {
 		if ( Truck_IsRoadMover( e ) || ( e->inuse && e->s.eType == ET_MISSILE ) ) {
@@ -1872,6 +1880,86 @@ static void Truck_Wrap( gentity_t *runner, float dx ) {
 	}
 	truckWrapped += dx;
 	truckFarX -= dx;
+}
+
+/*
+================
+Truck_BotQuota
+
+Bots are the enemies: one more Assassin drops in per stage (up to
+g_truckBots), each a notch more skilled. Count connected bots and add one
+at a time; a stage-up only ever asks for the next.
+================
+*/
+static void Truck_BotQuota( void ) {
+	int		i, bots = 0, want, skill;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		if ( g_entities[i].inuse && ( g_entities[i].r.svFlags & SVF_BOT ) ) {
+			bots++;
+		}
+	}
+	want = truckStage - 1;
+	if ( want > g_truckBots.integer ) {
+		want = g_truckBots.integer;
+	}
+	if ( bots < want ) {
+		skill = 2 + truckStage / 2;
+		trap_SendConsoleCommand( EXEC_APPEND,
+			va( "addbot Assassin %i free\n", skill > 5 ? 5 : skill ) );
+	}
+}
+
+/*
+================
+G_TruckPlaceBot
+
+A bot (re)spawning on a truck map drops onto the roof of a truck well ahead
+of the runner, riding with it and facing back down the road — enemies arrive
+WITH the traffic instead of standing at fixed spawn points.
+================
+*/
+void G_TruckPlaceBot( gentity_t *bot ) {
+	gentity_t	*e, *pick = NULL, *far = NULL, *runner;
+	float		rx, d;
+	int			i, seen = 0;
+	vec3_t		ang;
+
+	if ( truckMapStart != level.startTime || !truckTail ) {
+		return;
+	}
+	runner = Truck_Runner();
+	rx = runner ? runner->r.currentOrigin[0] : 0;
+	for ( i = MAX_CLIENTS, e = g_entities + MAX_CLIENTS; i < level.num_entities; i++, e++ ) {
+		if ( !e->inuse || !e->classname || Q_stricmp( e->classname, "func_truck" ) ) {
+			continue;
+		}
+		d = e->r.currentOrigin[0] - rx;
+		if ( d >= 1200 && d <= 3600 ) {
+			if ( rand() % ++seen == 0 ) {	// reservoir pick
+				pick = e;
+			}
+		} else if ( !seen && d > 400 && ( !far || d < far->r.currentOrigin[0] - rx ) ) {
+			far = e;	// fallback: nearest truck still ahead of the runner
+		}
+	}
+	if ( !pick ) {
+		pick = far ? far : truckTail;	// never the spawn pad: it may have wrapped away
+	}
+	if ( !pick ) {
+		return;
+	}
+	VectorAdd( pick->r.currentOrigin, pick->movedir, bot->client->ps.origin );
+	bot->client->ps.origin[2] += 40;
+	bot->client->ps.velocity[0] = pick->s.pos.trDelta[0];
+	bot->client->ps.velocity[1] = 0;
+	bot->client->ps.velocity[2] = 0;
+	bot->client->ps.eFlags ^= EF_TELEPORT_BIT;
+	VectorCopy( bot->client->ps.origin, bot->r.currentOrigin );
+	VectorSet( ang, 0, 180, 0 );
+	SetClientViewAngle( bot, ang );
+	BG_PlayerStateToEntityState( &bot->client->ps, &bot->s, qtrue );
+	trap_LinkEntity( bot );
 }
 
 /*
@@ -1908,6 +1996,9 @@ void G_TruckRunReset( gentity_t *player ) {
 	truckRunStart = level.time;
 	truckStage = 1;
 	truckTail = NULL;
+	if ( player ) {
+		trap_SendConsoleCommand( EXEC_APPEND, "kick allbots\n" );
+	}
 	truckRunHuman = ( player != NULL );
 	truckWrapped = 0;
 	truckFarX = -704;
@@ -1948,6 +2039,7 @@ static void Think_Truck( gentity_t *ent ) {
 	if ( stage > truckStage ) {
 		truckStage = stage;
 		trap_SendServerCommand( -1, va( "cp \"STAGE %i\n\"", stage ) );
+		Truck_BotQuota();
 	}
 	// fleet-wide speed: re-base the trajectory in place so nobody overtakes
 	speed = Truck_Speed( ent );
@@ -2011,6 +2103,7 @@ void SP_func_truck( gentity_t *ent ) {
 	VectorSet( rider->r.maxs,  16,  16,  32 );
 	rider->die = TruckRider_Die;
 	VectorSet( rider->movedir, ridex, 0, ridez + 24 );
+	VectorSet( ent->movedir, ridex, 0, ridez );	// bot drop spot
 	rider->s.angles[YAW] = 180;		// face the oncoming runner
 	rider->s.apos.trType = TR_STATIONARY;
 	VectorCopy( rider->s.angles, rider->s.apos.trBase );

@@ -1345,6 +1345,8 @@ void ClientSpawn(gentity_t *ent) {
 	// truck treadmill: a human (re)spawn ends the run and restarts the fleet
 	if ( !( ent->r.svFlags & SVF_BOT ) && client->sess.sessionTeam != TEAM_SPECTATOR ) {
 		G_TruckRunReset( ent );
+	} else if ( ent->r.svFlags & SVF_BOT ) {
+		G_TruckPlaceBot( ent );		// enemies drop in on the traffic ahead
 	}
 }
 
