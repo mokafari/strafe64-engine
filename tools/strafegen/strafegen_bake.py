@@ -31,7 +31,11 @@ import strafegen_config as cfg
 from strafegen_palettes import theme_remap
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-Q3MAP2 = os.path.join(HERE, "q3map2")
+# $Q3MAP2 first (any OS: point it at your own netradiant-custom build), then the
+# macOS binary build-q3map2.sh leaves here, then q3map2 on PATH
+Q3MAP2 = (os.environ.get("Q3MAP2")
+          or (os.path.join(HERE, "q3map2") if os.path.isfile(os.path.join(HERE, "q3map2"))
+              else shutil.which("q3map2") or os.path.join(HERE, "q3map2")))
 
 
 def have_q3map2():
