@@ -181,7 +181,8 @@ class Marble(Showcase):
         for side in (-1, 1):
             y0 = gy + side * 96
             y1 = y0 + side * 32
-            self.box((gx0, min(y0, y1), 64), (gx1, max(y0, y1), 448), "marble_white")
+            # grounded: raised at z 64 you could walk (and bots path) under it
+            self.box((gx0, min(y0, y1), 0), (gx1, max(y0, y1), 448), "marble_white")
         # the run's purpose: launch decks at each end, 64u up, a void between
         self.box((gx0 - 80, gy - 96, 0), (gx0, gy + 96, 64), "granite_grey",
                  faces={"+z": "granite_flamed"})

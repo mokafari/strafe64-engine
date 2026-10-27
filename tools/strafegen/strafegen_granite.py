@@ -115,7 +115,9 @@ class Granite(Marble):
                 else:
                     y0, y1 = sorted((sa * r0, sa * r1))
                     x0, x1 = sorted((off, off + side * 24))
-                self.box((x0, y0, 48), (x1, y1, 368), "granite_black")
+                # down to the floor: at z 48 a crouching player (40u) fit UNDER
+                # the wall, so AAS offered crawl paths bots wedged in (tracking)
+                self.box((x0, y0, 0), (x1, y1, 368), "granite_black")
             # launch block at the inner end: 96u up, reaches tier 2 (192) with an air jump
             lr = 612.0
             # offset 140u to the side so it doesn't block the stairway's foot
