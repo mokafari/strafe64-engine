@@ -214,7 +214,7 @@ class Marble(Showcase):
             # arc clears the wall top, and the inward drift on the way down lands
             # you ON the ring (sweep-tested by dropping onto a pad and tracing).
             ta = a + math.radians(30)
-            ar = A + 40
+            ar = A - 64      # apex over the walkway centre: bot AAS needs a landing under the apex
             self.pad(k, px, py, ar * math.cos(ta), ar * math.sin(ta), AH + 160)
             blockers.append((px, py, 70))
 
