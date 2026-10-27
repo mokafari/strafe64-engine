@@ -37,7 +37,7 @@ class Marble(Showcase):
     def __init__(self, seed=64, night=False):
         super().__init__(seed, night=night)
         # polished white stone: far less light than concrete before it blows out
-        self.bake_scale = 0.7 if not night else 2.2
+        self.bake_scale = 0.85 if not night else 2.2
 
     def box(self, mins, maxs, mat, pal=None, clad=False, faces=None):
         return super().box(mins, maxs, mat, pal=pal or MAT_PAL.get(mat, (232, 232, 236)),
@@ -94,25 +94,40 @@ class Marble(Showcase):
         self.neon((-P - 35, -P - 32, -28), (-P - 32, P + 32, -24))
         self.neon((P + 32, -P - 32, -28), (P + 35, P + 32, -24))
 
-        # ---- atrium: black marble walls, a 160u doorway centred in each ---------
+        # ---- atrium: black Marquina outside, white Carrara inside ---------------
+        # two-tone: an all-black shaft read as a void; the white inner faces
+        # bounce the sky light down onto the spiral. 160u doorway in each wall.
         door = 80.0
         for (axis, s) in ((0, -1), (0, 1), (1, -1), (1, 1)):
+            inner = {(0, 1): "-x", (0, -1): "+x", (1, 1): "-y", (1, -1): "+y"}[(axis, s)]
+            white = {inner: "marble_white"}
             for half in (-1, 1):
                 if axis == 0:          # walls at x = +-A, running in y
                     x0, x1 = (s * A - T, s * A) if s > 0 else (s * A, s * A + T)
                     y0, y1 = (door, A) if half > 0 else (-A, -door)
-                    self.box((x0, y0, 0), (x1, y1, AH), "marble_black")
+                    self.box((x0, y0, 0), (x1, y1, AH), "marble_black", faces=white)
                 else:                  # walls at y = +-A, running in x
                     y0, y1 = (s * A - T, s * A) if s > 0 else (s * A, s * A + T)
                     x0, x1 = (door, A) if half > 0 else (-A, -door)
-                    self.box((x0, y0, 0), (x1, y1, AH), "marble_black")
+                    self.box((x0, y0, 0), (x1, y1, AH), "marble_black", faces=white)
             # lintel over the doorway
             if axis == 0:
                 x0, x1 = (s * A - T, s * A) if s > 0 else (s * A, s * A + T)
-                self.box((x0, -door, 256), (x1, door, AH), "marble_black")
+                self.box((x0, -door, 256), (x1, door, AH), "marble_black", faces=white)
             else:
                 y0, y1 = (s * A - T, s * A) if s > 0 else (s * A, s * A + T)
-                self.box((-door, y0, 256), (door, y1, AH), "marble_black")
+                self.box((-door, y0, 256), (door, y1, AH), "marble_black", faces=white)
+            # brass pilasters on the black exterior every 128u (1u proud so a
+            # wall-run across the facade doesn't snag), skipping the doorway
+            for t in range(int(-A + 64), int(A), 128):
+                if abs(t) < door + 16:
+                    continue
+                if axis == 0:
+                    xo = s * A
+                    self.box((min(xo, xo + s), t - 5, 0), (max(xo, xo + s), t + 5, AH), "brass")
+                else:
+                    yo = s * A
+                    self.box((t - 5, min(yo, yo + s), 0), (t + 5, max(yo, yo + s), AH), "brass")
         blockers.append((0.0, 0.0, A * 1.4142 + 24))   # square: use its corner radius
 
         # rooftop ring walkway ON the atrium walls, flush with their outer face:
