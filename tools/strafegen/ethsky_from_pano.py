@@ -23,13 +23,73 @@ import argparse
 import os
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from skybox_from_photo import FACES
 from strafegen_tga import _tga32
 
 EL_TOP = np.radians(55.0)
 EL_BOT = np.radians(22.0)
+
+
+def _cut_disc(pil, sun_u, horizon_v, hfov, crop_w):
+    """Find the sun/moon disc near column sun_u and return a sprite + its sky
+    direction + angular size, so it can be drawn round. The background mapping
+    stretches this photo ~2x horizontally (too narrow for 180deg of azimuth),
+    which turned the disc into a wide ellipse."""
+    a = np.asarray(pil, np.float32)
+    H, W, _ = a.shape
+    lum = a.mean(axis=2)
+    # detect on a blurred copy: single-pixel stars are as bright as the disc's
+    # core, but only the disc survives a blur
+    blur = np.asarray(pil.convert("L").filter(ImageFilter.GaussianBlur(6)), np.float32)
+    cx = int(sun_u * W)
+    band = blur[:, max(0, cx - W // 20): cx + W // 20]
+    cy = int(np.argmax(band.max(axis=1)))
+    cx = max(0, cx - W // 20) + int(np.argmax(band[cy]))
+    # radius: how far the bright core extends horizontally from the centre
+    row = lum[cy]
+    thr = row[cx] * 0.92                                 # the bright core, not the glow
+    r = 4
+    while cx + r < W - 1 and row[cx + r] > thr and r < W // 50:
+        r += 1
+    r = int(r * 2.0)                                     # include a little halo
+    y0, y1 = max(0, cy - r), min(H, cy + r)
+    x0, x1 = max(0, cx - r), min(W, cx + r)
+    sprite = a[y0:y1, x0:x1].copy()
+    # erase the disc from the photo (row-wise interpolation from its left/right
+    # neighbours) so the stretched original can't show under the round sprite
+    for yy in range(y0, y1):
+        lft, rgt = a[yy, max(0, x0 - 1)], a[yy, min(W - 1, x1)]
+        t = np.linspace(0.0, 1.0, x1 - x0)[:, None]
+        a[yy, x0:x1] = lft * (1 - t) + rgt * t
+    pil.paste(Image.fromarray(a.astype(np.uint8)))
+    deg_per_px = hfov / crop_w                           # horizontal scale = true
+    el = (1.0 - cy / (horizon_v * H)) * EL_TOP           # same as the background
+    sdir = np.array([np.cos(el) * np.cos(np.pi / 2), np.cos(el) * np.sin(np.pi / 2), np.sin(el)])
+    return sprite, sdir, deg_per_px, (cy - y0, cx - x0)
+
+
+def _composite_disc(px, dx, dy, dz, sprite, sdir, ang_per_px, centre):
+    """Gnomonic-project the sprite around sdir; blend it in with a soft edge
+    (lighten, so the halo adds to the sky instead of pasting a rectangle)."""
+    up = np.array([0.0, 0.0, 1.0])
+    e1 = np.cross(sdir, up); e1 /= np.linalg.norm(e1)    # horizontal, screen-right
+    e2 = np.cross(e1, sdir)                               # screen-up
+    dot = dx * sdir[0] + dy * sdir[1] + dz * sdir[2]
+    x = (dx * e1[0] + dy * e1[1] + dz * e1[2]) / np.maximum(dot, 1e-6)
+    y = (dx * e2[0] + dy * e2[1] + dz * e2[2]) / np.maximum(dot, 1e-6)
+    sx = centre[1] + x / ang_per_px
+    sy = centre[0] - y / ang_per_px
+    h, w, _ = sprite.shape
+    ok = (dot > 0) & (sx >= 0) & (sx < w - 1) & (sy >= 0) & (sy < h - 1)
+    out = px.copy()
+    xi, yi = sx[ok].astype(int), sy[ok].astype(int)
+    src = sprite[yi, xi]
+    rr = np.hypot((sx[ok] - centre[1]) / (w / 2), (sy[ok] - centre[0]) / (h / 2))
+    a = np.clip((1.0 - rr) / 0.35, 0, 1)[:, None]          # feather to the edge
+    out[ok] = np.maximum(out[ok], out[ok] * (1 - a) + src * a)
+    return out
 
 
 def build(src, horizon_v=0.80, fov_deg=180.0, size=1024, prefix="ethsky", out_dir=None,
@@ -39,7 +99,9 @@ def build(src, horizon_v=0.80, fov_deg=180.0, size=1024, prefix="ethsky", out_di
     cropped to start at the sun: it then appears exactly once, at azimuth +90deg
     (aim the baked/runtime sun there)."""
     pil = Image.open(src).convert("RGB")
+    disc = None
     if sun_u is not None:
+        disc = _cut_disc(pil, sun_u, horizon_v, np.radians(fov_deg), pil.width * (1 - sun_u))
         pil = pil.crop((int(sun_u * pil.width), 0, pil.width, pil.height))
     im = np.asarray(pil, np.float32)
     H, W, _ = im.shape
@@ -72,6 +134,8 @@ def build(src, horizon_v=0.80, fov_deg=180.0, size=1024, prefix="ethsky", out_di
         up, dn = up * up * (3 - 2 * up), dn * dn * (3 - 2 * dn)
         px = px * (1 - up) + top * up
         px = px * (1 - dn) + deep * dn
+        if disc is not None:
+            px = _composite_disc(px, dx, dy, dz, *disc)
         rgb = [tuple(p) for p in np.clip(px, 0, 255).astype(np.uint8).reshape(-1, 3)]
         with open(os.path.join(out_dir, f"{prefix}_{side}.tga"), "wb") as fh:
             fh.write(_tga32(size, size, rgb))

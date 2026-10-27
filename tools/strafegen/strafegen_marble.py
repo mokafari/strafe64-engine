@@ -115,20 +115,22 @@ class Marble(Showcase):
                 self.box((-door, y0, 256), (door, y1, AH), "marble_black")
         blockers.append((0.0, 0.0, A * 1.4142 + 24))   # square: use its corner radius
 
-        # rooftop ring walkway on the atrium walls (granite deck, brass edges,
-        # neon under its inner lip), 128u wide -- the loop's high road
+        # rooftop ring walkway ON the atrium walls, flush with their outer face:
+        # no outward overhang and no rail on the outside -- pad arcs came in
+        # under a 48u overhang, bonked, and stuck to the wall face (wall-run)
         rz, rw = AH, 128.0
-        for (mn, mx) in (((-A - 48, -A - 48, rz), (A + 48, -A + rw - 48, rz + 24)),
-                         ((-A - 48, A - rw + 48, rz), (A + 48, A + 48, rz + 24)),
-                         ((-A - 48, -A + rw - 48, rz), (-A + rw - 48, A - rw + 48, rz + 24)),
-                         ((A - rw + 48, -A + rw - 48, rz), (A + 48, A - rw + 48, rz + 24))):
+        for (mn, mx) in (((-A, -A, rz), (A, -A + rw, rz + 24)),
+                         ((-A, A - rw, rz), (A, A, rz + 24)),
+                         ((-A, -A + rw, rz), (-A + rw, A - rw, rz + 24)),
+                         ((A - rw, -A + rw, rz), (A, A - rw, rz + 24))):
             self.box(mn, mx, "granite_grey", faces={"+z": "granite_flamed"})
-        for (mn, mx) in (((-A - 52, -A - 52, rz + 24), (A + 52, -A - 48, rz + 40)),
-                         ((-A - 52, A + 48, rz + 24), (A + 52, A + 52, rz + 40)),
-                         ((-A - 52, -A - 48, rz + 24), (-A - 48, A + 48, rz + 40)),
-                         ((A + 48, -A - 48, rz + 24), (A + 52, A + 48, rz + 40))):
+        # thin brass inlay strip flush along the outer edge (decor, not a rail)
+        for (mn, mx) in (((-A, -A, rz + 24), (A, -A + 6, rz + 25)),
+                         ((-A, A - 6, rz + 24), (A, A, rz + 25)),
+                         ((-A, -A + 6, rz + 24), (-A + 6, A - 6, rz + 25)),
+                         ((A - 6, -A + 6, rz + 24), (A, A - 6, rz + 25))):
             self.box(mn, mx, "brass")
-        ri = A - rw + 48
+        ri = A - rw
         self.neon((-ri, -ri - 3, rz - 4), (ri, -ri, rz - 1))
         self.neon((-ri, ri, rz - 4), (ri, ri + 3, rz - 1))
 
@@ -179,14 +181,30 @@ class Marble(Showcase):
         blockers.append((sx, sy, 200))
 
         # ---- jump pads: tangential throws onto the rooftop ring ---------------
-        pad_r = 700.0
+        pad_r = 860.0     # on the diagonals: 608 per axis, outside the +-512 atrium (700 put them INSIDE it)
         for k in range(4):
             a = math.radians(45 + 90 * k)
             px, py = pad_r * math.cos(a), pad_r * math.sin(a)
-            ta = a + math.radians(35)
-            self.pad(k, px, py, (A - 40) * math.cos(ta) * 1.1, (A - 40) * math.sin(ta) * 1.1,
-                     AH + 220)
+            # a trigger_push aims the arc's APEX; you keep travelling past it.
+            # Apex 40u outside the (now flush) ring edge and 160u above it: the
+            # arc clears the wall top, and the inward drift on the way down lands
+            # you ON the ring (sweep-tested by dropping onto a pad and tracing).
+            ta = a + math.radians(30)
+            ar = A + 40
+            self.pad(k, px, py, ar * math.cos(ta), ar * math.sin(ta), AH + 160)
             blockers.append((px, py, 70))
+
+        # ---- floating stair-jump route up the south face to the ring ----------
+        # nine granite blocks, +72u each (a stair-jump inside the 400ms rejump
+        # window), 120u apart: the skill route to the high road, beside the
+        # pads (easy) and the spiral (slow). Neon frame under each lip.
+        for i in range(9):
+            x = -440.0 + i * 110.0
+            z = 72.0 * (i + 1)
+            self.box((x - 44, -A - 140, z - 20), (x + 44, -A - 52, z), "granite_grey",
+                     faces={"+z": "granite_flamed"})
+            self.neon((x - 36, -A - 132, z - 23), (x + 36, -A - 129, z - 20))
+            blockers.append((x, -A - 96, 80))       # one per block: a line, not a disc
 
         # ---- statement pieces: a black monolith, white marble obelisk ----------
         self.box((-880, 560, 0), (-800, 820, 900), "marble_black")
@@ -205,7 +223,7 @@ class Marble(Showcase):
 
         # ---- spawns: ten, spread, nudged off every footprint ------------------
         for k in range(10):
-            a = math.radians(18 + k * 36)
+            a = math.radians(k * 36)      # bearings clear of the south stair route
             r = 860.0 if k % 2 else 770.0
             x, y = r * math.cos(a), r * math.sin(a)
             x, y = avoid_footprints(x, y, blockers, clearance=48.0, ring_r=r)
