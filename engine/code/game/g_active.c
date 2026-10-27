@@ -1058,6 +1058,8 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 	static float	cur = -1.0f;		// last applied timescale (one human assumed)
 	static qboolean	active = qfalse;	// did we take over the timescale cvar?
 	static int		lastReal = 0;		// trap_Milliseconds at the previous update
+	static float	published = -1.0f;	// timescale value last sent to clients
+	static int		lastPublish = 0;	// trap_Milliseconds of that send
 	static int		savedPmoveFixed = 0;	// pmove_fixed to restore when slow-mo ends
 	int				now, realMsec;
 	float			hspeed, speedFrac, inputMag, intent, target, t, rate;
@@ -1068,6 +1070,15 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 		return;
 	}
 
+	// dead: the cgame killcam owns the clock (and pmove_fixed) until respawn.
+	// Writing here too made both fight over the SYSTEMINFO cvars every frame,
+	// flooding reliable commands. Republish fresh once alive again.
+	if ( ent->client->ps.stats[STAT_HEALTH] <= 0 ) {
+		lastReal = 0;
+		published = -1.0f;
+		return;
+	}
+
 	if ( !g_timeBind.integer ) {
 		// hand the clock back exactly once when disabled
 		if ( active ) {
@@ -1075,6 +1086,7 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 			trap_Cvar_Set( "pmove_fixed", va( "%i", savedPmoveFixed ) );
 			active = qfalse;
 			cur = -1.0f;
+			published = -1.0f;
 		}
 		lastReal = 0;
 		return;
@@ -1193,7 +1205,26 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 		cur += ( target - cur ) * t;
 	}
 
-	trap_Cvar_Set( "timescale", va( "%.3f", cur ) );
+	// timescale is a SYSTEMINFO cvar: every distinct value is a reliable
+	// configstring to every client. Publishing each 0.001 creep of a slow ramp
+	// (dead runner in the killcam, near-frozen truck road) overflowed the 64
+	// reliable-command window -> "reliable command was cycled out". Keep `cur`
+	// smooth internally; publish only meaningful steps, rate-limited, plus the
+	// exact settle on target.
+	{
+		float			diff = cur - published;
+		qboolean		settle = fabs( target - cur ) < 0.002f && published != target;
+
+		if ( diff < 0 ) {
+			diff = -diff;
+		}
+		if ( published < 0.0f || diff >= 0.1f
+				|| ( ( diff >= 0.02f || settle ) && now - lastPublish >= 50 ) ) {
+			published = settle ? target : cur;
+			lastPublish = now;
+			trap_Cvar_Set( "timescale", va( "%.3f", published ) );
+		}
+	}
 	active = qtrue;
 }
 

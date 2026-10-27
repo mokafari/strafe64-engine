@@ -787,7 +787,26 @@ void CG_KillcamUpdate( void ) {
 	} else {
 		ts = CG_KC_Lerp( shot->ts0, shot->ts1, CG_KC_Ease( p ) );
 	}
-	trap_Cvar_Set( "timescale", va( "%.3f", ts ) );
+	// timescale is SYSTEMINFO on a listen server: every distinct value is a
+	// reliable configstring. Writing the eased ramp every render frame (144Hz,
+	// 0.002 steps) overflowed the 64-command window -> "reliable command was
+	// cycled out" on every death. Publish only real steps, rate-limited.
+	{
+		static float	kcPublished = -1.0f;
+		static int		kcLastPublish;
+		float			d = ts - kcPublished;
+		int				now = trap_Milliseconds();
+
+		if ( d < 0 ) {
+			d = -d;
+		}
+		if ( kcPublished < 0.0f || d >= 0.15f
+				|| ( d >= 0.03f && now - kcLastPublish >= 80 ) ) {
+			kcPublished = ts;
+			kcLastPublish = now;
+			trap_Cvar_Set( "timescale", va( "%.3f", ts ) );
+		}
+	}
 
 	// DoF rack onto the current subject; each move carries its own focal
 	// character (a push melts the background, an overhead keeps depth), melting
