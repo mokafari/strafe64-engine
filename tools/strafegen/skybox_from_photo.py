@@ -56,7 +56,7 @@ def _find_sun(im):
     return (bx + 0.5) / 96.0, (by + 0.5) / 54.0
 
 
-def build(src, fov_deg=150.0, horizon_v=0.80, size=512, out_dir=None):
+def build(src, fov_deg=150.0, horizon_v=0.80, size=512, out_dir=None, prefix="realsky"):
     im = Image.open(src).convert("RGB")
     W, H = im.size
     px = im.load()
@@ -114,7 +114,7 @@ def build(src, fov_deg=150.0, horizon_v=0.80, size=512, out_dir=None):
                 g = int(HAZE[1] + (g - HAZE[1]) * f)
                 b = int(HAZE[2] + (b - HAZE[2]) * f)
                 buf.append((r, g, b))
-        path = os.path.join(out_dir, f"realsky_{side}.tga")
+        path = os.path.join(out_dir, f"{prefix}_{side}.tga")
         with open(path, "wb") as fh:
             fh.write(_tga32(size, size, buf))
         written[side] = path
@@ -128,7 +128,7 @@ def build(src, fov_deg=150.0, horizon_v=0.80, size=512, out_dir=None):
     print(f"photo sun at u={us:.3f} v={vs:.3f}  ->  az={math.degrees(az_s):.1f} "
           f"el={math.degrees(el_s):.1f}")
     print(f"_SUN_DIR (concrete day dome) = ({sun[0]:.4f}, {sun[1]:.4f}, {sun[2]:.4f})")
-    print(f"wrote {len(written)} faces -> {out_dir}/realsky_*.tga")
+    print(f"wrote {len(written)} faces -> {out_dir}/{prefix}_*.tga")
     return sun
 
 
@@ -140,5 +140,7 @@ if __name__ == "__main__":
     ap.add_argument("--fov", type=float, default=150.0)
     ap.add_argument("--horizon", type=float, default=0.80)
     ap.add_argument("--size", type=int, default=512)
+    ap.add_argument("--prefix", default="realsky",
+                    help="face file prefix (realsky = concrete theme, ethsky = ethereal)")
     a = ap.parse_args()
-    build(a.src, a.fov, a.horizon, a.size)
+    build(a.src, a.fov, a.horizon, a.size, prefix=a.prefix)

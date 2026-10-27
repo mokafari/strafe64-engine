@@ -64,8 +64,8 @@ def lightmap_world_shaders(shader_script):
     # theme materials (concrete): lightmap first, then the photo stage(s) as a
     # filter. Map-less stages (the vertex shader's faint wave overlay) are
     # dropped -- with no blendFunc they would REPLACE the lit result with white.
-    for tex in ("crete", "crete_eth"):
-        head = "textures/strafe64/%s\n{\n" % tex
+    for full in ("textures/strafe64/crete", "textures/strafe64/crete_eth") + _mats.ALL_TEX:
+        head = full + "\n{\n"
         h = out.find(head)
         if h < 0:
             continue
@@ -104,10 +104,11 @@ def lightmap_world_shaders(shader_script):
 # Materials a baked map routes to lightmapped / sun-less variants. The variants
 # live in the shared pak (strafegen_shaders.build_shader -> baked_variants) under
 # distinct names, so the shared vertex-lit originals can never shadow them.
+import strafegen_materials as _mats
 LM_TEX = ("textures/strafe64/surf", "textures/strafe64/wall",
-          "textures/strafe64/crete", "textures/strafe64/crete_eth")
+          "textures/strafe64/crete", "textures/strafe64/crete_eth") + _mats.ALL_TEX
 BK_SKY = ("textures/strafe64/sky", "textures/strafe64/sky_ether",
-          "textures/strafe64/skyreal")
+          "textures/strafe64/sky_ether_night", "textures/strafe64/skyreal")
 
 
 def baked_tex(tex):
@@ -139,7 +140,11 @@ def baked_variants(shader_script):
     for t in LM_TEX:
         blk = _block(lit, t)
         if blk and "$lightmap" in blk:
-            out.append(blk.replace(t + "\n", t + "_lm\n", 1))
+            blk = blk.replace(t + "\n", t + "_lm\n", 1)
+            if t in _mats.ALL_TEX:          # explicit relief, not rend2's auto _nh
+                name = t[len(_mats.TEX_M):]
+                blk = blk[:blk.rstrip().rfind("}")] + _mats.relief_stage(name) + "}\n"
+            out.append(blk)
     for t in BK_SKY:
         blk = _block(shader_script, t)
         if blk:
@@ -263,6 +268,8 @@ def _run(args):
 
 
 def bake_bsp(name, course, map_path, bake_pk3_path, dest_bsp, bounce=3):
+    scale = getattr(course, "bake_scale", None) or \
+        BAKE_SCALE.get(cfg.THEME, BAKE_SCALE["default"])
     """Compile + light `map_path` in isolation, re-inject palette, write to
     dest_bsp. bake_pk3_path = a pk3 with the lightmapped shader + textures."""
     tmp = tempfile.mkdtemp(prefix="s64bake_")
@@ -283,10 +290,13 @@ def bake_bsp(name, course, map_path, bake_pk3_path, dest_bsp, bounce=3):
         # them sky light alone leaves enclosed layouts near-black
         light_args = ["-light", "-bounce", str(bounce),
                       "-bouncescale", "2",
-                      "-scale", str(BAKE_SCALE.get(cfg.THEME, BAKE_SCALE["default"])),
+                      "-scale", str(scale),
                       # 8u luxels + 2x supersampling: crisp sun-shadow edges
                       # (16u default stair-stepped them across the cladding)
                       "-samplesize", "8", "-super", "2",
+                      # deluxe maps (per-luxel light direction) so the _nh
+                      # normal maps respond to the BAKED sun, not just dlights
+                      "-deluxe",
                       "-dirty", "-fast", "-patchshadows", "-samples", "2"]
         try:
             light = _run(light_args + common + [bb])
@@ -324,7 +334,10 @@ def build_baked_pk3(name, course, out_dir, bounce=3):
     try:
         # 1. emit .map + the lightmapped bake shader + textures
         map_path = os.path.join(work, name + ".map")
-        amb, col = BAKE_AMBIENT.get(cfg.THEME, BAKE_AMBIENT["default"])
+        # a course can override the theme's bake exposure: open-air maps take far
+        # more sky light than enclosed killboxes and blow out at their settings
+        amb, col = getattr(course, "bake_ambient", None) or \
+            BAKE_AMBIENT.get(cfg.THEME, BAKE_AMBIENT["default"])
         sg.write_map(course, map_path, baked=True,
                      extra_world={"_ambient": amb, "_color": col})
         # COMPILE shader = the shared script: it carries the *_lm lightmapped

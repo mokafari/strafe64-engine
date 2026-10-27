@@ -364,12 +364,14 @@ def greeble_brutal(course, seed=0, density=1.0, cap=4000):
     depths = (8, 16, 16, 24, 24, 32, 48)
     added = []
 
-    def blk(cmn, cmx, tex=TEX_CONCRETE, pal=None):
+    clad_tex = getattr(course, "clad_tex", TEX_CONCRETE)
+
+    def blk(cmn, cmx, tex=None, pal=None):
         if len(added) >= cap:
             return
         if (cmx[0] - cmn[0] < 2 or cmx[1] - cmn[1] < 2 or cmx[2] - cmn[2] < 2):
             return
-        added.append(make_box(tuple(cmn), tuple(cmx), tex=tex,
+        added.append(make_box(tuple(cmn), tuple(cmx), tex=tex or clad_tex,
                               palette=pal or rng.choice(pals)))
 
     def snap(v):
@@ -402,6 +404,8 @@ def greeble_brutal(course, seed=0, density=1.0, cap=4000):
     for b in list(course.solids):
         if len(added) >= cap:
             break
+        if getattr(b, "no_clad", False):       # hand-composed maps opt out per brush
+            continue
         if getattr(b, "contents", CONTENTS_SOLID) != CONTENTS_SOLID:
             continue
         if not _is_axis_box(b):

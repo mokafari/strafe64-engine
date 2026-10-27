@@ -211,6 +211,8 @@ class BspWriter:
     def __init__(self, course):
         self.c = course
         self.theme = cfg.THEME          # art theme: remaps bulk dev faces (concrete)
+        # a course may pin its own fog (e.g. the showcase's night variant)
+        self.fog_tex = getattr(course, "fog_tex", None) or theme_fog(cfg.THEME)
         self.light = build_light_model(getattr(course, "seed", 64))
         self.shaders = _Store()
         self.planes = _Store()
@@ -245,7 +247,9 @@ class BspWriter:
         is_trigger = brush.contents == CONTENTS_TRIGGER
         # triggers and fog volumes are non-solid + non-drawing; only their
         # content flag and (for fog) their axial bounds matter to the engine
-        is_nonsolid = brush.contents in (CONTENTS_TRIGGER, CONTENTS_FOG)
+        # (player clip too: it blocks players/bots via its own content flag but
+        # must not become CONTENTS_SOLID, which would also stop shots)
+        is_nonsolid = brush.contents in (CONTENTS_TRIGGER, CONTENTS_FOG, CONTENTS_PLAYERCLIP)
         cflags = brush.contents if is_nonsolid else CONTENTS_SOLID
         m_tex, m_pal = theme_remap(brush.faces[0].tex, brush.faces[0].palette,
                                    self.theme)
@@ -416,7 +420,7 @@ class BspWriter:
             fzs = [b.mins[2] for b in c.solids] + [b.maxs[2] for b in c.solids]
             fog = make_box((min(fxs), min(fys), min(fzs)),
                            (max(fxs), max(fys), max(fzs)),
-                           tex=theme_fog(self.theme), contents=CONTENTS_FOG,
+                           tex=self.fog_tex, contents=CONTENTS_FOG,
                            draw=set())
             c.solids.append(fog)
             self.has_fog = True
@@ -483,7 +487,7 @@ class BspWriter:
             f"<{len(self.indexes)}i", *self.indexes)
         if self.fog_brush_index is not None:
             lumps[LUMP_FOGS] = struct.pack(
-                "<64s2i", theme_fog(self.theme).encode(),
+                "<64s2i", self.fog_tex.encode(),
                 self.fog_brush_index, -1)
         else:
             lumps[LUMP_FOGS] = b""
@@ -535,7 +539,10 @@ def write_map(course, path, baked=False, extra_world=None):
             tex = ftex[len("textures/"):]
             pts = " ".join(
                 f"( {q[0]:g} {q[1]:g} {q[2]:g} )" for q in (p0, p1, p2))
-            out += f"{pts} {tex} 0 0 0 0.5 0.5 0 0 0\n"
+            # 64px-editor-image materials (crete*, m/*): scale 1 => one repeat
+            # per 64u, matching the direct BSP writer's ST
+            sc = 1.0 if ("crete" in tex or "/m/" in tex) else 0.5
+            out += f"{pts} {tex} 0 0 0 {sc:g} {sc:g} 0 0 0\n"
         return out + "}\n"
 
     with open(path, "w") as fh:
