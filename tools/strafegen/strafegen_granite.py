@@ -71,26 +71,28 @@ class Granite(Marble):
             self.neon((-h, -h - 3, z1 - 14), (h, -h, z1 - 10))
         blockers.append((0.0, 0.0, base * 1.4142 + 24))
         top = rise * tiers
-        # ziggurat stairways: a straight flight of 16u steps (walkable -- no
-        # jump needed) up the middle of each face to the summit, white marble
-        # with brass nosings. Bots path the tiers via these (playtest tracking:
-        # only 2 of 24 bot samples were on the ziggurat before), and 96u tier
-        # hops stay the fast route for players.
-        nst = int(top // 16)
-        run = (base - (base - step * (tiers - 1))) / nst
-        for k in range(4):
-            for j in range(nst):
-                r0 = base - j * run
-                z1 = 16.0 * (j + 1)
-                if k == 0:
-                    mn, mx = (r0 - run, -64, 0), (r0 + 20, 64, z1)
-                elif k == 1:
-                    mn, mx = (-64, r0 - run, 0), (64, r0 + 20, z1)
-                elif k == 2:
-                    mn, mx = (-r0 - 20, -64, 0), (-r0 + run, 64, z1)
-                else:
-                    mn, mx = (-64, -r0 - 20, 0), (64, -r0 + run, z1)
-                self.box(mn, mx, "marble_white")
+        # ziggurat stairways, one flight per tier: six 16u risers on 24u treads
+        # (34deg) against each tier face, centred on every side. The single
+        # summit-length flight had 13.9u treads (49deg) -- tracking showed bots
+        # barely used the tiers (2/24 samples), consistent with AAS not
+        # building walkable areas on treads that shallow.
+        for i in range(tiers):
+            h = base - i * step                    # tier i outer face
+            z0 = rise * i
+            for j in range(6):
+                zt = z0 + 16.0 * (j + 1)
+                o1 = h + 144.0 - 24.0 * j          # outer edge of step j
+                o0 = o1 - 24.0
+                for k in range(4):
+                    if k == 0:
+                        mn, mx = (o0, -64, 0), (o1, 64, zt)
+                    elif k == 1:
+                        mn, mx = (-64, o0, 0), (64, o1, zt)
+                    elif k == 2:
+                        mn, mx = (-o1, -64, 0), (-o0, 64, zt)
+                    else:
+                        mn, mx = (-64, -o1, 0), (64, -o0, zt)
+                    self.box(mn, mx, "marble_white")
         self.place("item_quad", 0, 0, top + 24)
         self.place("item_armor_combat", 0, -(base - step) - 40, rise * 2 + 24)
         self.place("item_health_large", 0, (base - step) + 40, rise * 2 + 24)
@@ -126,6 +128,14 @@ class Granite(Marble):
                      faces={"+z": "granite_flamed"})
             for rr in range(680, 901, 80):        # a line of discs along the run
                 blockers.append((ca * rr, sa * rr, 150))
+
+        # ---- diagonal jump pads onto tier 3 (bots reliably use pads) ----------
+        for k in range(4):
+            a = math.radians(45 + 90 * k)
+            px, py = 860 * math.cos(a), 860 * math.sin(a)   # 608/axis: outside the 560 base corner
+            tz = rise * 3 + 120
+            self.pad(k, px, py, 330 * math.cos(a), 330 * math.sin(a), tz)
+            blockers.append((px, py, 80))
 
         # ---- corner wall-jump shafts, railgun on top ---------------------------
         for (sx, sy) in ((-800, -800), (800, -800), (-800, 800), (800, 800)):
