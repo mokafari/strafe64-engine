@@ -23,7 +23,6 @@ import os
 import shutil
 import sys
 
-import numpy as np
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -54,9 +53,9 @@ def crete_eth(src_png, out_tga):
     t.paste(im.transpose(Image.FLIP_LEFT_RIGHT), (512, 0))
     t.paste(im.transpose(Image.FLIP_TOP_BOTTOM), (0, 512))
     t.paste(im.transpose(Image.ROTATE_180), (512, 512))
-    px = np.asarray(t, np.float32)
-    k = 155.0 / px[::4, ::4].mean()
-    Image.fromarray(np.clip(px * k, 0, 255).astype(np.uint8)).save(out_tga)
+    px = list(t.getdata())[::97]                     # (exactly the original recipe)
+    k = 155.0 / (sum(sum(p) for p in px) / (3 * len(px)))
+    t.point(lambda v: min(255, int(v * k))).save(out_tga)
 
 
 def main():
