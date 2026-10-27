@@ -121,6 +121,14 @@ class Granite(Marble):
                 # down to the floor: at z 48 a crouching player (40u) fit UNDER
                 # the wall, so AAS offered crawl paths bots wedged in (tracking)
                 self.box((x0, y0, 0), (x1, y1, 368), "granite_black")
+                # neon reveal 28u under the top on both faces: at night the
+                # black granite crushed to flat silhouettes (spectate pass)
+                if k % 2 == 0:
+                    self.neon((x0, y0 - 3, 336), (x1, y0, 340))
+                    self.neon((x0, y1, 336), (x1, y1 + 3, 340))
+                else:
+                    self.neon((x0 - 3, y0, 336), (x0, y1, 340))
+                    self.neon((x1, y0, 336), (x1 + 3, y1, 340))
             # launch block at the inner end: 96u up, reaches tier 2 (192) with an air jump
             lr = 612.0
             # offset 140u to the side so it doesn't block the stairway's foot
