@@ -63,6 +63,14 @@ def _cut_disc(pil, sun_u, horizon_v, hfov, crop_w):
         lft, rgt = a[yy, max(0, x0 - 1)], a[yy, min(W - 1, x1)]
         t = np.linspace(0.0, 1.0, x1 - x0)[:, None]
         a[yy, x0:x1] = lft * (1 - t) + rgt * t
+    # the row-wise fill leaves faint horizontal streaks: soften the patch with a
+    # blur feathered into its surroundings
+    patch = Image.fromarray(a.astype(np.uint8)).filter(ImageFilter.GaussianBlur(r * 0.35))
+    pb = np.asarray(patch, np.float32)
+    yy, xx = np.mgrid[0:H, 0:W]
+    rr = np.hypot((xx - cx) / max(1, (x1 - x0) / 2), (yy - cy) / max(1, (y1 - y0) / 2))
+    m = np.clip((1.4 - rr) / 0.4, 0, 1)[..., None]
+    a = a * (1 - m) + pb * m
     pil.paste(Image.fromarray(a.astype(np.uint8)))
     deg_per_px = hfov / crop_w                           # horizontal scale = true
     el = (1.0 - cy / (horizon_v * H)) * EL_TOP           # same as the background
