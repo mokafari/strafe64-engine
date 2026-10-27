@@ -214,8 +214,8 @@ class Marble(Showcase):
             # arc clears the wall top, and the inward drift on the way down lands
             # you ON the ring (sweep-tested by dropping onto a pad and tracing).
             ta = a + math.radians(30)
-            ar = A + 40
-            self.pad(k, px, py, ar * math.cos(ta), ar * math.sin(ta), AH + 160)
+            ar = A + 40      # apex 40u outside the edge, 360u up: clears the wall on the way up, drifts ~70u in onto the walkway (drop-traced)
+            self.pad(k, px, py, ar * math.cos(ta), ar * math.sin(ta), AH + 360)
             blockers.append((px, py, 70))
 
         # ---- floating stair-jump route up the south face to the ring ----------
