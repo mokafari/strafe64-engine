@@ -254,7 +254,7 @@ class Marble(Showcase):
             yaw = math.degrees(math.atan2(-y, -x)) % 360
             self.place("info_player_deathmatch", x, y, 40, angle=f"{yaw:.0f}")
         self.place("info_player_intermission", -700, 700, 820, angle="315")
-        for cls, x, y, z in (("weapon_shotgun", 0, -A - 140, 24),
+        for cls, x, y, z in (("weapon_grenadelauncher", 0, -A - 140, 24),
                              ("weapon_rocketlauncher", A - 64, -(A - 64), AH + 48),   # earned: SE corner of the rooftop ring walkway
                              ("item_armor_combat", 0, A + 140, 24),
                              ("item_quad", -(A - 64), A - 64, AH + 48),   # NW ring corner, opposite the rocket
