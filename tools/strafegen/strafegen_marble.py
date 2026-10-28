@@ -262,6 +262,10 @@ class Marble(Showcase):
             x, y = avoid_footprints(x, y, blockers, clearance=48.0, ring_r=r)
             yaw = math.degrees(math.atan2(-y, -x)) % 360
             self.place("info_player_deathmatch", x, y, 40, angle=f"{yaw:.0f}")
+        # two high spawns on the ring walkway (NE/SW, between the rocket and
+        # quad corners): bots never climbed to the roof, so start some fights there
+        for sx2, sy2, yaw in ((A - 64, A - 64, 225), (-(A - 64), -(A - 64), 45)):
+            self.place("info_player_deathmatch", sx2, sy2, AH + 64, angle=str(yaw))
         self.place("info_player_intermission", -700, 700, 820, angle="315")
         for cls, x, y, z in (("weapon_grenadelauncher", 0, -A - 140, 24),
                              ("weapon_rocketlauncher", A - 64, -(A - 64), AH + 48),   # earned: SE corner of the rooftop ring walkway
