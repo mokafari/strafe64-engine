@@ -173,7 +173,16 @@ class Marble(Showcase):
             self.neon((cx - w / 2 + e, cy + w / 2 - e - 3, z0), (cx + w / 2 - e, cy + w / 2 - e, z - 24))
             self.neon((cx - w / 2 + e, cy - w / 2 + e + 3, z0), (cx - w / 2 + e + 3, cy + w / 2 - e - 3, z - 24))
             self.neon((cx + w / 2 - e - 3, cy - w / 2 + e + 3, z0), (cx + w / 2 - e, cy + w / 2 - e - 3, z - 24))
-        # top of the spiral steps onto the ring (at 576 -> ring 640 via jump)
+        # top of the spiral hops onto the ring: 88u up is past any jump, so a
+        # small pad on the last step lobs you onto the west walkway -- the
+        # bots' road to the roof (the outer pads' arcs are too long for AAS)
+        a = math.radians(225 + (steps - 1) * 62)
+        tx, ty, tz = 300.0 * math.cos(a), 300.0 * math.sin(a), 96.0 * steps
+        self.neon((tx - 40, ty - 40, tz), (tx + 40, ty + 40, tz + 1), floor=True)
+        tb = make_box((tx - 52, ty - 52, tz + 1), (tx + 52, ty + 52, tz + 64),
+                      tex=TEX_TRIGGER, contents=CONTENTS_TRIGGER, draw=set())
+        self.triggers.append((tb, {"classname": "trigger_push", "target": "mb_spiral_hop"}))
+        self.place("target_position", -(A - 152), ty, AH + 64, targetname="mb_spiral_hop")
         self.place("item_health_large", 0, 0, 24)
 
         # ---- wall-run gallery: two flat white marble walls, a gap between ------
