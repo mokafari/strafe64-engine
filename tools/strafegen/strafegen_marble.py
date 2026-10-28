@@ -268,7 +268,7 @@ class Marble(Showcase):
             self.place("info_player_deathmatch", sx2, sy2, AH + 64, angle=str(yaw))
         self.place("info_player_intermission", -700, 700, 820, angle="315")
         for cls, x, y, z in (("weapon_grenadelauncher", 0, -A - 140, 24),
-                             ("weapon_rocketlauncher", A - 64, -(A - 64), AH + 48),   # earned: SE corner of the rooftop ring walkway
+                             ("weapon_rocketlauncher", -(A - 64), -160, AH + 48),   # west walkway, just past the spiral hop landing
                              ("item_armor_combat", 0, A + 140, 24),
                              ("item_quad", -(A - 64), A - 64, AH + 48),   # NW ring corner, opposite the rocket
                              # E/W counterweights so the rocket isn't the only gun
