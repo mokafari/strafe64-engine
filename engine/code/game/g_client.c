@@ -1250,8 +1250,9 @@ void ClientSpawn(gentity_t *ent) {
 
 	// STRAFE 64: bot sword-only. Strip a bot's loadout down to just the katana
 	// so the field is a pure blade duel (the spawn weapon-select below then
-	// auto-picks WP_SWORD, the highest weapon owned). Humans keep their kit.
-	if ( g_botSwordOnly.integer && ( ent->r.svFlags & SVF_BOT ) ) {
+	// auto-picks WP_SWORD, the highest weapon owned). Humans keep their kit,
+	// unless g_botSwordOnly is 2: then everyone spawns blade-only.
+	if ( g_botSwordOnly.integer && ( g_botSwordOnly.integer >= 2 || ( ent->r.svFlags & SVF_BOT ) ) ) {
 		for ( i = 0 ; i < WP_NUM_WEAPONS ; i++ ) {
 			client->ps.ammo[i] = 0;
 		}

@@ -238,7 +238,8 @@ int Pickup_Weapon (gentity_t *ent, gentity_t *other) {
 	// STRAFE 64: bots are sword-only — refuse any ranged weapon pickup so they
 	// can't re-arm off the map's weapon spawns (or a dropped gun). The katana
 	// they already own; everything else is left on the ground for humans.
-	if ( g_botSwordOnly.integer && ( other->r.svFlags & SVF_BOT )
+	// g_botSwordOnly 2 extends it to humans: a pure blade match for everyone.
+	if ( g_botSwordOnly.integer && ( g_botSwordOnly.integer >= 2 || ( other->r.svFlags & SVF_BOT ) )
 			&& ent->item->giTag != WP_SWORD ) {
 		return 0;
 	}

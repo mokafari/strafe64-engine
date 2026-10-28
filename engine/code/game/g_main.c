@@ -101,7 +101,7 @@ vmCvar_t	g_swordRiposte;		// ms the clean-parry counter-buff window lasts
 vmCvar_t	g_swordCounterHit;	// 1 = counter-hit a mid-swing enemy (+dmg + pop)
 vmCvar_t	g_swordJuggle;		// 1 = up-cut launches / down-cut spikes (juggle enders)
 vmCvar_t	g_swordGuardBreak;	// 1 = slash after dropping guard breaks a blocker (P~S)
-vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field)
+vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field), 2 = everyone
 vmCvar_t	g_corpseTime;		// STRAFE 64: seconds a dead body lingers before it's removed
 vmCvar_t	g_strafeAccel;		// live air-strafe tuning -> pm_strafeAccelerate
 vmCvar_t	g_airWishClamp;		// -> pm_wishSpeedClamp (the skill cap; keep ~30)
