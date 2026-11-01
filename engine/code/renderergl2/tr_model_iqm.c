@@ -1356,6 +1356,9 @@ typedef struct {
 	int			num;
 	int			joint[MAX_BONE_DELTAS];
 	quat_t		rot[MAX_BONE_DELTAS];
+	int			layerRoot;			// joint a second clip plays from, -1 for none
+	int			layerFrame, layerOldframe;
+	float		layerBacklerp, layerWeight;
 } bonePose_t;
 
 static bonePose_t	bonePoses[MAX_BONE_POSES];
@@ -1365,41 +1368,74 @@ void R_ClearBonePoses( void ) {
 	numBonePoses = 0;
 }
 
-// creates a set when pose is 0; returns the handle to pass on, 0 on failure
-int RE_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat ) {
+static int R_FindJoint( qhandle_t model, const char *joint ) {
 	model_t		*mod = R_GetModelByHandle( model );
 	iqmData_t	*data;
-	bonePose_t	*bp;
 	const char	*names;
 	int			i;
 
 	if ( mod->type != MOD_IQM ) {
-		return 0;
+		return -1;
 	}
 	data = mod->modelData;
 	names = data->jointNames;
 	for ( i = 0; i < data->num_joints; i++ ) {
 		if ( !strcmp( joint, names ) ) {
-			break;
+			return i;
 		}
 		names += strlen( names ) + 1;
 	}
-	if ( i >= data->num_joints ) {
-		return pose;
-	}
+	return -1;
+}
 
-	if ( pose <= 0 ) {
+static bonePose_t *R_BonePoseForEdit( qhandle_t model, int *pose ) {
+	bonePose_t	*bp;
+
+	if ( *pose <= 0 ) {
 		if ( numBonePoses >= MAX_BONE_POSES ) {
-			return 0;
+			return NULL;
 		}
 		bp = &bonePoses[numBonePoses++];
 		bp->model = model;
 		bp->num = 0;
-		pose = numBonePoses;
-	} else if ( pose > numBonePoses ) {
+		bp->layerRoot = -1;
+		*pose = numBonePoses;
+		return bp;
+	}
+	return *pose > numBonePoses ? NULL : &bonePoses[*pose - 1];
+}
+
+// plays another clip from root down (arms over legs), blended by weight
+int RE_BoneLayer( qhandle_t model, int pose, const char *root, int frame, int oldframe, float backlerp, float weight ) {
+	bonePose_t	*bp;
+	int			i = R_FindJoint( model, root );
+
+	if ( i < 0 ) {
+		return pose;
+	}
+	bp = R_BonePoseForEdit( model, &pose );
+	if ( !bp ) {
 		return 0;
-	} else {
-		bp = &bonePoses[pose - 1];
+	}
+	bp->layerRoot = i;
+	bp->layerFrame = frame;
+	bp->layerOldframe = oldframe;
+	bp->layerBacklerp = backlerp;
+	bp->layerWeight = weight;
+	return pose;
+}
+
+// creates a set when pose is 0; returns the handle to pass on, 0 on failure
+int RE_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat ) {
+	bonePose_t	*bp;
+	int			i = R_FindJoint( model, joint );
+
+	if ( i < 0 ) {
+		return pose;
+	}
+	bp = R_BonePoseForEdit( model, &pose );
+	if ( !bp ) {
+		return 0;
 	}
 	if ( bp->num < MAX_BONE_DELTAS ) {
 		bp->joint[bp->num] = i;
@@ -1451,6 +1487,24 @@ static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
 			relativeJoint->scale[2] = oldpose->scale[2] * backlerp + pose->scale[2] * lerp;
 
 			QuatSlerp( oldpose->rotate, pose->rotate, lerp, relativeJoint->rotate );
+		}
+	}
+
+	// upper-body layer: blend a second clip from the root joint down
+	if ( bonePose && bonePose->layerRoot >= 0 && data->num_frames ) {
+		qboolean	inLayer[IQM_MAX_JOINTS];
+		const iqmTransform_t	*a = &data->poses[( bonePose->layerOldframe % data->num_frames ) * data->num_poses];
+		const iqmTransform_t	*b = &data->poses[( bonePose->layerFrame % data->num_frames ) * data->num_poses];
+
+		for ( i = 0; i < data->num_poses; i++ ) {
+			quat_t	q;
+			int		parent = data->jointParents[i];
+
+			inLayer[i] = i == bonePose->layerRoot || ( parent >= 0 && inLayer[parent] );
+			if ( inLayer[i] ) {
+				QuatSlerp( a[i].rotate, b[i].rotate, 1.0f - bonePose->layerBacklerp, q );
+				QuatSlerp( relativeJoints[i].rotate, q, bonePose->layerWeight, relativeJoints[i].rotate );
+			}
 		}
 	}
 

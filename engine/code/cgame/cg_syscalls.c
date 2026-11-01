@@ -295,6 +295,10 @@ void	trap_R_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs ) {
 	syscall( CG_R_MODELBOUNDS, model, mins, maxs );
 }
 
+int		trap_R_BoneLayer( qhandle_t model, int pose, const char *root, int frame, int oldframe, float backlerp, float weight ) {
+	return syscall( CG_R_BONELAYER, model, pose, root, frame, oldframe, PASSFLOAT( backlerp ), PASSFLOAT( weight ) );
+}
+
 int		trap_R_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat ) {
 	return syscall( CG_R_BONEDELTA, model, pose, joint, quat );
 }

@@ -546,6 +546,11 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 	es = &cent->currentState;
 	event = es->event & ~EV_EVENT_BITS;
 
+	// STRAFE 64: the skeletal body plays moves off these, not guessed from velocity
+	if ( event == EV_JUMP || event == EV_DOUBLE_JUMP || event == EV_WALLJUMP || event == EV_DASH ) {
+		cent->pe.skelEvent = event;
+	}
+
 	if ( cg_debugEvents.integer ) {
 		CG_Printf( "ent:%3i  event:%3i ", es->number, event );
 	}

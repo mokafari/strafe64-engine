@@ -2880,6 +2880,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	qboolean		held, wallrun;
 	vec3_t			moveLeft;
 	char			dbg[8];
+	int				hold = 0;
 
 	if ( !model ) {
 		model = trap_R_RegisterModel( "models/s64/mannequin.iqm" );
@@ -2929,20 +2930,15 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 
 	// one-shots: the transitions that sell the move. They hold until done
 	// unless a stronger action interrupts them.
-	if ( s->weapon == WP_SWORD && ( s->eFlags & EF_BLOCKING ) ) {
-		clip = SKEL_SWORD_BLOCK;
-		held = qfalse;
-	} else if ( s->weapon == WP_SWORD && cg.time - cent->swordSwingTime < 420 ) {
-		clip = SKEL_SWORD_REGULAR_A + ( cent->swordSwingStep % 3 );
-		held = qfalse;
-	} else if ( accel[0] * accel[0] + accel[1] * accel[1] > 450.0f * 450.0f && pe->skelGround == ground && !held ) {
-		clip = SKEL_SWORD_DASH;				// horizontal burst
-	} else if ( !ground && accel[2] > 300 && !pe->skelGround && cg.time - pe->skelFlipTime > 700 ) {
-		clip = SKEL_ROLL;					// air/wall jump: tuck flip
-		pe->skelFlipTime = cg.time;
-		held = qfalse;
-	} else if ( !ground && pe->skelGround && vel[2] > 100 && speed < 200 ) {
-		clip = SKEL_JUMP_START;
+	if ( pe->skelEvent ) {
+		if ( pe->skelEvent == EV_DASH ) {
+			clip = SKEL_SWORD_DASH;
+		} else if ( pe->skelEvent == EV_WALLJUMP || pe->skelEvent == EV_DOUBLE_JUMP ) {
+			clip = SKEL_NINJAJUMP_START;
+		} else if ( speed < 200 ) {
+			clip = SKEL_JUMP_START;
+		}
+		pe->skelEvent = 0;
 		held = qfalse;
 	} else if ( ground && !pe->skelGround ) {
 		if ( pe->skelVel[2] < -650 && speed > 200 ) {
@@ -3033,6 +3029,35 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		ent.backlerp = 1.0f - fade * fade * ( 3.0f - 2.0f * fade );
 	}
 
+	// sword on an upper-body layer: arms cut while the legs keep moving
+	{
+		int		sclip = -1;
+		float	sphase = 0, want = 0, sb;
+		int		sf;
+
+		if ( s->weapon == WP_SWORD && ( s->eFlags & EF_BLOCKING ) ) {
+			sclip = SKEL_SWORD_BLOCK;
+			sphase = skelClips[sclip].count * 0.5f;
+			want = 1;
+		} else if ( s->weapon == WP_SWORD && cg.time >= cent->swordSwingTime
+				&& cg.time - cent->swordSwingTime < 480 ) {
+			sclip = SKEL_SWORD_REGULAR_A + ( cent->swordSwingStep % 3 );
+			sphase = ( cg.time - cent->swordSwingTime ) * 0.045f;
+			want = 1;
+		}
+		pe->skelUpper += ( want - pe->skelUpper ) * ( 1.0f - exp( -dt * ( want > 0 ? 40.0f : 14.0f ) ) );
+		if ( sclip >= 0 ) {
+			pe->skelClipUp = sclip;
+			pe->skelPhaseUp = Com_Clamp( 0, skelClips[sclip].count - 1.01f, sphase );
+		}
+		if ( pe->skelUpper > 0.01f ) {
+			sf = (int)pe->skelPhaseUp;
+			sb = 1.0f - ( pe->skelPhaseUp - sf );
+			hold = skelClips[pe->skelClipUp].first + sf;
+			ent.bonePose = trap_R_BoneLayer( model, ent.bonePose, "spine_01", hold + 1, hold, sb, pe->skelUpper );
+		}
+	}
+
 	// chest follows the view pitch so the body looks where the blade goes
 	{
 		orientation_t	tag;
@@ -3058,6 +3083,12 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	pe->skelGround = ground;
 	VectorCopy( vel, pe->skelVel );
 	trap_R_AddRefEntityToScene( &ent );
+	// the hand follows the layer, so the weapon reads its tag from those frames
+	if ( pe->skelUpper > 0.5f ) {
+		ent.oldframe = hold;
+		ent.frame = hold + 1;
+		ent.backlerp = 1.0f - ( pe->skelPhaseUp - (int)pe->skelPhaseUp );
+	}
 	CG_AddPlayerWeapon( &ent, NULL, cent, cgs.clientinfo[s->clientNum].team );
 }
 
