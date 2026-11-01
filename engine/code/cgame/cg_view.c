@@ -211,6 +211,71 @@ static int CG_TwoBoneIK( refEntity_t *ent, int pose, const char *upper, const ch
 	return CG_BoneRotation( ent, pose, upper, &a, n, ang );
 }
 
+/*
+=================
+CG_PlantLimb
+
+Traces from the limb's root along dir (world space) and, on a hit, solves the
+limb onto the surface, offset back along the normal by standoff.
+=================
+*/
+static int CG_PlantLimb( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end,
+		const vec3_t start, const vec3_t dir, float range, float standoff ) {
+	vec3_t	stop, pt, rel, target;
+	trace_t	tr;
+	int		i;
+
+	VectorMA( start, range, dir, stop );
+	CG_Trace( &tr, start, NULL, NULL, stop, cg.predictedPlayerState.clientNum, MASK_SOLID );
+	if ( tr.fraction >= 1.0f || tr.startsolid ) {
+		return pose;
+	}
+	VectorMA( tr.endpos, standoff, tr.plane.normal, pt );
+	VectorSubtract( pt, ent->origin, rel );
+	for ( i = 0; i < 3; i++ ) {
+		target[i] = DotProduct( rel, ent->axis[i] );
+	}
+	return CG_TwoBoneIK( ent, pose, upper, lower, end, target );
+}
+
+// model-space joint -> world
+static qboolean CG_JointWorld( refEntity_t *ent, const char *joint, vec3_t out ) {
+	orientation_t	t;
+	int				i;
+
+	if ( !trap_R_LerpTag( &t, ent->hModel, ent->oldframe, ent->frame, 1.0f - ent->backlerp, joint ) ) {
+		return qfalse;
+	}
+	VectorCopy( ent->origin, out );
+	for ( i = 0; i < 3; i++ ) {
+		VectorMA( out, t.origin[i], ent->axis[i], out );
+	}
+	return qtrue;
+}
+
+// plants both feet on the floor below and each hand on a wall beside the body
+static int CG_PlantOnWorld( refEntity_t *ent ) {
+	static const struct { const char *u, *l, *e; } legs[2] = {
+		{ "thigh_l", "calf_l", "foot_l" }, { "thigh_r", "calf_r", "foot_r" } };
+	static const struct { const char *u, *l, *e; float side; } arms[2] = {
+		{ "upperarm_l", "lowerarm_l", "hand_l", 1 }, { "upperarm_r", "lowerarm_r", "hand_r", -1 } };
+	vec3_t	p, dir;
+	int		i, pose = 0;
+
+	for ( i = 0; i < 2; i++ ) {
+		if ( CG_JointWorld( ent, legs[i].e, p ) ) {
+			p[2] += 24;
+			VectorSet( dir, 0, 0, -1 );
+			pose = CG_PlantLimb( ent, pose, legs[i].u, legs[i].l, legs[i].e, p, dir, 48, 4 );
+		}
+		if ( CG_JointWorld( ent, arms[i].u, p ) ) {
+			VectorScale( ent->axis[1], arms[i].side, dir );
+			pose = CG_PlantLimb( ent, pose, arms[i].u, arms[i].l, arms[i].e, p, dir, 36, 2 );
+		}
+	}
+	return pose;
+}
+
 static void CG_AddTestModel (void) {
 	int		i;
 
@@ -245,6 +310,11 @@ static void CG_AddTestModel (void) {
 		trap_Cvar_VariableStringBuffer( "cg_testIK", buf, sizeof( buf ) );
 		if ( sscanf( buf, "%f %f %f", &target[0], &target[1], &target[2] ) == 3 ) {
 			cg.testModelEntity.bonePose = CG_TwoBoneIK( &cg.testModelEntity, 0, "upperarm_r", "lowerarm_r", "hand_r", target );
+		}
+		// `set cg_testPlant 1`: hands and feet find the real walls and floor
+		trap_Cvar_VariableStringBuffer( "cg_testPlant", buf, sizeof( buf ) );
+		if ( atoi( buf ) ) {
+			cg.testModelEntity.bonePose = CG_PlantOnWorld( &cg.testModelEntity );
 		}
 	}
 
