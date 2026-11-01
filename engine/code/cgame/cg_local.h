@@ -193,6 +193,7 @@ typedef struct {
 	int				skelClipUp, skelFlipKind;
 	vec3_t			skelFootPt[2];		// planted foot positions
 	qboolean		skelFootOn[2];
+	float			skelYawF, skelYawV, skelYawX;
 	int				skelDashTime, skelEventParm, skelFromLen;
 	float			skelFromPhase;
 	vec3_t			skelVaultPt, skelVaultSide;

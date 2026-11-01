@@ -3047,7 +3047,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	vec3_t			moveLeft;
 	char			dbg[8];
 	int				hold = 0;
-	qboolean		kicking;
+	qboolean		kicking, back;
 
 	model = cgs.media.skelModel;
 	dt = cg.frametime * 0.001f;
@@ -3179,9 +3179,14 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	} else if ( CG_SkelOneShot( clip ) && clip != SKEL_SWORD_BLOCK ) {
 		rate = clip == SKEL_SWORD_DASH ? 3.0f : 1.5f;		// ninja snap: nothing reads as slow
 	}
-	pe->skelPhase += dt * 30.0f * rate;
+	// moving backward: same gait, cycle played in reverse
+	back = ground && ( clip == SKEL_SPRINT_LOOP || clip == SKEL_WALK_LOOP ) && DotProduct( vel, axis[0] ) < -0.3f * speed;
+	pe->skelPhase += dt * 30.0f * ( back ? -rate : rate );
 	if ( skelClips[clip].loop ) {
 		pe->skelPhase = fmod( pe->skelPhase, skelClips[clip].count - 1 );
+		if ( pe->skelPhase < 0 ) {
+			pe->skelPhase += skelClips[clip].count - 1;
+		}
 	} else if ( pe->skelPhase > skelClips[clip].count - 1.01f ) {
 		pe->skelPhase = skelClips[clip].count - 1.01f;
 	}
@@ -3189,6 +3194,10 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 
 	// lean: into acceleration, and hard over against a wall; eased so it flows
 	wantPitch = Com_Clamp( -18, 22, speed * 0.03f + DotProduct( accel, axis[0] ) * 0.05f );
+	if ( back ) {
+		wantPitch = -wantPitch * 0.5f;
+	}
+	wantPitch += pe->skelDrop * 1.1f;		// fold over the knees as the hips sink
 	wantRoll = Com_Clamp( -24, 24, DotProduct( accel, axis[1] ) * -0.08f );
 	if ( cg.time - pe->skelDashTime < 220 ) {
 		wantPitch = 38.0f;
@@ -3317,40 +3326,27 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		orientation_t	tag;
 		vec3_t			yaxis = { 0, 1, 0 };
 
+		// the chest trails the hips through turns, then catches up
+		float	yawNow = angles[YAW], twist;
+
+		if ( dt > 0.0005f ) {
+			float	h = dt < 0.03f ? dt : 0.03f;
+			float	target = pe->skelYawF + AngleNormalize180( yawNow - pe->skelYawF );
+
+			CG_SkelSecondOrder( &pe->skelYawF, &pe->skelYawV, &pe->skelYawX, target, h );
+			pe->skelYawX = AngleNormalize180( pe->skelYawX );
+			pe->skelYawF = AngleNormalize180( pe->skelYawF );
+		}
+		twist = Com_Clamp( -30, 30, AngleNormalize180( pe->skelYawF - yawNow ) );
+		if ( trap_R_LerpTag( &tag, model, ent.oldframe, ent.frame, 1.0f - ent.backlerp, "spine_02" ) ) {
+			vec3_t	zaxis = { 0, 0, 1 };
+
+			ent.bonePose = CG_BoneRotation( &ent, ent.bonePose, "spine_02", &tag, zaxis, DEG2RAD( twist * 0.6f ) );
+		}
 		up = AngleNormalize180( cent->lerpAngles[PITCH] ) * 0.5f;
 		if ( !CG_SkelOneShot( clip ) && trap_R_LerpTag( &tag, model, ent.oldframe, ent.frame,
 				1.0f - ent.backlerp, "spine_03" ) ) {
 			ent.bonePose = CG_BoneRotation( &ent, ent.bonePose, "spine_03", &tag, yaxis, DEG2RAD( up ) );
-		}
-	}
-
-	// directional cut: the hand travels the same start->end compass arc the
-	// server cut with, across the front of the chest, over the clip's arm
-	if ( s->weapon == WP_SWORD && !( s->eFlags & EF_BLOCKING )
-			&& cg.time >= cent->swordSwingTime && cg.time - cent->swordSwingTime < 420 ) {
-		static const float	qx[SQ_NUM_QUADS] = { 0, 0.7f, 1, 0.7f, 0, -0.7f, -1, -0.7f };
-		static const float	qy[SQ_NUM_QUADS] = { 1, 0.7f, 0, -0.7f, -1, -0.7f, 0, 0.7f };
-		float			f = ( cg.time - cent->swordSwingTime ) / 420.0f;
-		float			w = sin( f * M_PI ), rx, ry;
-		int				a = cent->swordStartQuad & 7, b = cent->swordEndQuad & 7, i;
-		vec3_t			sh, t, h;
-		orientation_t	tag;
-
-		f = f * f * ( 3 - 2 * f );
-		rx = qx[a] + ( qx[b] - qx[a] ) * f;
-		ry = qy[a] + ( qy[b] - qy[a] ) * f;
-		if ( CG_JointWorld( &ent, "upperarm_r", sh ) && trap_R_BoneTag( &tag, model, ent.frame, ent.oldframe,
-				ent.backlerp, ent.bonePose, "hand_r" ) ) {
-			VectorCopy( ent.origin, h );
-			for ( i = 0; i < 3; i++ ) {
-				VectorMA( h, tag.origin[i], ent.axis[i], h );
-			}
-			VectorMA( sh, 16 + 8 * w, ent.axis[0], t );
-			VectorMA( t, -18 * rx, ent.axis[1], t );
-			VectorMA( t, 18 * ry, ent.axis[2], t );
-			VectorSubtract( t, h, t );
-			VectorMA( h, w, t, t );
-			ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, "upperarm_r", "lowerarm_r", "hand_r", t );
 		}
 	}
 
@@ -3405,17 +3401,19 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		}
 	}
 
-	// landing: a critically damped spring sinks the hips, feet stay put so the
-	// knees take the weight. Harder drops compress deeper
+	// landing: an underdamped spring. The hips sink with the impact, feet stay
+	// put so the knees take it, then the body rebounds past standing and settles
 	{
-		float	w = 13.0f;
+		const float	w = 10.0f, zeta = 0.42f;
+		float		h = dt < 0.03f ? dt : 0.03f;
 
-		if ( ground && !pe->skelGround && pe->skelVel[2] < -200 ) {
-			pe->skelDropV = Com_Clamp( 0, 700, -pe->skelVel[2] * 0.7f );
+		if ( ground && !pe->skelGround && pe->skelVel[2] < -180 ) {
+			pe->skelDropV = Com_Clamp( 0, 420, -pe->skelVel[2] * 0.55f );
 		}
-		pe->skelDropV += ( -w * w * pe->skelDrop - 2 * w * pe->skelDropV ) * dt;
-		pe->skelDrop += pe->skelDropV * dt;
-		if ( pe->skelDrop > 0.5f && ground ) {
+		pe->skelDropV += ( -w * w * pe->skelDrop - 2 * zeta * w * pe->skelDropV ) * h;
+		pe->skelDrop += pe->skelDropV * h;
+		pe->skelDrop = Com_Clamp( -4, 24, pe->skelDrop );
+		if ( fabs( pe->skelDrop ) > 0.5f && ground ) {
 			vec3_t	fl, fr;
 
 			if ( CG_JointWorld( &ent, "foot_l", fl ) && CG_JointWorld( &ent, "foot_r", fr ) ) {
@@ -3436,7 +3434,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 			vec3_t	p, d;
 			const char	*foot = leg ? "foot_r" : "foot_l";
 
-			if ( !ground || speed > 520 || pe->skelDrop > 0.5f || ( kicking && leg )
+			if ( !ground || speed > 520 || fabs( pe->skelDrop ) > 0.5f || ( kicking && leg )
 					|| ( clip != SKEL_SPRINT_LOOP && clip != SKEL_WALK_LOOP ) || !CG_JointWorld( &ent, foot, p )
 					|| p[2] - ent.origin[2] > 7.0f ) {
 				pe->skelFootOn[leg] = qfalse;
