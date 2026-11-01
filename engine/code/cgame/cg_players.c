@@ -2845,7 +2845,8 @@ into acceleration and rolls into walls, and the chest follows the view pitch.
 */
 #define SKEL_WALL_TILT		38.0f
 #define SKEL_WALL_STANCE	0.35f	// fraction of the cycle a foot is planted
-#define SKEL_WALL_STEP		20.0f	// planted foot travels +-this along the wall
+#define SKEL_WALL_STEP		15.0f	// planted foot travels +-this along the wall
+#define SKEL_WALL_REACH		5.0f	// stride centre sits ahead of the hips: the back leg never locks
 #define SKEL_SPRINT_SPEED	230.0f	// ground speed the sprint clip reads right at
 
 // second-order follow: overshoots a little, then settles. Acceleration-limited
@@ -2947,7 +2948,7 @@ void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t move
 		}
 		bend = 1.0f - fabs( along ) / SKEL_WALL_STEP;	// mid-stance the knee takes the load
 		VectorCopy( wallPt, pt );
-		VectorMA( pt, along, fwd, pt );
+		VectorMA( pt, along + SKEL_WALL_REACH, fwd, pt );
 		VectorMA( pt, 2.0f + 11.0f * lift + 3.0f * bend * ( 1.0f - lift ), off, pt );
 		pt[2] += -13.0f + 11.0f * lift + 3.0f * bend * ( 1.0f - lift );
 		if ( weight < 1.0f && CG_JointWorld( ent, leg ? "foot_r" : "foot_l", anim ) ) {
@@ -2985,7 +2986,7 @@ static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
 	pe->skelScarfTime = cg.time;
 	for ( i = 1; i < 8; i++ ) {			// integrate
 		VectorSubtract( pe->skelScarf[i], pe->skelScarfOld[i], d );
-		VectorScale( d, 0.86f, d );			// air drag: it trails, it doesn't whip
+		VectorScale( d, pow( 0.86f, dt * 125.0f ), d );		// air drag per second, not per frame
 		if ( VectorLength( d ) > 10.0f ) {
 			VectorNormalize( d );
 			VectorScale( d, 10.0f, d );
@@ -2993,6 +2994,8 @@ static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
 		VectorCopy( pe->skelScarf[i], pe->skelScarfOld[i] );
 		VectorAdd( pe->skelScarf[i], d, pe->skelScarf[i] );
 		pe->skelScarf[i][2] -= 700.0f * dt * dt;
+		pe->skelScarf[i][0] += 0.05f * i * sin( cg.time * 0.013f + i * 0.9f );	// flutter
+		pe->skelScarf[i][1] += 0.05f * i * cos( cg.time * 0.011f + i * 1.1f );
 	}
 	VectorCopy( root, pe->skelScarf[0] );
 	for ( j = 0; j < 3; j++ ) {			// hold the link length, root fixed
@@ -3002,13 +3005,13 @@ static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
 			VectorSubtract( pe->skelScarf[i], pe->skelScarf[i - 1], d );
 			len = VectorLength( d );
 			if ( len > 0.01f ) {
-				VectorMA( pe->skelScarf[i - 1], 4.5f / len, d, pe->skelScarf[i] );
+				VectorMA( pe->skelScarf[i - 1], 3.6f / len, d, pe->skelScarf[i] );
 			}
 		}
 	}
 	memset( v, 0, sizeof( v ) );
 	for ( i = 0; i < 7; i++ ) {
-		float	w = 2.2f * ( 1.0f - i / 8.0f );
+		float	w = 1.5f * ( 1.0f - i / 9.0f );
 
 		VectorSubtract( pe->skelScarf[i + 1], pe->skelScarf[i], d );
 		VectorSubtract( cg.refdef.vieworg, pe->skelScarf[i], t );
