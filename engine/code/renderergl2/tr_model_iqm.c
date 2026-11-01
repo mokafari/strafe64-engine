@@ -1351,6 +1351,9 @@ references the set through bonePose. Sets live until the next RE_BeginFrame.
 #define	MAX_BONE_POSES	64
 #define	MAX_BONE_DELTAS	24
 
+// a delta with zero xyz and w 0 hides that joint's subtree, w 2 keeps only it
+#define	BONE_IS_MASK( q )	( (q)[0] == 0 && (q)[1] == 0 && (q)[2] == 0 && ( (q)[3] == 0 || (q)[3] == 2 ) )
+
 typedef struct {
 	qhandle_t	model;
 	int			num;
@@ -1515,6 +1518,10 @@ static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
 			const float	*b = bonePose->rot[i];
 			quat_t	q;
 
+			if ( BONE_IS_MASK( b ) ) {
+				continue;
+			}
+
 			q[0] = a[3]*b[0] + a[0]*b[3] + a[1]*b[2] - a[2]*b[1];
 			q[1] = a[3]*b[1] - a[0]*b[2] + a[1]*b[3] + a[2]*b[0];
 			q[2] = a[3]*b[2] + a[0]*b[1] - a[1]*b[0] + a[2]*b[3];
@@ -1539,6 +1546,43 @@ static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
 			Matrix34Multiply( &poseMats[(*jointParent)*12], mat1, poseMat );
 		} else {
 			Matrix34Multiply( mat1, invBindMat, poseMat );
+		}
+	}
+
+	// masked joints collapse their vertices onto the joint, which removes the
+	// section from the mesh and leaves the rest of the skeleton alone
+	if ( bonePose ) {
+		qboolean	hide[IQM_MAX_JOINTS];
+		qboolean	any = qfalse, sub[IQM_MAX_JOINTS];
+		int			m;
+
+		Com_Memset( hide, 0, sizeof( hide ) );
+		for ( m = 0; m < bonePose->num; m++ ) {
+			if ( !BONE_IS_MASK( bonePose->rot[m] ) ) {
+				continue;
+			}
+			for ( i = 0; i < data->num_poses; i++ ) {
+				int	parent = data->jointParents[i];
+
+				sub[i] = i == bonePose->joint[m] || ( parent >= 0 && sub[parent] );
+				hide[i] |= bonePose->rot[m][3] == 0 ? sub[i] : !sub[i];
+			}
+			any = qtrue;
+		}
+		for ( i = 0; any && i < data->num_poses; i++ ) {
+			if ( hide[i] ) {
+				float		*m34 = &poseMats[i * 12];
+				const float	*b = &data->bindJoints[i * 12];
+				vec3_t		p;
+
+				p[0] = m34[0] * b[3] + m34[1] * b[7] + m34[2] * b[11] + m34[3];
+				p[1] = m34[4] * b[3] + m34[5] * b[7] + m34[6] * b[11] + m34[7];
+				p[2] = m34[8] * b[3] + m34[9] * b[7] + m34[10] * b[11] + m34[11];
+				Com_Memset( m34, 0, 12 * sizeof( float ) );
+				m34[3] = p[0];
+				m34[7] = p[1];
+				m34[11] = p[2];
+			}
 		}
 	}
 }

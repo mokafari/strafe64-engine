@@ -52,6 +52,15 @@ typedef struct {
 								// pieces; frozen once the body settles
 } cgRagdoll_t;
 
+// which section of the skeletal mannequin a segment draws (NULL = MD3 segment)
+typedef struct {
+	float		pivot;			// height of this section's particle on the model
+	int			keep;			// 1: show only joint[0]'s subtree; 0: hide joint[]
+	const char	*joint[4];
+} ragPiece_t;
+
+static const ragPiece_t	*ragPiece;
+
 // indexed by entity number so it covers both live corpses and body-queue bodies
 static cgRagdoll_t	cg_ragdolls[MAX_GENTITIES];
 
@@ -744,6 +753,19 @@ static void CG_RagdollSegment( cgRagdoll_t *rag, qhandle_t model, qhandle_t skin
 
 	VectorCopy( rag->pos[originPart], ent.origin );
 	VectorCopy( rag->pos[originPart], ent.lightingOrigin );
+	if ( ragPiece ) {
+		// the mannequin's origin is at its feet: pull it back along the bone so
+		// the piece pivots on its particle, and show just that section
+		static const float	mask[2][4] = { { 0, 0, 0, 0 }, { 0, 0, 0, 2 } };
+		int		i;
+
+		VectorMA( ent.origin, -ragPiece->pivot, up, ent.origin );
+		model = trap_R_RegisterModel( "models/s64/mannequin.iqm" );
+		skin = 0;
+		for ( i = 0; i < 4 && ragPiece->joint[i]; i++ ) {
+			ent.bonePose = trap_R_BoneDelta( model, ent.bonePose, ragPiece->joint[i], mask[ragPiece->keep] );
+		}
+	}
 	VectorCopy( ent.origin, ent.oldorigin );
 
 	ent.hModel = model;
@@ -755,6 +777,40 @@ static void CG_RagdollSegment( cgRagdoll_t *rag, qhandle_t model, qhandle_t skin
 	ent.backlerp = 0;
 
 	CG_AddRefEntityWithPowerups( &ent, &cent->currentState, cgs.clientinfo[ cent->currentState.clientNum ].team );
+}
+
+/*
+===============
+CG_RagdollAddSkeletal
+
+cg_skeletal bodies: the same particles, drawn as sections of the one mannequin
+so a cut opens the real mesh. Pieces match the MD3 segments below.
+===============
+*/
+static void CG_RagdollAddSkeletal( cgRagdoll_t *rag, centity_t *cent, int renderfx, float shadowPlane ) {
+	static const ragPiece_t	legs = { 0, 0, { "spine_01" } };
+	static const ragPiece_t	torso = { 33, 0, { "thigh_l", "thigh_r", "neck_01" } };
+	static const ragPiece_t	torsoNoArm = { 33, 0, { "thigh_l", "thigh_r", "neck_01", "lowerarm_r" } };
+	static const ragPiece_t	head = { 54, 1, { "neck_01" } };
+	const ragPiece_t		*body = rag->cut == RAG_CUT_LIMB ? &torsoNoArm : &torso;
+
+	ragPiece = &legs;
+	CG_RagdollSegment( rag, 0, 0, RP_FEET, RP_FEET, RP_PELVIS, cent, renderfx, shadowPlane, 0 );
+	ragPiece = body;
+	if ( rag->cut == RAG_CUT_BISECT ) {
+		CG_RagdollSegment( rag, 0, 0, RP_CHEST, RP_CHEST, RP_HEAD, cent, renderfx, shadowPlane, rag->spin );
+		ragPiece = &head;
+		CG_RagdollSegment( rag, 0, 0, RP_HEAD, RP_CHEST, RP_HEAD, cent, renderfx, shadowPlane, rag->spin );
+	} else {
+		CG_RagdollSegment( rag, 0, 0, RP_PELVIS, RP_PELVIS, RP_CHEST, cent, renderfx, shadowPlane, 0 );
+		ragPiece = &head;
+		if ( rag->cut == RAG_CUT_DECAP ) {
+			CG_RagdollSegment( rag, 0, 0, RP_HEAD, RP_HEAD, RP_HEAD, cent, renderfx, shadowPlane, rag->spin );
+		} else {
+			CG_RagdollSegment( rag, 0, 0, RP_HEAD, RP_CHEST, RP_HEAD, cent, renderfx, shadowPlane, 0 );
+		}
+	}
+	ragPiece = NULL;
 }
 
 /*
@@ -808,6 +864,16 @@ qboolean CG_RagdollAdd( centity_t *cent, int renderfx, float shadowPlane ) {
 		CG_RagdollStep( rag );
 	} else {
 		rag->lastTime = cg.time;	// keep dt sane if it wakes back up
+	}
+
+	{
+		char	sk[8];
+
+		trap_Cvar_VariableStringBuffer( "cg_skeletal", sk, sizeof( sk ) );
+		if ( atoi( sk ) ) {
+			CG_RagdollAddSkeletal( rag, cent, renderfx, shadowPlane );
+			return qtrue;
+		}
 	}
 
 	// legs always ride the lower spine (never spun -- they stay the grounded half)
