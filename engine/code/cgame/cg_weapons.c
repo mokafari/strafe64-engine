@@ -1290,7 +1290,7 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 		vec3_t			across, fingers;
 
 		// a handle lies across the knuckles, so the grip is read off the posed fist:
-		// handle along pinky->index, edge facing out over the fingers
+		// handle along pinky->index, cutting edge out over the fingers
 		trap_R_BoneTag(&lerped, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "hand_r");
 		if ( trap_R_BoneTag(&knuckle, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "middle_01_r")
 			&& trap_R_BoneTag(&index, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "index_01_r")
@@ -1302,7 +1302,7 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 			VectorNormalize( fingers );
 			VectorMA( lerped.origin, 3.0f, fingers, lerped.origin );		// inside the curled fingers
 			VectorCopy( across, lerped.axis[0] );
-			VectorCopy( fingers, lerped.axis[2] );
+			VectorScale( fingers, -1.0f, lerped.axis[2] );	// the model's +Z is the spine: edge outward
 			CrossProduct( lerped.axis[2], lerped.axis[0], lerped.axis[1] );
 			// seat the handle's centre (model 3, 0, -2.3) on that point
 			VectorMA( lerped.origin, -3.0f * CG_SKEL_SWORD_SCALE, lerped.axis[0], lerped.origin );
