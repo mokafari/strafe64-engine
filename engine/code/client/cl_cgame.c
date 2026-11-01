@@ -574,6 +574,8 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_MODELBOUNDS:
 		re.ModelBounds( args[1], VMA(2), VMA(3) );
 		return 0;
+	case CG_R_BONEDELTA:
+		return re.BoneDelta( args[1], args[2], VMA(3), VMA(4) );
 	case CG_R_LERPTAG:
 		return re.LerpTag( VMA(1), args[2], args[3], args[4], VMF(5), VMA(6) );
 	case CG_GETGLCONFIG:

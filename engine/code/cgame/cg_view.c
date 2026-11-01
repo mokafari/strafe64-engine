@@ -144,6 +144,73 @@ void CG_TestModelPrevSkin_f (void) {
 	CG_Printf( "skin %i\n", cg.testModelEntity.skinNum );
 }
 
+/*
+=================
+CG_TwoBoneIK
+
+Bends a limb so its end joint reaches target (model space), on top of whatever
+frame the entity is playing. Reads the animated joints through tags, solves in
+model space, and submits local rotation deltas. Returns the bone pose handle.
+=================
+*/
+static int CG_BoneRotation( refEntity_t *ent, int pose, const char *joint, const orientation_t *tag,
+		const vec3_t axis, float angle ) {
+	float	q[4], s = sin( angle * 0.5f );
+
+	// a model-space rotation about axis is the same angle about axis in joint space
+	q[0] = DotProduct( axis, tag->axis[0] ) * s;
+	q[1] = DotProduct( axis, tag->axis[1] ) * s;
+	q[2] = DotProduct( axis, tag->axis[2] ) * s;
+	q[3] = cos( angle * 0.5f );
+	return trap_R_BoneDelta( ent->hModel, pose, joint, q );
+}
+
+static int CG_TwoBoneIK( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end,
+		const vec3_t target ) {
+	orientation_t	a, b, c;
+	vec3_t			ab, cb, ac, at, n, m, rel, c2;
+	float			la, lb, lc, cur, want, ang, t;
+	float			frac = 1.0f - ent->backlerp;
+
+	if ( !trap_R_LerpTag( &a, ent->hModel, ent->oldframe, ent->frame, frac, upper )
+		|| !trap_R_LerpTag( &b, ent->hModel, ent->oldframe, ent->frame, frac, lower )
+		|| !trap_R_LerpTag( &c, ent->hModel, ent->oldframe, ent->frame, frac, end ) ) {
+		return pose;
+	}
+	VectorSubtract( a.origin, b.origin, ab );
+	VectorSubtract( c.origin, b.origin, cb );
+	la = VectorLength( ab );
+	lb = VectorLength( cb );
+	VectorSubtract( target, a.origin, at );
+	lc = VectorLength( at );
+	lc = Com_Clamp( fabs( la - lb ) + 0.01f, la + lb - 0.01f, lc );
+
+	// elbow: open the interior angle until the limb is as long as the reach
+	CrossProduct( ab, cb, m );
+	if ( VectorNormalize( m ) < 0.001f ) {
+		VectorSet( m, 0, 0, 1 );
+	}
+	cur = acos( Com_Clamp( -1, 1, DotProduct( ab, cb ) / ( la * lb ) ) );
+	want = acos( Com_Clamp( -1, 1, ( la * la + lb * lb - lc * lc ) / ( 2 * la * lb ) ) );
+	ang = want - cur;
+	pose = CG_BoneRotation( ent, pose, lower, &b, m, ang );
+
+	// shoulder: swing the straightened limb onto the target
+	VectorScale( cb, cos( ang ), rel );
+	CrossProduct( m, cb, n );
+	VectorMA( rel, sin( ang ), n, rel );
+	t = DotProduct( m, cb ) * ( 1.0f - cos( ang ) );
+	VectorMA( rel, t, m, rel );
+	VectorAdd( b.origin, rel, c2 );
+	VectorSubtract( c2, a.origin, ac );
+	CrossProduct( ac, at, n );
+	if ( VectorNormalize( n ) < 0.001f ) {
+		return pose;
+	}
+	ang = acos( Com_Clamp( -1, 1, DotProduct( ac, at ) / ( VectorLength( ac ) * VectorLength( at ) ) ) );
+	return CG_BoneRotation( ent, pose, upper, &a, n, ang );
+}
+
 static void CG_AddTestModel (void) {
 	int		i;
 
@@ -166,6 +233,18 @@ static void CG_AddTestModel (void) {
 			cg.testModelEntity.origin[i] += cg.refdef.viewaxis[0][i] * cg_gun_x.value;
 			cg.testModelEntity.origin[i] += cg.refdef.viewaxis[1][i] * cg_gun_y.value;
 			cg.testModelEntity.origin[i] += cg.refdef.viewaxis[2][i] * cg_gun_z.value;
+		}
+	}
+
+	// STRAFE 64 DEBUG: `set cg_testIK "x y z"` plants the right hand there (model space)
+	{
+		char	buf[64];
+		vec3_t	target;
+
+		cg.testModelEntity.bonePose = 0;
+		trap_Cvar_VariableStringBuffer( "cg_testIK", buf, sizeof( buf ) );
+		if ( sscanf( buf, "%f %f %f", &target[0], &target[1], &target[2] ) == 3 ) {
+			cg.testModelEntity.bonePose = CG_TwoBoneIK( &cg.testModelEntity, 0, "upperarm_r", "lowerarm_r", "hand_r", target );
 		}
 	}
 

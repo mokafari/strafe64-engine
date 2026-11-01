@@ -103,3 +103,4 @@ equ	ceil						-109
 equ	testPrintInt				-110
 equ	testPrintFloat				-111
 
+equ	trap_R_BoneDelta			-113

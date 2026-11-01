@@ -1340,8 +1340,84 @@ void R_AddIQMSurfaces( trRefEntity_t *ent ) {
 }
 
 
+/*
+=================
+Runtime bone poses
+
+cgame submits per-joint rotation deltas each frame (IK, ragdoll); a refEntity
+references the set through bonePose. Sets live until the next RE_BeginFrame.
+=================
+*/
+#define	MAX_BONE_POSES	64
+#define	MAX_BONE_DELTAS	24
+
+typedef struct {
+	qhandle_t	model;
+	int			num;
+	int			joint[MAX_BONE_DELTAS];
+	quat_t		rot[MAX_BONE_DELTAS];
+} bonePose_t;
+
+static bonePose_t	bonePoses[MAX_BONE_POSES];
+static int			numBonePoses;
+
+void R_ClearBonePoses( void ) {
+	numBonePoses = 0;
+}
+
+// creates a set when pose is 0; returns the handle to pass on, 0 on failure
+int RE_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat ) {
+	model_t		*mod = R_GetModelByHandle( model );
+	iqmData_t	*data;
+	bonePose_t	*bp;
+	const char	*names;
+	int			i;
+
+	if ( mod->type != MOD_IQM ) {
+		return 0;
+	}
+	data = mod->modelData;
+	names = data->jointNames;
+	for ( i = 0; i < data->num_joints; i++ ) {
+		if ( !strcmp( joint, names ) ) {
+			break;
+		}
+		names += strlen( names ) + 1;
+	}
+	if ( i >= data->num_joints ) {
+		return pose;
+	}
+
+	if ( pose <= 0 ) {
+		if ( numBonePoses >= MAX_BONE_POSES ) {
+			return 0;
+		}
+		bp = &bonePoses[numBonePoses++];
+		bp->model = model;
+		bp->num = 0;
+		pose = numBonePoses;
+	} else if ( pose > numBonePoses ) {
+		return 0;
+	} else {
+		bp = &bonePoses[pose - 1];
+	}
+	if ( bp->num < MAX_BONE_DELTAS ) {
+		bp->joint[bp->num] = i;
+		QuatCopy( quat, bp->rot[bp->num] );
+		bp->num++;
+	}
+	return pose;
+}
+
+static const bonePose_t *R_BonePoseForEntity( const refEntity_t *e ) {
+	if ( e->bonePose <= 0 || e->bonePose > numBonePoses || bonePoses[e->bonePose - 1].model != e->hModel ) {
+		return NULL;
+	}
+	return &bonePoses[e->bonePose - 1];
+}
+
 static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
-			      float backlerp, float *poseMats ) {
+			      float backlerp, float *poseMats, const bonePose_t *bonePose ) {
 	iqmTransform_t relativeJoints[IQM_MAX_JOINTS];
 	iqmTransform_t *relativeJoint;
 	const iqmTransform_t *pose;
@@ -1378,6 +1454,21 @@ static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
 		}
 	}
 
+	// runtime deltas post-multiply the joint's local rotation
+	if ( bonePose ) {
+		for ( i = 0; i < bonePose->num; i++ ) {
+			float	*a = relativeJoints[bonePose->joint[i]].rotate;
+			const float	*b = bonePose->rot[i];
+			quat_t	q;
+
+			q[0] = a[3]*b[0] + a[0]*b[3] + a[1]*b[2] - a[2]*b[1];
+			q[1] = a[3]*b[1] - a[0]*b[2] + a[1]*b[3] + a[2]*b[0];
+			q[2] = a[3]*b[2] + a[0]*b[1] - a[1]*b[0] + a[2]*b[3];
+			q[3] = a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2];
+			QuatCopy( q, a );
+		}
+	}
+
 	// multiply by inverse of bind pose and parent 'pose mat' (bind pose transform matrix)
 	relativeJoint = relativeJoints;
 	jointParent = data->jointParents;
@@ -1408,7 +1499,7 @@ static void ComputeJointMats( iqmData_t *data, int frame, int oldframe,
 		return;
 	}
 
-	ComputePoseMats( data, frame, oldframe, backlerp, mat );
+	ComputePoseMats( data, frame, oldframe, backlerp, mat, NULL );
 
 	for( i = 0; i < data->num_joints; i++ ) {
 		float outmat[12];
@@ -1476,7 +1567,7 @@ void RB_IQMSurfaceAnim( surfaceType_t *surface ) {
 
 	if ( data->num_poses > 0 ) {
 		// compute interpolated joint matrices
-		ComputePoseMats( data, frame, oldframe, backlerp, poseMats );
+		ComputePoseMats( data, frame, oldframe, backlerp, poseMats, R_BonePoseForEntity( &backEnd.currentEntity->e ) );
 
 		// compute vertex blend influence matricies
 		for( i = 0; i < surf->num_influences; i++ ) {
@@ -1692,7 +1783,7 @@ void RB_IQMSurfaceAnimVao(srfVaoIQModel_t * surface)
 		int i;
 
 		// compute interpolated joint matrices
-		ComputePoseMats( surface->iqmData, frame, oldframe, backlerp, jointMats );
+		ComputePoseMats( surface->iqmData, frame, oldframe, backlerp, jointMats, R_BonePoseForEntity( &backEnd.currentEntity->e ) );
 
 		// convert row-major order 3x4 matrix to column-major order 4x4 matrix
 		for ( i = 0; i < data->num_poses; i++ ) {

@@ -23,6 +23,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 
+// skeletal pose overrides are a renderergl2 feature; animation plays unmodified here
+static int RE_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat ) {
+	return 0;
+}
+
+
 glconfig_t  glConfig;
 qboolean    textureFilterAnisotropic = qfalse;
 int         maxAnisotropy = 0;
@@ -1363,6 +1369,7 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.EndFrame = RE_EndFrame;
 
 	re.MarkFragments = R_MarkFragments;
+	re.BoneDelta = RE_BoneDelta;
 	re.LerpTag = R_LerpTag;
 	re.ModelBounds = R_ModelBounds;
 
