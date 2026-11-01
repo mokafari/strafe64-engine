@@ -3099,6 +3099,25 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	if ( pe->skelEvent ) {
 		if ( pe->skelEvent == EV_DASH ) {
 			pe->skelDashTime = cg.time;		// a body lunge, not a clip: the dash isn't a cut
+			if ( ground ) {
+				pe->skelDropV = 300.0f;		// drive down into it, the spring recoils out
+			}
+		} else if ( pe->skelEvent == EV_VAULT ) {
+			vec3_t	f, start, stop;
+			trace_t	tr;
+
+			clip = SKEL_CLIMBUP_1M;
+			// find the real lip for the hands
+			VectorSet( f, moveLeft[1], -moveLeft[0], 0 );
+			VectorCopy( cent->lerpOrigin, start );
+			VectorMA( start, 34, f, start );
+			start[2] += pe->skelEventParm + 40;
+			VectorCopy( start, stop );
+			stop[2] -= pe->skelEventParm + 70;
+			CG_Trace( &tr, start, NULL, NULL, stop, s->number, MASK_SOLID );
+			pe->skelVaultHit = tr.fraction < 1.0f && !tr.startsolid;
+			VectorCopy( tr.endpos, pe->skelVaultPt );
+			VectorCopy( moveLeft, pe->skelVaultSide );
 		} else if ( pe->skelEvent == EV_WALLJUMP || pe->skelEvent == EV_DOUBLE_JUMP ) {
 			clip = SKEL_NINJAJUMP_START;
 		} else if ( speed < 200 ) {
@@ -3134,10 +3153,17 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 			Com_Printf( "SKEL t=%d cl=%d %d->%d speed=%.0f vz=%.0f ground=%d wall=%d\n",
 				cg.time, s->clientNum, cur, clip, speed, vel[2], ground, wall );
 		}
-		pe->skelFrom = skelClips[cur].first + (int)Com_Clamp( 0, skelClips[cur].count - 1, pe->skelPhase );
+		pe->skelFrom = skelClips[cur].first;
+		pe->skelFromLen = skelClips[cur].count;
+		pe->skelFromPhase = pe->skelPhase;
 		pe->skelClip = clip;
 		pe->skelStart = cg.time;
-		pe->skelPhase = 0;
+		// walk and sprint share a gait: keep the foot that's already down
+		if ( ( clip == SKEL_SPRINT_LOOP && cur == SKEL_WALK_LOOP ) || ( clip == SKEL_WALK_LOOP && cur == SKEL_SPRINT_LOOP ) ) {
+			pe->skelPhase *= (float)( skelClips[clip].count - 1 ) / ( skelClips[cur].count - 1 );
+		} else {
+			pe->skelPhase = 0;
+		}
 	}
 	rate = 1.0f;
 	if ( clip == SKEL_SPRINT_LOOP ) {
@@ -3227,10 +3253,19 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	ent.frame = f + 1 < skelClips[clip].count ? ent.oldframe + 1 : ent.oldframe;
 	ent.backlerp = 1.0f - ( pe->skelPhase - f );
 
-	fadeMs = CG_SkelOneShot( clip ) ? 70.0f : 130.0f;
+	// the outgoing clip keeps playing through the fade, so nothing freezes mid-move.
+	// Fades fit the change: snappy into action, soft into rest
+	if ( clip == SKEL_IDLE_LOOP || clip == SKEL_CROUCH_IDLE_LOOP ) {
+		fadeMs = 200.0f;
+	} else if ( clip == SKEL_SPRINT_LOOP || clip == SKEL_WALK_LOOP ) {
+		fadeMs = 100.0f;
+	} else {
+		fadeMs = 60.0f;
+	}
 	fade = ( cg.time - pe->skelStart ) / fadeMs;
-	if ( fade < 1.0f ) {
-		ent.oldframe = pe->skelFrom;
+	if ( fade < 1.0f && pe->skelFromLen > 1 ) {
+		pe->skelFromPhase += dt * 30.0f;
+		ent.oldframe = pe->skelFrom + (int)fmod( pe->skelFromPhase, pe->skelFromLen - 1 );
 		ent.backlerp = 1.0f - fade * fade * ( 3.0f - 2.0f * fade );
 	}
 
@@ -3249,6 +3284,10 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 			sclip = SKEL_SWORD_REGULAR_A + ( cent->swordSwingStep % 3 );
 			sphase = ( cg.time - cent->swordSwingTime ) / 480.0f * ( skelClips[sclip].count - 1 );	// whole clip fits the swing
 			want = 1;
+		} else if ( cg.time - pe->skelDashTime < 260 ) {
+			sclip = SKEL_NINJAJUMP_IDLE_LOOP;	// arms sweep back through the burst
+			sphase = 12;
+			want = 0.8f;
 		}
 		pe->skelUpper += ( want - pe->skelUpper ) * ( 1.0f - exp( -dt * ( want > 0 ? 40.0f : 14.0f ) ) );
 		if ( sclip >= 0 ) {
@@ -3272,6 +3311,28 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		if ( !CG_SkelOneShot( clip ) && trap_R_LerpTag( &tag, model, ent.oldframe, ent.frame,
 				1.0f - ent.backlerp, "spine_03" ) ) {
 			ent.bonePose = CG_BoneRotation( &ent, ent.bonePose, "spine_03", &tag, yaxis, DEG2RAD( up ) );
+		}
+	}
+
+	// vault: both hands reach the real lip, then push off it
+	if ( clip == SKEL_CLIMBUP_1M && pe->skelVaultHit ) {
+		float	p = pe->skelPhase / ( skelClips[clip].count - 1 );
+
+		if ( p < 0.65f ) {
+			float	w = sin( p / 0.65f * M_PI );
+			vec3_t	h, t;
+			int		side;
+
+			for ( side = 0; side < 2; side++ ) {
+				if ( CG_JointWorld( &ent, side ? "hand_r" : "hand_l", h ) ) {
+					VectorMA( pe->skelVaultPt, side ? -11.0f : 11.0f, pe->skelVaultSide, t );
+					t[2] += 2;
+					VectorSubtract( t, h, t );
+					VectorMA( h, w, t, t );
+					ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, side ? "upperarm_r" : "upperarm_l",
+						side ? "lowerarm_r" : "lowerarm_l", side ? "hand_r" : "hand_l", t );
+				}
+			}
 		}
 	}
 

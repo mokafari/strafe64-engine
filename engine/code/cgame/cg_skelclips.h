@@ -20,6 +20,7 @@ typedef enum {
 	SKEL_SWORD_REGULAR_B,
 	SKEL_SWORD_REGULAR_C,
 	SKEL_SWORD_BLOCK,
+	SKEL_CLIMBUP_1M,
 	SKEL_NUM
 } skelClip_t;
 
@@ -44,4 +45,5 @@ static const struct { int first, count; qboolean loop; } skelClips[SKEL_NUM] = {
 	{ 784, 17, qfalse },	// Sword_Regular_B
 	{ 801, 61, qfalse },	// Sword_Regular_C
 	{ 862, 38, qfalse },	// Sword_Block
+	{ 900, 21, qfalse },	// ClimbUp_1m
 };

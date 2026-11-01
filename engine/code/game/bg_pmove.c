@@ -1166,7 +1166,7 @@ static qboolean PM_CheckVault( void ) {
 	pm->ps->groundEntityNum = ENTITYNUM_NONE;
 	pml.groundPlane = qfalse;
 	pml.walking = qfalse;
-	PM_AddEvent( EV_JUMP );
+	BG_AddPredictableEventToPlayerstate( EV_VAULT, (int)climb, pm->ps );
 	return qtrue;
 }
 

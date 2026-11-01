@@ -191,7 +191,10 @@ typedef struct {
 	int				skelAirStart, skelFlipTime;
 	int				skelEvent, skelEventTime;	// last movement event, for one-shots
 	int				skelClipUp, skelFlipKind;
-	int				skelDashTime;
+	int				skelDashTime, skelEventParm, skelFromLen;
+	float			skelFromPhase;
+	vec3_t			skelVaultPt, skelVaultSide;
+	qboolean		skelVaultHit;
 	float			skelLeanV[2], skelLeanX[2];
 	vec3_t			skelScarf[8], skelScarfOld[8];
 	int				skelScarfTime;
