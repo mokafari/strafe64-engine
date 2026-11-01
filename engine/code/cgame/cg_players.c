@@ -2938,6 +2938,10 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		} else if ( speed < 200 ) {
 			clip = SKEL_JUMP_START;
 		}
+		if ( pe->skelEvent == EV_WALLJUMP || pe->skelEvent == EV_DOUBLE_JUMP ) {
+			pe->skelFlipTime = cg.time;
+			pe->skelFlipKind = pe->skelEvent;
+		}
 		pe->skelEvent = 0;
 		held = qfalse;
 	} else if ( ground && !pe->skelGround ) {
@@ -2989,7 +2993,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	wantPitch = Com_Clamp( -18, 22, speed * 0.03f + DotProduct( accel, axis[0] ) * 0.05f );
 	wantRoll = Com_Clamp( -24, 24, DotProduct( accel, axis[1] ) * -0.08f );
 	if ( wall ) {
-		wantRoll = wall * 65.0f;		// feet to the wall, head away from it
+		wantRoll = wall * 22.0f;		// shoulders off the wall; the legs do the rest
 		wantPitch *= 0.4f;
 	}
 	if ( !ground && !wall ) {
@@ -3003,20 +3007,39 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	ent.hModel = model;
 	VectorCopy( cent->lerpOrigin, ent.origin );
 	ent.origin[2] -= 24;
-	k = fabs( pe->skelLean[1] ) / 65.0f;
-	if ( k > 0.4f ) {
-		// plant the soles on the wall as the body swings over
-		k = Com_Clamp( 0, 1, ( k - 0.4f ) / 0.6f );
-		ent.origin[0] += ( pe->skelWallPt[0] - ent.origin[0] ) * k;
-		ent.origin[1] += ( pe->skelWallPt[1] - ent.origin[1] ) * k;
-	}
 	VectorCopy( ent.origin, ent.oldorigin );
 	VectorCopy( cent->lerpOrigin, ent.lightingOrigin );
 	angles[PITCH] = pe->skelLean[0];
 	vectoangles( axis[0], accel );		// accel is spent; reuse for the facing
 	angles[YAW] = wall ? RAD2DEG( atan2( vel[1], vel[0] ) ) : accel[YAW];	// run along the wall
 	angles[ROLL] = pe->skelLean[1];
-	AnglesToAxis( angles, ent.axis );
+	// authored in code: spins around the body's centre. Air and wall jumps flip or
+	// corkscrew; a sword cut in the air becomes a whole-body spin
+	{
+		float	ft = ( cg.time - pe->skelFlipTime ) / 450.0f;
+		float	st = ( cg.time - cent->swordSwingTime ) / 420.0f;
+		float	spin = 0;
+		int		spinAxis = PITCH;
+
+		if ( pe->skelFlipTime && ft >= 0 && ft < 1 ) {
+			spin = ft * ft * ( 3 - 2 * ft ) * 360.0f;
+			spinAxis = pe->skelFlipKind == EV_WALLJUMP ? YAW : PITCH;
+		} else if ( !ground && !wall && s->weapon == WP_SWORD && st >= 0 && st < 1 ) {
+			spin = st * ( 2 - st ) * 360.0f;
+			spinAxis = ( cent->swordSwingStep % 2 ) ? PITCH : YAW;
+			if ( cent->swordSwingStep % 3 == 2 ) {
+				spin = -spin;
+			}
+		}
+		angles[spinAxis] += spin;
+		AnglesToAxis( angles, ent.axis );
+		if ( spin != 0 ) {
+			VectorCopy( cent->lerpOrigin, ent.origin );
+			ent.origin[2] += 8;
+			VectorMA( ent.origin, -32, ent.axis[2], ent.origin );
+			VectorCopy( ent.origin, ent.oldorigin );
+		}
+	}
 	ent.renderfx = renderfx | RF_LIGHTING_ORIGIN;
 	ent.oldframe = skelClips[clip].first + f;
 	ent.frame = f + 1 < skelClips[clip].count ? ent.oldframe + 1 : ent.oldframe;
@@ -3070,13 +3093,22 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		}
 	}
 
-	// wall run / wall-side flight: free hand on the surface
-	if ( !ground && wall > 0 ) {
-		vec3_t	p, dir;
+	// wall run: stride along the real surface, feet alternating on the wall
+	if ( wall ) {
+		vec3_t	fwd, pt, off;
+		float	a = pe->skelPhase / ( skelClips[clip].count - 1 ) * 2.0f * M_PI, lift;
+		int		leg;
 
-		if ( CG_JointWorld( &ent, "upperarm_l", p ) ) {
-			VectorCopy( ent.axis[1], dir );
-			ent.bonePose = CG_PlantLimb( &ent, ent.bonePose, "upperarm_l", "lowerarm_l", "hand_l", p, dir, 44, 2 );
+		VectorSet( fwd, moveLeft[1], -moveLeft[0], 0 );
+		VectorScale( moveLeft, -wall, off );		// off the wall
+		for ( leg = 0; leg < 2; leg++, a += M_PI ) {
+			lift = sin( a );
+			VectorCopy( pe->skelWallPt, pt );
+			VectorMA( pt, 18.0f * cos( a ), fwd, pt );
+			VectorMA( pt, 2.0f + 9.0f * ( lift > 0 ? lift : 0 ), off, pt );
+			pt[2] += -16.0f + 7.0f * lift;
+			ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, leg ? "thigh_r" : "thigh_l",
+				leg ? "calf_r" : "calf_l", leg ? "foot_r" : "foot_l", pt );
 		}
 	}
 

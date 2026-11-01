@@ -238,6 +238,18 @@ int CG_PlantLimb( refEntity_t *ent, int pose, const char *upper, const char *low
 	return CG_TwoBoneIK( ent, pose, upper, lower, end, target );
 }
 
+// solves a limb onto a world-space point
+int CG_LimbToWorld( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end, const vec3_t pt ) {
+	vec3_t	rel, target;
+	int		i;
+
+	VectorSubtract( pt, ent->origin, rel );
+	for ( i = 0; i < 3; i++ ) {
+		target[i] = DotProduct( rel, ent->axis[i] );
+	}
+	return CG_TwoBoneIK( ent, pose, upper, lower, end, target );
+}
+
 // model-space joint -> world
 qboolean CG_JointWorld( refEntity_t *ent, const char *joint, vec3_t out ) {
 	orientation_t	t;

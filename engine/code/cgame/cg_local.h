@@ -190,7 +190,7 @@ typedef struct {
 	vec3_t			skelWallPt;			// where the feet go on a wall run
 	int				skelAirStart, skelFlipTime;
 	int				skelEvent, skelEventTime;	// last movement event, for one-shots
-	int				skelClipUp;
+	int				skelClipUp, skelFlipKind;
 	float			skelPhaseUp;
 	float			skelUpper;			// upper-body sword layer weight
 } playerEntity_t;
@@ -1917,6 +1917,7 @@ void		trap_R_DrawStretchPic( float x, float y, float w, float h,
 void		trap_R_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs );
 int			CG_PlantLimb( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end,
 				const vec3_t start, const vec3_t dir, float range, float standoff );
+int			CG_LimbToWorld( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end, const vec3_t pt );
 qboolean	CG_JointWorld( refEntity_t *ent, const char *joint, vec3_t out );
 int			CG_BoneRotation( refEntity_t *ent, int pose, const char *joint, const orientation_t *tag,
 				const vec3_t axis, float angle );
