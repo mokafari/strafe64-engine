@@ -191,6 +191,8 @@ typedef struct {
 	int				skelAirStart, skelFlipTime;
 	int				skelEvent, skelEventTime;	// last movement event, for one-shots
 	int				skelClipUp, skelFlipKind;
+	vec3_t			skelFootPt[2];		// planted foot positions
+	qboolean		skelFootOn[2];
 	int				skelDashTime, skelEventParm, skelFromLen;
 	float			skelFromPhase;
 	vec3_t			skelVaultPt, skelVaultSide;
@@ -852,6 +854,7 @@ typedef struct {
 	qhandle_t	gibFist;
 	qhandle_t	gibFoot;
 	qhandle_t	gibForearm;
+	qhandle_t	skelModel;			// 0 when the mannequin isn't installed: falls back to MD3
 	qhandle_t	gibIntestine;
 	qhandle_t	gibLeg;
 	qhandle_t	gibSkull;
@@ -1371,6 +1374,7 @@ extern	vmCvar_t		cg_dofBulletTime;	// STRAFE 64: rack DoF focus as bullet-time s
 extern	vmCvar_t		cg_dofBase;
 extern	vmCvar_t		cg_dofMax;
 extern	vmCvar_t		cg_dofFocusTrace;
+extern	vmCvar_t		cg_skeletal;
 extern	vmCvar_t		cg_ragdoll;
 extern	vmCvar_t		cg_ragdollDamp;
 extern	vmCvar_t		cg_ragdollIterations;

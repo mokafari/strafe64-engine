@@ -183,6 +183,7 @@ vmCvar_t	cg_playerGlowClamp;	// 0-1: count-aware soft clamp so N pilots' lights 
 vmCvar_t	cg_playerGlowAudio;	// 0-2: each pilot reacts to a DIFFERENT music band (per-clientNum spectrum) -> they flare out of phase, colours mix over time
 vmCvar_t	cg_playerGlowHue;	// 0-1: blend the glow toward a DISTINCT per-clientNum rainbow hue (0=player's own colour, 1=full rainbow spread) so pilots aren't all the same colour
 vmCvar_t	cg_dashGlitch;		// 0-2: chromatic-ghost glitch trail intensity on air-dash
+vmCvar_t	cg_skeletal;			// 1: players are the skeletal IQM body; 0: legacy MD3s
 vmCvar_t	cg_ragdoll;				// 1: dead bodies ragdoll; 0: stock death animation
 vmCvar_t	cg_ragdollDamp;			// Verlet velocity retention per step (0..1)
 vmCvar_t	cg_ragdollIterations;	// constraint relaxation passes per frame
@@ -314,6 +315,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_playerGlowAudio, "cg_playerGlowAudio", "1.0", CVAR_ARCHIVE },
 	{ &cg_playerGlowHue, "cg_playerGlowHue", "0.85", CVAR_ARCHIVE },
 	{ &cg_dashGlitch, "cg_dashGlitch", "1.0", CVAR_ARCHIVE },
+	{ &cg_skeletal, "cg_skeletal", "1", CVAR_ARCHIVE },
 	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },
 	{ &cg_ragdollDamp, "cg_ragdollDamp", "0.97", CVAR_ARCHIVE },
 	{ &cg_ragdollIterations, "cg_ragdollIterations", "6", CVAR_ARCHIVE },
@@ -1164,6 +1166,7 @@ static void CG_RegisterGraphics( void ) {
 	cgs.media.gibFist = trap_R_RegisterModel( "models/gibs/fist.md3" );
 	cgs.media.gibFoot = trap_R_RegisterModel( "models/gibs/foot.md3" );
 	cgs.media.gibForearm = trap_R_RegisterModel( "models/gibs/forearm.md3" );
+	cgs.media.skelModel = trap_R_RegisterModel( "models/s64/mannequin.iqm" );
 	cgs.media.gibIntestine = trap_R_RegisterModel( "models/gibs/intestine.md3" );
 	cgs.media.gibLeg = trap_R_RegisterModel( "models/gibs/leg.md3" );
 	cgs.media.gibSkull = trap_R_RegisterModel( "models/gibs/skull.md3" );

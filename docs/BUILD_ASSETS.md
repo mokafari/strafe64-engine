@@ -60,3 +60,9 @@ Copy the map pk3s and `zzz_strafe64_shader.pk3` into `baseoa/` in **both**
 the base path and every home path the engine reads. A stale shared pak in the
 home path wins over a new one in the base path. The shared pak must be
 current: baked maps use its `*_lm` and `*_bk` shader variants.
+
+## Player mannequin
+
+`tools/modelgen/bake_mannequin.sh` turns the tracked CC0 rigs in `tools/modelgen/assets_src/`
+into `assets/openarena/baseoa/models/s64/mannequin.iqm` and regenerates
+`engine/code/cgame/cg_skelclips.h`. Without the model the game falls back to the MD3 players.

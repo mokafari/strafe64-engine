@@ -760,7 +760,7 @@ static void CG_RagdollSegment( cgRagdoll_t *rag, qhandle_t model, qhandle_t skin
 		int		i;
 
 		VectorMA( ent.origin, -ragPiece->pivot, up, ent.origin );
-		model = trap_R_RegisterModel( "models/s64/mannequin.iqm" );
+		model = cgs.media.skelModel;
 		skin = 0;
 		for ( i = 0; i < 4 && ragPiece->joint[i]; i++ ) {
 			ent.bonePose = trap_R_BoneDelta( model, ent.bonePose, ragPiece->joint[i], mask[ragPiece->keep] );
@@ -866,14 +866,9 @@ qboolean CG_RagdollAdd( centity_t *cent, int renderfx, float shadowPlane ) {
 		rag->lastTime = cg.time;	// keep dt sane if it wakes back up
 	}
 
-	{
-		char	sk[8];
-
-		trap_Cvar_VariableStringBuffer( "cg_skeletal", sk, sizeof( sk ) );
-		if ( atoi( sk ) ) {
-			CG_RagdollAddSkeletal( rag, cent, renderfx, shadowPlane );
-			return qtrue;
-		}
+	if ( cg_skeletal.integer && cgs.media.skelModel ) {
+		CG_RagdollAddSkeletal( rag, cent, renderfx, shadowPlane );
+		return qtrue;
 	}
 
 	// legs always ride the lower spine (never spun -- they stay the grounded half)

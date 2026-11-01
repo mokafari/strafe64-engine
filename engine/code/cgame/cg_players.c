@@ -3035,7 +3035,7 @@ static int CG_SkelWallSide( centity_t *cent, const vec3_t left, const vec3_t vel
 }
 
 static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
-	static qhandle_t	model;
+	qhandle_t		model;
 	entityState_t	*s = &cent->currentState;
 	playerEntity_t	*pe = &cent->pe;
 	refEntity_t		ent;
@@ -3043,21 +3043,25 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	float			speed, rate, fade, fadeMs, k, dt, wantPitch, wantRoll, up;
 	int				clip, f, cur, legs = s->legsAnim & ~ANIM_TOGGLEBIT;
 	int				wall = 0, ground = ( s->groundEntityNum != ENTITYNUM_NONE );
-	qboolean		held, wallrun;
+	qboolean		held, wallrun, grapple;
 	vec3_t			moveLeft;
 	char			dbg[8];
 	int				hold = 0;
+	qboolean		kicking;
 
-	if ( !model ) {
-		model = trap_R_RegisterModel( "models/s64/mannequin.iqm" );
-	}
+	model = cgs.media.skelModel;
 	dt = cg.frametime * 0.001f;
 	VectorCopy( s->pos.trDelta, vel );
 	speed = sqrt( vel[0] * vel[0] + vel[1] * vel[1] );
 	VectorSubtract( vel, pe->skelVel, accel );
 	cur = pe->skelClip;
 	// the game's own wall-run state, where we have it (the local or followed player)
-	wallrun = s->clientNum == cg.snap->ps.clientNum && cg.predictedPlayerState.stats[STAT_WALLRUN] != 0;
+	wallrun = ( s->frame & 3 ) != 0;
+	grapple = ( s->frame & 4 ) != 0;
+	if ( s->clientNum == cg.snap->ps.clientNum ) {
+		wallrun = cg.predictedPlayerState.stats[STAT_WALLRUN] != 0;
+		grapple = ( cg.predictedPlayerState.pm_flags & PMF_GRAPPLE_PULL ) != 0;
+	}
 	if ( speed > 1 ) {
 		VectorSet( moveLeft, -vel[1] / speed, vel[0] / speed, 0 );
 	} else {
@@ -3068,6 +3072,8 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	// loops: what the body is doing right now
 	if ( s->eFlags & EF_SLIDING ) {
 		clip = SKEL_SLIDE_LOOP;
+	} else if ( grapple ) {
+		clip = SKEL_NINJAJUMP_IDLE_LOOP;
 	} else if ( wallrun ) {
 		wall = CG_SkelWallSide( cent, moveLeft, vec3_origin, pe->skelWallPt );
 		clip = SKEL_SPRINT_LOOP;
@@ -3226,6 +3232,10 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		if ( pe->skelFlipTime && ft >= 0 && ft < 1 ) {
 			spin = ft * ft * ( 3 - 2 * ft ) * 360.0f;
 			spinAxis = pe->skelFlipKind == EV_WALLJUMP ? YAW : PITCH;
+		} else if ( pe->kickTime && ( pe->kickFlags & 1 ) && cg.time - pe->kickTime < 450 ) {
+			ft = ( cg.time - pe->kickTime ) / 450.0f;	// airborne kick: tornado
+			spin = ft * ( 2 - ft ) * 360.0f * pe->flipDir;
+			spinAxis = YAW;
 		} else if ( !ground && !wall && s->weapon == WP_SWORD && st >= 0 && st < 1 ) {
 			spin = st * ( 2 - st ) * 360.0f;
 			spinAxis = ( cent->swordSwingStep % 2 ) ? PITCH : YAW;
@@ -3314,6 +3324,65 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		}
 	}
 
+	// directional cut: the hand travels the same start->end compass arc the
+	// server cut with, across the front of the chest, over the clip's arm
+	if ( s->weapon == WP_SWORD && !( s->eFlags & EF_BLOCKING )
+			&& cg.time >= cent->swordSwingTime && cg.time - cent->swordSwingTime < 420 ) {
+		static const float	qx[SQ_NUM_QUADS] = { 0, 0.7f, 1, 0.7f, 0, -0.7f, -1, -0.7f };
+		static const float	qy[SQ_NUM_QUADS] = { 1, 0.7f, 0, -0.7f, -1, -0.7f, 0, 0.7f };
+		float			f = ( cg.time - cent->swordSwingTime ) / 420.0f;
+		float			w = sin( f * M_PI ), rx, ry;
+		int				a = cent->swordStartQuad & 7, b = cent->swordEndQuad & 7, i;
+		vec3_t			sh, t, h;
+		orientation_t	tag;
+
+		f = f * f * ( 3 - 2 * f );
+		rx = qx[a] + ( qx[b] - qx[a] ) * f;
+		ry = qy[a] + ( qy[b] - qy[a] ) * f;
+		if ( CG_JointWorld( &ent, "upperarm_r", sh ) && trap_R_BoneTag( &tag, model, ent.frame, ent.oldframe,
+				ent.backlerp, ent.bonePose, "hand_r" ) ) {
+			VectorCopy( ent.origin, h );
+			for ( i = 0; i < 3; i++ ) {
+				VectorMA( h, tag.origin[i], ent.axis[i], h );
+			}
+			VectorMA( sh, 16 + 8 * w, ent.axis[0], t );
+			VectorMA( t, -18 * rx, ent.axis[1], t );
+			VectorMA( t, 18 * ry, ent.axis[2], t );
+			VectorSubtract( t, h, t );
+			VectorMA( h, w, t, t );
+			ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, "upperarm_r", "lowerarm_r", "hand_r", t );
+		}
+	}
+
+	// grapple: the free arm pulls on the line
+	if ( grapple ) {
+		vec3_t	t, d;
+
+		if ( s->clientNum == cg.snap->ps.clientNum ) {
+			VectorSubtract( cg.predictedPlayerState.grapplePoint, cent->lerpOrigin, d );
+		} else {
+			VectorCopy( vel, d );
+		}
+		VectorNormalize( d );
+		VectorCopy( cent->lerpOrigin, t );
+		t[2] += 22;
+		VectorMA( t, 40, d, t );
+		ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, "upperarm_l", "lowerarm_l", "hand_l", t );
+	}
+
+	// kick: the right leg snaps out along the facing and retracts
+	kicking = pe->kickTime && cg.time - pe->kickTime < 340;
+	if ( kicking ) {
+		float	kp = sin( ( cg.time - pe->kickTime ) / 340.0f * M_PI );
+		vec3_t	hip, t;
+
+		if ( CG_JointWorld( &ent, "thigh_r", hip ) ) {
+			VectorMA( hip, 34.0f * kp, ent.axis[0], t );
+			VectorMA( t, -30.0f + 34.0f * kp, ent.axis[2], t );
+			ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, "thigh_r", "calf_r", "foot_r", t );
+		}
+	}
+
 	// vault: both hands reach the real lip, then push off it
 	if ( clip == SKEL_CLIMBUP_1M && pe->skelVaultHit ) {
 		float	p = pe->skelPhase / ( skelClips[clip].count - 1 );
@@ -3355,6 +3424,36 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 				ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, "thigh_l", "calf_l", "foot_l", fl );
 				ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, "thigh_r", "calf_r", "foot_r", fr );
 			}
+		}
+	}
+
+	// foot lock: a foot on the ground stays where it landed until the stride
+	// has carried the body past it, which stops the skate
+	{
+		int		leg;
+
+		for ( leg = 0; leg < 2; leg++ ) {
+			vec3_t	p, d;
+			const char	*foot = leg ? "foot_r" : "foot_l";
+
+			if ( !ground || speed > 520 || pe->skelDrop > 0.5f || ( kicking && leg )
+					|| ( clip != SKEL_SPRINT_LOOP && clip != SKEL_WALK_LOOP ) || !CG_JointWorld( &ent, foot, p )
+					|| p[2] - ent.origin[2] > 7.0f ) {
+				pe->skelFootOn[leg] = qfalse;
+				continue;
+			}
+			if ( !pe->skelFootOn[leg] ) {
+				VectorCopy( p, pe->skelFootPt[leg] );
+				pe->skelFootOn[leg] = qtrue;
+			}
+			VectorSubtract( p, pe->skelFootPt[leg], d );
+			d[2] = 0;
+			if ( VectorLength( d ) > 30.0f ) {
+				pe->skelFootOn[leg] = qfalse;
+				continue;
+			}
+			ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, leg ? "thigh_r" : "thigh_l",
+				leg ? "calf_r" : "calf_l", foot, pe->skelFootPt[leg] );
 		}
 	}
 
@@ -3431,10 +3530,7 @@ void CG_Player( centity_t *cent ) {
 	CG_PlayerAngles( cent, legs.axis, torso.axis, head.axis );
 
 	{
-		char	sk[8];
-
-		trap_Cvar_VariableStringBuffer( "cg_skeletal", sk, sizeof( sk ) );
-		if ( atoi( sk ) ) {
+		if ( cg_skeletal.integer && cgs.media.skelModel ) {
 			CG_SkeletalPlayer( cent, legs.axis, renderfx );
 			CG_PlayerSprites( cent );
 			return;
