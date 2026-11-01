@@ -2856,8 +2856,10 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	}
 	speed = sqrt( s->pos.trDelta[0] * s->pos.trDelta[0] + s->pos.trDelta[1] * s->pos.trDelta[1] );
 
-	if ( cg.time - cent->muzzleFlashTime < 400 ) {
-		clip = SKEL_SWORD_REGULAR_A;
+	if ( s->weapon == WP_SWORD && ( s->eFlags & EF_BLOCKING ) ) {
+		clip = SKEL_SWORD_BLOCK;
+	} else if ( s->weapon == WP_SWORD && cg.time - cent->swordSwingTime < 420 ) {
+		clip = SKEL_SWORD_REGULAR_A + ( cent->swordSwingStep % 3 );
 	} else if ( s->eFlags & EF_SLIDING ) {
 		clip = SKEL_SLIDE_LOOP;
 	} else if ( s->groundEntityNum == ENTITYNUM_NONE ) {
@@ -2913,7 +2915,8 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	if ( s->groundEntityNum == ENTITYNUM_NONE && speed > 200 ) {
 		vec3_t	p, dir;
 
-		for ( side = -1; side <= 1; side += 2 ) {
+		// the right hand holds the weapon, so only the free hand reaches
+		for ( side = 1; side <= 1; side += 2 ) {
 			if ( CG_JointWorld( &ent, side > 0 ? "upperarm_l" : "upperarm_r", p ) ) {
 				VectorScale( ent.axis[1], side, dir );
 				ent.bonePose = CG_PlantLimb( &ent, ent.bonePose, side > 0 ? "upperarm_l" : "upperarm_r",
@@ -2922,6 +2925,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		}
 	}
 	trap_R_AddRefEntityToScene( &ent );
+	CG_AddPlayerWeapon( &ent, NULL, cent, cgs.clientinfo[s->clientNum].team );
 }
 
 void CG_Player( centity_t *cent ) {

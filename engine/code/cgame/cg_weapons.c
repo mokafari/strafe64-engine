@@ -1226,7 +1226,12 @@ The main player will have this called for BOTH cases, so effects like light and
 sound should only be done on the world model case.
 =============
 */
+#define CG_SKEL_GRIP_PITCH	0
+#define CG_SKEL_GRIP_YAW	0
+#define CG_SKEL_GRIP_ROLL	0
+
 void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent, int team ) {
+	qboolean	skeletal;
 	refEntity_t	gun;
 	refEntity_t	barrel;
 	refEntity_t	flash;
@@ -1279,8 +1284,19 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 		}
 	}
 
-	trap_R_LerpTag(&lerped, parent->hModel, parent->oldframe, parent->frame,
+	// skeletal bodies have no tag_weapon: hold it in the hand bone, posed by the clip
+	skeletal = !trap_R_LerpTag(&lerped, parent->hModel, parent->oldframe, parent->frame,
 		1.0 - parent->backlerp, "tag_weapon");
+	if ( skeletal ) {
+		vec3_t	gripAng, grip[3], temp[3];
+
+		trap_R_LerpTag(&lerped, parent->hModel, parent->oldframe, parent->frame,
+			1.0 - parent->backlerp, "hand_r");
+		VectorSet( gripAng, CG_SKEL_GRIP_PITCH, CG_SKEL_GRIP_YAW, CG_SKEL_GRIP_ROLL );
+		AnglesToAxis( gripAng, grip );
+		MatrixMultiply( grip, lerped.axis, temp );
+		AxisCopy( temp, lerped.axis );
+	}
 	VectorCopy(parent->origin, gun.origin);
 
 	VectorMA(gun.origin, lerped.origin[0], parent->axis[0], gun.origin);
@@ -1306,7 +1322,7 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	// Rotations are applied in the weapon's model space (rot * gun.axis), the same
 	// way the guard pose was, and BEFORE the model + slash trail are emitted so both
 	// follow the arc.
-	if ( !ps && weaponNum == WP_SWORD ) {
+	if ( !ps && weaponNum == WP_SWORD && !skeletal ) {
 		vec3_t	rot[3], posed[3];
 
 		if ( cent->currentState.eFlags & EF_BLOCKING ) {
