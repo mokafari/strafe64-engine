@@ -88,6 +88,8 @@ typedef struct {
 
 	int		(*BoneLayer)( qhandle_t model, int pose, const char *root, int frame, int oldframe, float backlerp, float weight );
 	int		(*BoneTag)( orientation_t *tag, qhandle_t model, int frame, int oldframe, float backlerp, int pose, const char *joint );
+	void	(*BoneInertiaCapture)( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack );
+	int		(*BoneInertia)( qhandle_t model, int pose, int slot, float weight );
 	int		(*BoneDelta)( qhandle_t model, int pose, const char *joint, const float *quat );
 	int		(*LerpTag)( orientation_t *tag,  qhandle_t model, int startFrame, int endFrame, 
 					 float frac, const char *tagName );

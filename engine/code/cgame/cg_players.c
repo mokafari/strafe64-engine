@@ -3159,16 +3159,27 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 			Com_Printf( "SKEL t=%d cl=%d %d->%d speed=%.0f vz=%.0f ground=%d wall=%d\n",
 				cg.time, s->clientNum, cur, clip, speed, vel[2], ground, wall );
 		}
-		pe->skelFrom = skelClips[cur].first;
-		pe->skelFromLen = skelClips[cur].count;
-		pe->skelFromPhase = pe->skelPhase;
-		pe->skelClip = clip;
-		pe->skelStart = cg.time;
-		// walk and sprint share a gait: keep the foot that's already down
-		if ( ( clip == SKEL_SPRINT_LOOP && cur == SKEL_WALK_LOOP ) || ( clip == SKEL_WALK_LOOP && cur == SKEL_SPRINT_LOOP ) ) {
-			pe->skelPhase *= (float)( skelClips[clip].count - 1 ) / ( skelClips[cur].count - 1 );
-		} else {
-			pe->skelPhase = 0;
+		{
+			int		fromF = (int)pe->skelPhase, toF;
+			float	fromB = 1.0f - ( pe->skelPhase - fromF ), toB;
+			int		fromFirst = skelClips[cur].first, fromN = skelClips[cur].count;
+
+			pe->skelClip = clip;
+			// walk and sprint share a gait: keep the foot that's already down
+			if ( ( clip == SKEL_SPRINT_LOOP && cur == SKEL_WALK_LOOP ) || ( clip == SKEL_WALK_LOOP && cur == SKEL_SPRINT_LOOP ) ) {
+				pe->skelPhase *= (float)( skelClips[clip].count - 1 ) / ( skelClips[cur].count - 1 );
+			} else {
+				pe->skelPhase = 0;
+			}
+			toF = (int)pe->skelPhase;
+			toB = 1.0f - ( pe->skelPhase - toF );
+			trap_R_BoneInertiaCapture( model, s->clientNum,
+				fromFirst + ( fromF + 1 < fromN ? fromF + 1 : fromF ), fromFirst + fromF, fromB,
+				skelClips[clip].first + ( toF + 1 < skelClips[clip].count ? toF + 1 : toF ), skelClips[clip].first + toF, toB );
+			pe->skelStart = cg.time;
+			// snappy into action, soft into rest
+			pe->skelInertK = ( clip == SKEL_IDLE_LOOP || clip == SKEL_CROUCH_IDLE_LOOP ) ? 11.0f
+				: ( clip == SKEL_SPRINT_LOOP || clip == SKEL_WALK_LOOP ) ? 18.0f : 26.0f;
 		}
 	}
 	rate = 1.0f;
@@ -3272,20 +3283,11 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	ent.frame = f + 1 < skelClips[clip].count ? ent.oldframe + 1 : ent.oldframe;
 	ent.backlerp = 1.0f - ( pe->skelPhase - f );
 
-	// the outgoing clip keeps playing through the fade, so nothing freezes mid-move.
-	// Fades fit the change: snappy into action, soft into rest
-	if ( clip == SKEL_IDLE_LOOP || clip == SKEL_CROUCH_IDLE_LOOP ) {
-		fadeMs = 200.0f;
-	} else if ( clip == SKEL_SPRINT_LOOP || clip == SKEL_WALK_LOOP ) {
-		fadeMs = 100.0f;
-	} else {
-		fadeMs = 60.0f;
-	}
-	fade = ( cg.time - pe->skelStart ) / fadeMs;
-	if ( fade < 1.0f && pe->skelFromLen > 1 ) {
-		pe->skelFromPhase += dt * 30.0f;
-		ent.oldframe = pe->skelFrom + (int)fmod( pe->skelFromPhase, pe->skelFromLen - 1 );
-		ent.backlerp = 1.0f - fade * fade * ( 3.0f - 2.0f * fade );
+	// inertial transition: the offset from the old pose decays critically
+	{
+		float	it = ( cg.time - pe->skelStart ) * 0.001f * pe->skelInertK;
+
+		ent.bonePose = trap_R_BoneInertia( model, ent.bonePose, s->clientNum, it < 8.0f ? ( 1.0f + it ) * exp( -it ) : 0 );
 	}
 
 	// sword on an upper-body layer: arms cut while the legs keep moving

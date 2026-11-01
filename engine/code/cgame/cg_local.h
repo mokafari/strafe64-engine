@@ -194,6 +194,7 @@ typedef struct {
 	vec3_t			skelFootPt[2];		// planted foot positions
 	qboolean		skelFootOn[2];
 	float			skelYawF, skelYawV, skelYawX;
+	float			skelInertK;			// decay rate of the current transition
 	int				skelDashTime, skelEventParm, skelFromLen;
 	float			skelFromPhase;
 	vec3_t			skelVaultPt, skelVaultSide;
@@ -1938,6 +1939,8 @@ int			CG_BoneRotation( refEntity_t *ent, int pose, const char *joint, const orie
 				const vec3_t axis, float angle );
 int			trap_R_BoneLayer( qhandle_t model, int pose, const char *root, int frame, int oldframe, float backlerp, float weight );
 int			trap_R_BoneTag( orientation_t *tag, qhandle_t model, int frame, int oldframe, float backlerp, int pose, const char *joint );
+void		trap_R_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack );
+int			trap_R_BoneInertia( qhandle_t model, int pose, int slot, float weight );
 int			trap_R_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat );
 int			trap_R_LerpTag( orientation_t *tag, clipHandle_t mod, int startFrame, int endFrame, 
 					   float frac, const char *tagName );

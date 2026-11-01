@@ -32,6 +32,13 @@ static int RE_BoneTag( orientation_t *tag, qhandle_t model, int frame, int oldfr
 	return R_LerpTag( tag, model, frame, oldframe, backlerp, joint );
 }
 
+static void RE_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack ) {
+}
+
+static int RE_BoneInertia( qhandle_t model, int pose, int slot, float weight ) {
+	return pose;
+}
+
 static int RE_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat ) {
 	return 0;
 }
@@ -1379,6 +1386,8 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.MarkFragments = R_MarkFragments;
 	re.BoneLayer = RE_BoneLayer;
 	re.BoneTag = RE_BoneTag;
+	re.BoneInertiaCapture = RE_BoneInertiaCapture;
+	re.BoneInertia = RE_BoneInertia;
 	re.BoneDelta = RE_BoneDelta;
 	re.LerpTag = R_LerpTag;
 	re.ModelBounds = R_ModelBounds;

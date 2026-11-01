@@ -106,3 +106,5 @@ equ	testPrintFloat				-111
 equ	trap_R_BoneDelta			-113
 equ	trap_R_BoneLayer			-114
 equ	trap_R_BoneTag				-115
+equ	trap_R_BoneInertiaCapture	-116
+equ	trap_R_BoneInertia			-117

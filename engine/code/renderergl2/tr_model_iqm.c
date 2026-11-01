@@ -1362,6 +1362,8 @@ typedef struct {
 	int			layerRoot;			// joint a second clip plays from, -1 for none
 	int			layerFrame, layerOldframe;
 	float		layerBacklerp, layerWeight;
+	int			inertSlot;			// transition offset to add, -1 for none
+	float		inertWeight;
 } bonePose_t;
 
 static bonePose_t	bonePoses[MAX_BONE_POSES];
@@ -1402,10 +1404,110 @@ static bonePose_t *R_BonePoseForEdit( qhandle_t model, int *pose ) {
 		bp->model = model;
 		bp->num = 0;
 		bp->layerRoot = -1;
+		bp->inertSlot = -1;
 		*pose = numBonePoses;
 		return bp;
 	}
 	return *pose > numBonePoses ? NULL : &bonePoses[*pose - 1];
+}
+
+/*
+=================
+Inertial transitions
+
+At a clip change we store how far each joint sits from the new clip (old pose
+relative to new). The new clip plays at once and that offset decays to nothing,
+so motion never stalls the way a crossfade between two poses does.
+=================
+*/
+#define	MAX_INERTIA_SLOTS	64		// MAX_CLIENTS
+
+typedef struct {
+	quat_t	rot[IQM_MAX_JOINTS];
+	vec3_t	trans[IQM_MAX_JOINTS];
+	float	weight;				// what was showing last frame, for chained changes
+} boneInertia_t;
+
+static boneInertia_t	boneInertia[MAX_INERTIA_SLOTS];
+
+static void R_QuatMul( const float *a, const float *b, float *q ) {
+	q[0] = a[3]*b[0] + a[0]*b[3] + a[1]*b[2] - a[2]*b[1];
+	q[1] = a[3]*b[1] - a[0]*b[2] + a[1]*b[3] + a[2]*b[0];
+	q[2] = a[3]*b[2] + a[0]*b[1] - a[1]*b[0] + a[2]*b[3];
+	q[3] = a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2];
+}
+
+static void R_InertiaRot( const quat_t off, float weight, quat_t out ) {
+	static const quat_t	identity = { 0, 0, 0, 1 };
+
+	QuatSlerp( identity, off, weight, out );
+}
+
+static void R_LerpJoint( const iqmData_t *data, int frame, int oldframe, float back, int j, vec3_t t, quat_t q ) {
+	const iqmTransform_t	*a = &data->poses[oldframe * data->num_poses + j];
+	const iqmTransform_t	*b = &data->poses[frame * data->num_poses + j];
+
+	t[0] = a->translate[0] * back + b->translate[0] * ( 1.0f - back );
+	t[1] = a->translate[1] * back + b->translate[1] * ( 1.0f - back );
+	t[2] = a->translate[2] * back + b->translate[2] * ( 1.0f - back );
+	QuatSlerp( a->rotate, b->rotate, 1.0f - back, q );
+}
+
+void RE_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack ) {
+	model_t			*mod = R_GetModelByHandle( model );
+	iqmData_t		*data;
+	boneInertia_t	*in;
+	int				j;
+
+	if ( mod->type != MOD_IQM || slot < 0 || slot >= MAX_INERTIA_SLOTS ) {
+		return;
+	}
+	data = mod->modelData;
+	if ( !data->num_frames || data->num_poses > IQM_MAX_JOINTS ) {
+		return;
+	}
+	in = &boneInertia[slot];
+	fromFrame %= data->num_frames;
+	fromOld %= data->num_frames;
+	toFrame %= data->num_frames;
+	toOld %= data->num_frames;
+	for ( j = 0; j < data->num_poses; j++ ) {
+		vec3_t	ft, tt;
+		quat_t	fq, tq, shown, inv;
+
+		R_LerpJoint( data, fromFrame, fromOld, fromBack, j, ft, fq );
+		R_LerpJoint( data, toFrame, toOld, toBack, j, tt, tq );
+
+		// start from what's on screen, including any offset still decaying
+		if ( in->weight > 0.001f ) {
+			R_InertiaRot( in->rot[j], in->weight, shown );
+			R_QuatMul( shown, fq, inv );
+			QuatCopy( inv, fq );
+			VectorMA( ft, in->weight, in->trans[j], ft );
+		}
+		inv[0] = -tq[0];
+		inv[1] = -tq[1];
+		inv[2] = -tq[2];
+		inv[3] = tq[3];
+		R_QuatMul( fq, inv, in->rot[j] );
+		VectorSubtract( ft, tt, in->trans[j] );
+	}
+	in->weight = 1.0f;
+}
+
+int RE_BoneInertia( qhandle_t model, int pose, int slot, float weight ) {
+	bonePose_t	*bp;
+
+	if ( slot < 0 || slot >= MAX_INERTIA_SLOTS ) {
+		return pose;
+	}
+	boneInertia[slot].weight = weight;
+	bp = R_BonePoseForEdit( model, &pose );
+	if ( bp ) {
+		bp->inertSlot = slot;
+		bp->inertWeight = weight;
+	}
+	return pose;
 }
 
 // plays another clip from root down (arms over legs), blended by weight
@@ -1508,6 +1610,20 @@ static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
 				QuatSlerp( a[i].rotate, b[i].rotate, 1.0f - bonePose->layerBacklerp, q );
 				QuatSlerp( relativeJoints[i].rotate, q, bonePose->layerWeight, relativeJoints[i].rotate );
 			}
+		}
+	}
+
+	// the transition offset, decaying
+	if ( bonePose && bonePose->inertSlot >= 0 && bonePose->inertWeight > 0.001f ) {
+		const boneInertia_t	*in = &boneInertia[bonePose->inertSlot];
+
+		for ( i = 0; i < data->num_poses; i++ ) {
+			quat_t	off, q;
+
+			R_InertiaRot( in->rot[i], bonePose->inertWeight, off );
+			R_QuatMul( off, relativeJoints[i].rotate, q );
+			QuatCopy( q, relativeJoints[i].rotate );
+			VectorMA( relativeJoints[i].translate, bonePose->inertWeight, in->trans[i], relativeJoints[i].translate );
 		}
 	}
 

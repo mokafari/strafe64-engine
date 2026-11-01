@@ -303,6 +303,14 @@ int		trap_R_BoneTag( orientation_t *tag, qhandle_t model, int frame, int oldfram
 	return syscall( CG_R_BONETAG, tag, model, frame, oldframe, PASSFLOAT( backlerp ), pose, joint );
 }
 
+void	trap_R_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack ) {
+	syscall( CG_R_BONEINERTIACAPTURE, model, slot, fromFrame, fromOld, PASSFLOAT( fromBack ), toFrame, toOld, PASSFLOAT( toBack ) );
+}
+
+int		trap_R_BoneInertia( qhandle_t model, int pose, int slot, float weight ) {
+	return syscall( CG_R_BONEINERTIA, model, pose, slot, PASSFLOAT( weight ) );
+}
+
 int		trap_R_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat ) {
 	return syscall( CG_R_BONEDELTA, model, pose, joint, quat );
 }
