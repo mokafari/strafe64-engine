@@ -2860,7 +2860,7 @@ static int CG_SkelWallSide( centity_t *cent, const vec3_t left, const vec3_t vel
 		CG_Trace( &tr, cent->lerpOrigin, NULL, NULL, end, cent->currentState.number, MASK_SOLID );
 		// running along it, not flying into or away from it
 		if ( tr.fraction < 1.0f && fabs( tr.plane.normal[2] ) < 0.3f
-			&& fabs( DotProduct( tr.plane.normal, vel ) ) < 0.5f * VectorLength( vel ) ) {
+			&& fabs( DotProduct( tr.plane.normal, vel ) ) <= 0.5f * VectorLength( vel ) ) {
 			VectorCopy( tr.endpos, point );
 			return side;
 		}
@@ -2877,7 +2877,8 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	float			speed, rate, fade, fadeMs, k, dt, wantPitch, wantRoll, up;
 	int				clip, f, cur, legs = s->legsAnim & ~ANIM_TOGGLEBIT;
 	int				wall = 0, ground = ( s->groundEntityNum != ENTITYNUM_NONE );
-	qboolean		held;
+	qboolean		held, wallrun;
+	vec3_t			moveLeft;
 	char			dbg[8];
 
 	if ( !model ) {
@@ -2888,13 +2889,23 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	speed = sqrt( vel[0] * vel[0] + vel[1] * vel[1] );
 	VectorSubtract( vel, pe->skelVel, accel );
 	cur = pe->skelClip;
-	held = CG_SkelOneShot( cur ) && pe->skelPhase < skelClips[cur].count - 1;
+	// the game's own wall-run state, where we have it (the local or followed player)
+	wallrun = s->clientNum == cg.snap->ps.clientNum && cg.predictedPlayerState.stats[STAT_WALLRUN] != 0;
+	if ( speed > 1 ) {
+		VectorSet( moveLeft, -vel[1] / speed, vel[0] / speed, 0 );
+	} else {
+		VectorCopy( axis[1], moveLeft );
+	}
+	held = CG_SkelOneShot( cur ) && pe->skelPhase < skelClips[cur].count - 1.5f;
 
 	// loops: what the body is doing right now
 	if ( s->eFlags & EF_SLIDING ) {
 		clip = SKEL_SLIDE_LOOP;
+	} else if ( wallrun ) {
+		wall = CG_SkelWallSide( cent, moveLeft, vec3_origin, pe->skelWallPt );
+		clip = SKEL_SPRINT_LOOP;
 	} else if ( !ground ) {
-		wall = ( speed > 200 && vel[2] > -300 ) ? CG_SkelWallSide( cent, axis[1], vel, pe->skelWallPt ) : 0;
+		wall = ( speed > 200 && vel[2] > -300 ) ? CG_SkelWallSide( cent, moveLeft, vel, pe->skelWallPt ) : 0;
 		if ( pe->skelGround ) {
 			pe->skelAirStart = cg.time;
 		}
@@ -3007,7 +3018,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	VectorCopy( cent->lerpOrigin, ent.lightingOrigin );
 	angles[PITCH] = pe->skelLean[0];
 	vectoangles( axis[0], accel );		// accel is spent; reuse for the facing
-	angles[YAW] = accel[YAW];
+	angles[YAW] = wall ? RAD2DEG( atan2( vel[1], vel[0] ) ) : accel[YAW];	// run along the wall
 	angles[ROLL] = pe->skelLean[1];
 	AnglesToAxis( angles, ent.axis );
 	ent.renderfx = renderfx | RF_LIGHTING_ORIGIN;
