@@ -203,6 +203,7 @@ typedef struct {
 	int				skelWallSide;
 	int				skelSpinStart, skelSpinMs, skelSpinAxis;
 	float			skelSpinDir;
+	int				skelSpinNext, skelSpinCut, skelSpinSwing;
 	float			skelInertK;			// decay rate of the current transition
 	int				skelDashTime, skelEventParm, skelFromLen;
 	float			skelFromPhase;

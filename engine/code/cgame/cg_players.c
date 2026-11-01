@@ -3093,7 +3093,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	char			dbg[8];
 	int				hold = 0;
 	qboolean		kicking, back;
-	float			wallW = 0;
+	float			wallW = 0, pivot = 0;
 
 	model = cgs.media.skelModel;
 	dt = cg.frametime * 0.001f;
@@ -3362,12 +3362,28 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 
 		if ( !pe->skelSpinMs || cg.time - pe->skelSpinStart >= pe->skelSpinMs ) {
 			pe->skelSpinMs = 0;
-			if ( pe->kickTime && ( pe->kickFlags & 1 ) && cg.time - pe->kickTime < 40 ) {
-				// the only whole-body spin left: wall kicks and air cuts have clips,
-				// and spinning the model on top threw it around its centre
-				pe->skelSpinMs = 450;
-				pe->skelSpinAxis = YAW;
-				pe->skelSpinDir = pe->flipDir;
+			// a small rotating set, so no two in a row match: yaw corkscrews either way
+			// and a barrel roll. Air cuts only spin on a finisher, and every other one
+			static const struct { int axis; float dir; int ms; } moves[4] = {
+				{ YAW, 1, 520 }, { ROLL, 1, 560 }, { YAW, -1, 480 }, { ROLL, -1, 600 } };
+			int		pick = -1;
+
+			if ( pe->skelFlipTime == cg.time ) {
+				pick = pe->skelSpinNext++;
+			} else if ( pe->kickTime && ( pe->kickFlags & 1 ) && cg.time - pe->kickTime < 40 ) {
+				pick = pe->flipDir > 0 ? 0 : 2;
+			} else if ( !ground && !wall && s->weapon == WP_SWORD && cent->swordSwingStep % 3 == 2
+					&& cg.time >= cent->swordSwingTime && cg.time - cent->swordSwingTime < 60
+					&& cent->swordSwingTime != pe->skelSpinSwing ) {
+				pe->skelSpinSwing = cent->swordSwingTime;
+				if ( ( pe->skelSpinCut++ & 1 ) == 0 ) {
+					pick = pe->skelSpinNext++;
+				}
+			}
+			if ( pick >= 0 ) {
+				pe->skelSpinMs = moves[pick & 3].ms;
+				pe->skelSpinAxis = moves[pick & 3].axis;
+				pe->skelSpinDir = moves[pick & 3].dir;
 			}
 			if ( pe->skelSpinMs ) {
 				pe->skelSpinStart = cg.time;
@@ -3380,28 +3396,39 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		}
 		angles[spinAxis] += spin;
 		AnglesToAxis( angles, ent.axis );
-		// pivot mid-body for spins and wall tilt, eased in so nothing jumps
+		pivot = fabs( sin( DEG2RAD( spin ) * 0.5f ) );
 		{
-			float	pw = fabs( sin( DEG2RAD( spin ) * 0.5f ) );
 			float	wp = Com_Clamp( 0, 1, fabs( pe->skelLean[1] ) / SKEL_WALL_TILT );
-			vec3_t	mid;
 
 			wallW = wall ? wp * wp * ( 3 - 2 * wp ) : 0;
-			if ( wallW > pw ) {
-				pw = wallW;
+			if ( wallW > pivot ) {
+				pivot = wallW;
 			}
-			VectorCopy( cent->lerpOrigin, mid );
-			mid[2] += 8;
-			VectorMA( mid, -32, ent.axis[2], mid );
-			VectorSubtract( mid, ent.origin, mid );
-			VectorMA( ent.origin, pw, mid, ent.origin );
-			VectorCopy( ent.origin, ent.oldorigin );
 		}
 	}
 	ent.renderfx = renderfx | RF_LIGHTING_ORIGIN;
 	ent.oldframe = skelClips[clip].first + f;
 	ent.frame = f + 1 < skelClips[clip].count ? ent.oldframe + 1 : ent.oldframe;
 	ent.backlerp = 1.0f - ( pe->skelPhase - f );
+
+	// spins and wall tilt turn around the pelvis of the pose being shown, held at
+	// the body's centre, eased in so nothing jumps
+	if ( pivot > 0.001f ) {
+		orientation_t	tag;
+		vec3_t			mid;
+		int				i;
+
+		if ( trap_R_LerpTag( &tag, model, ent.oldframe, ent.frame, 1.0f - ent.backlerp, "pelvis" ) ) {
+			VectorCopy( cent->lerpOrigin, mid );
+			mid[2] += 8;
+			for ( i = 0; i < 3; i++ ) {
+				VectorMA( mid, -tag.origin[i], ent.axis[i], mid );
+			}
+			VectorSubtract( mid, ent.origin, mid );
+			VectorMA( ent.origin, pivot, mid, ent.origin );
+			VectorCopy( ent.origin, ent.oldorigin );
+		}
+	}
 
 	// inertial transition: the offset from the old pose decays critically
 	{

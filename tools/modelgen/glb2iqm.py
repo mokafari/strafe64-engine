@@ -169,17 +169,44 @@ def main():
     # root motion: the game moves the player, so a clip's hips mustn't travel. Keep
     # sway (motion quicker than about a third of a second), drop the path itself
     pel = names.index('pelvis'); rootj = names.index('root')
+    par_idx = [idx.get(parent.get(n), -1) for n in jn]
+    body = [k for k, nm in enumerate(names) if nm in ('pelvis', 'spine_02', 'Head', 'hand_l', 'hand_r', 'foot_l', 'foot_r',
+                                                      'calf_l', 'calf_r', 'upperarm_l', 'upperarm_r')]
+    def qrot(q, v):
+        u, w = q[:3], q[3]
+        return v + 2 * np.cross(u, np.cross(u, v) + w * v)
+    def qmul(a, b):
+        ax, bx = a[:3], b[:3]
+        return np.r_[a[3] * bx + b[3] * ax + np.cross(ax, bx), a[3] * b[3] - ax @ bx]
+    def centre(row):
+        """horizontal centre of the body for one frame, and pelvis parent's rotation"""
+        P, Q = [None] * len(jn), [None] * len(jn)
+        for k in range(len(jn)):
+            t, q = row[k, :3], row[k, 3:7]
+            q = q / np.linalg.norm(q)
+            if par_idx[k] < 0:
+                P[k], Q[k] = t, q
+            else:
+                P[k] = P[par_idx[k]] + qrot(Q[par_idx[k]], t)
+                Q[k] = qmul(Q[par_idx[k]], q)
+        return np.mean([P[k][:2] for k in body], axis=0), Q[par_idx[pel]]
     for n, first, count, _ in anims:
         seg = F[first:first + count]
-        before = np.ptp(seg[:, pel, :2], axis=0)
-        win = 11
-        for ch in (0, 1):
-            for jt in (pel, rootj):
-                x = seg[:, jt, ch].copy()
-                pad = np.r_[np.full(win, x[0]), x, np.full(win, x[-1])]
-                low = np.convolve(pad, np.ones(win) / win, 'same')[win:-win]
-                seg[:, jt, ch] = x - low + rest_xy(jt, ch)
-        print('%-22s hip travel %5.1f,%5.1f u -> %4.1f,%4.1f' % (n, before[0], before[1], np.ptp(seg[:, pel, 0]), np.ptp(seg[:, pel, 1])))
+        cs = []
+        for f in range(count):
+            cs.append(centre(seg[f]))
+        c0 = np.array([c[0] for c in cs])
+        off = c0 - np.array([0.0, 0.0])
+        # the slow part of the wander goes, a little quick sway stays
+        win = 9
+        pad = np.r_[np.repeat(off[:1], win, 0), off, np.repeat(off[-1:], win, 0)]
+        low = np.stack([np.convolve(pad[:, a], np.ones(win) / win, 'same')[win:-win] for a in (0, 1)], 1)
+        for f in range(count):
+            pq = cs[f][1]
+            inv = np.r_[-pq[:3], pq[3]]
+            seg[f, pel, :3] -= qrot(inv, np.r_[low[f], 0.0])
+        after = np.array([centre(seg[f])[0] for f in range(count)])
+        print('%-22s body off-centre max %5.1f -> %4.1f u' % (n, np.abs(c0).max(), np.abs(after).max()))
     for i in range(len(jn)):           # keep each quaternion channel continuous
         q = F[:, i, 3:7]
         for f in range(1, len(q)):
