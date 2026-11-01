@@ -66,7 +66,11 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
     cfg.THEME = theme           # read by BspWriter to remap bulk faces to concrete
     mods = cfg.GenMods(vscale=vscale, hscale=hscale, density=density,
                        sections=sections)
-    if granite:
+    if granite == "lab":
+        from strafegen_animlab import AnimLab
+        name = name or "strafe64_animlab"
+        course = AnimLab(seed or 64).build()
+    elif granite:
         from strafegen_granite import Granite
         name = name or ("strafe64_granite_night" if granite == "night" else "strafe64_granite")
         course = Granite(seed or 64, night=(granite == "night")).build()
@@ -273,6 +277,8 @@ def main():
                          "banked arc — candidate corner geometry, feel-test by hand)")
     ap.add_argument("--showcase", action="store_true",
                     help="the hand-composed ethereal showcase map (strafe64_showcase)")
+    ap.add_argument("--animlab", action="store_true",
+                    help="animation state test bench (strafe64_animlab)")
     ap.add_argument("--granite", action="store_true",
                     help="the stepped granite ziggurat (strafe64_granite)")
     ap.add_argument("--marble", action="store_true",
@@ -413,6 +419,11 @@ def main():
                      voidrise=args.voidrise, voiddelay=args.voiddelay,
                      item_trail=args.item_trail, name=args.name,
                      standalone=args.standalone, backup=args.backup, **_genmods)
+        return
+    if args.animlab:
+        generate(args.seed or 64, 1, 1, args.out, args.map, args.pk3, granite="lab", name=args.name,
+                 theme=args.theme, bake=args.bake, bake_bounce=args.bake_bounce,
+                 standalone=args.standalone, backup=args.backup)
         return
     if args.granite:
         generate(args.seed or 64, 1, 1, args.out, args.map, args.pk3,

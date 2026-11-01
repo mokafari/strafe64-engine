@@ -187,6 +187,8 @@ typedef struct {
 	float			skelPhase;			// frames into the clip, advanced on the scaled clock
 	float			skelLean[2];		// smoothed pitch/roll
 	vec3_t			skelVel;
+	vec3_t			skelWallPt;			// where the feet go on a wall run
+	int				skelAirStart, skelFlipTime;
 } playerEntity_t;
 
 //=================================================

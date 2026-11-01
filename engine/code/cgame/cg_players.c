@@ -2850,7 +2850,7 @@ static qboolean CG_SkelOneShot( int clip ) {
 }
 
 // which side a wall is on (+1 left, -1 right, 0 none), for wall runs
-static int CG_SkelWallSide( centity_t *cent, const vec3_t left ) {
+static int CG_SkelWallSide( centity_t *cent, const vec3_t left, const vec3_t vel, vec3_t point ) {
 	trace_t	tr;
 	vec3_t	end;
 	int		side;
@@ -2858,7 +2858,10 @@ static int CG_SkelWallSide( centity_t *cent, const vec3_t left ) {
 	for ( side = 1; side >= -1; side -= 2 ) {
 		VectorMA( cent->lerpOrigin, 40 * side, left, end );
 		CG_Trace( &tr, cent->lerpOrigin, NULL, NULL, end, cent->currentState.number, MASK_SOLID );
-		if ( tr.fraction < 1.0f && fabs( tr.plane.normal[2] ) < 0.3f ) {
+		// running along it, not flying into or away from it
+		if ( tr.fraction < 1.0f && fabs( tr.plane.normal[2] ) < 0.3f
+			&& fabs( DotProduct( tr.plane.normal, vel ) ) < 0.5f * VectorLength( vel ) ) {
+			VectorCopy( tr.endpos, point );
 			return side;
 		}
 	}
@@ -2875,6 +2878,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	int				clip, f, cur, legs = s->legsAnim & ~ANIM_TOGGLEBIT;
 	int				wall = 0, ground = ( s->groundEntityNum != ENTITYNUM_NONE );
 	qboolean		held;
+	char			dbg[8];
 
 	if ( !model ) {
 		model = trap_R_RegisterModel( "models/s64/mannequin.iqm" );
@@ -2890,8 +2894,16 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	if ( s->eFlags & EF_SLIDING ) {
 		clip = SKEL_SLIDE_LOOP;
 	} else if ( !ground ) {
-		wall = speed > 200 ? CG_SkelWallSide( cent, axis[1] ) : 0;
-		clip = wall ? SKEL_SPRINT_LOOP : ( speed > 500 ? SKEL_NINJAJUMP_IDLE_LOOP : SKEL_JUMP_LOOP );
+		wall = ( speed > 200 && vel[2] > -300 ) ? CG_SkelWallSide( cent, axis[1], vel, pe->skelWallPt ) : 0;
+		if ( pe->skelGround ) {
+			pe->skelAirStart = cg.time;
+		}
+		// bunny hops are part of the run: stay in stride through short air time
+		if ( wall || ( cur == SKEL_SPRINT_LOOP && cg.time - pe->skelAirStart < 350 ) ) {
+			clip = SKEL_SPRINT_LOOP;
+		} else {
+			clip = speed > 500 ? SKEL_NINJAJUMP_IDLE_LOOP : SKEL_JUMP_LOOP;
+		}
 	} else if ( legs == LEGS_IDLECR ) {
 		clip = SKEL_CROUCH_IDLE_LOOP;
 	} else if ( legs == LEGS_WALKCR ) {
@@ -2912,21 +2924,23 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	} else if ( s->weapon == WP_SWORD && cg.time - cent->swordSwingTime < 420 ) {
 		clip = SKEL_SWORD_REGULAR_A + ( cent->swordSwingStep % 3 );
 		held = qfalse;
-	} else if ( DotProduct( accel, accel ) > 300.0f * 300.0f && accel[2] < 150 && pe->skelGround == ground && !held ) {
+	} else if ( accel[0] * accel[0] + accel[1] * accel[1] > 450.0f * 450.0f && pe->skelGround == ground && !held ) {
 		clip = SKEL_SWORD_DASH;				// horizontal burst
-	} else if ( !ground && accel[2] > 200 && !pe->skelGround ) {
+	} else if ( !ground && accel[2] > 300 && !pe->skelGround && cg.time - pe->skelFlipTime > 700 ) {
 		clip = SKEL_ROLL;					// air/wall jump: tuck flip
+		pe->skelFlipTime = cg.time;
 		held = qfalse;
-	} else if ( !ground && pe->skelGround && vel[2] > 100 ) {
-		clip = speed > 300 ? SKEL_NINJAJUMP_START : SKEL_JUMP_START;
+	} else if ( !ground && pe->skelGround && vel[2] > 100 && speed < 200 ) {
+		clip = SKEL_JUMP_START;
 		held = qfalse;
 	} else if ( ground && !pe->skelGround ) {
-		if ( pe->skelVel[2] < -450 && speed > 200 ) {
+		if ( pe->skelVel[2] < -650 && speed > 200 ) {
 			clip = SKEL_ROLL;				// hard fast landing: roll it out
-		} else if ( pe->skelVel[2] < -300 ) {
-			clip = speed > 300 ? SKEL_NINJAJUMP_LAND : SKEL_JUMP_LAND;
+			held = qfalse;
+		} else if ( pe->skelVel[2] < -300 && speed < 200 ) {
+			clip = SKEL_JUMP_LAND;
+			held = qfalse;
 		}
-		held = qfalse;
 	} else if ( clip == SKEL_SLIDE_LOOP && cur != SKEL_SLIDE_LOOP && cur != SKEL_SLIDE_START ) {
 		clip = SKEL_SLIDE_START;
 	} else if ( clip != SKEL_SLIDE_LOOP && cur == SKEL_SLIDE_LOOP ) {
@@ -2938,6 +2952,11 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 
 	// advance; fast moves get quick fades, settling moves soft ones
 	if ( clip != cur ) {
+		trap_Cvar_VariableStringBuffer( "cg_skelDebug", dbg, sizeof( dbg ) );
+		if ( atoi( dbg ) ) {
+			Com_Printf( "SKEL t=%d cl=%d %d->%d speed=%.0f vz=%.0f ground=%d wall=%d\n",
+				cg.time, s->clientNum, cur, clip, speed, vel[2], ground, wall );
+		}
 		pe->skelFrom = skelClips[cur].first + (int)Com_Clamp( 0, skelClips[cur].count - 1, pe->skelPhase );
 		pe->skelClip = clip;
 		pe->skelStart = cg.time;
@@ -2963,7 +2982,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	wantPitch = Com_Clamp( -18, 22, speed * 0.03f + DotProduct( accel, axis[0] ) * 0.05f );
 	wantRoll = Com_Clamp( -24, 24, DotProduct( accel, axis[1] ) * -0.08f );
 	if ( wall ) {
-		wantRoll = wall * -40.0f;
+		wantRoll = wall * 65.0f;		// feet to the wall, head away from it
 		wantPitch *= 0.4f;
 	}
 	if ( !ground && !wall ) {
@@ -2977,6 +2996,13 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	ent.hModel = model;
 	VectorCopy( cent->lerpOrigin, ent.origin );
 	ent.origin[2] -= 24;
+	k = fabs( pe->skelLean[1] ) / 65.0f;
+	if ( k > 0.4f ) {
+		// plant the soles on the wall as the body swings over
+		k = Com_Clamp( 0, 1, ( k - 0.4f ) / 0.6f );
+		ent.origin[0] += ( pe->skelWallPt[0] - ent.origin[0] ) * k;
+		ent.origin[1] += ( pe->skelWallPt[1] - ent.origin[1] ) * k;
+	}
 	VectorCopy( ent.origin, ent.oldorigin );
 	VectorCopy( cent->lerpOrigin, ent.lightingOrigin );
 	angles[PITCH] = pe->skelLean[0];
@@ -2985,9 +3011,9 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	angles[ROLL] = pe->skelLean[1];
 	AnglesToAxis( angles, ent.axis );
 	ent.renderfx = renderfx | RF_LIGHTING_ORIGIN;
-	ent.frame = skelClips[clip].first + f;
-	ent.oldframe = f + 1 < skelClips[clip].count ? ent.frame + 1 : ent.frame;
-	ent.backlerp = 1.0f - ( pe->skelPhase - f );	// oldframe holds the later frame
+	ent.oldframe = skelClips[clip].first + f;
+	ent.frame = f + 1 < skelClips[clip].count ? ent.oldframe + 1 : ent.oldframe;
+	ent.backlerp = 1.0f - ( pe->skelPhase - f );
 
 	fadeMs = CG_SkelOneShot( clip ) ? 70.0f : 130.0f;
 	fade = ( cg.time - pe->skelStart ) / fadeMs;
