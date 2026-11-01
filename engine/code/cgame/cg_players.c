@@ -2837,33 +2837,61 @@ CG_Player
 ===============
 CG_SkeletalPlayer
 
-cg_skeletal 1: one IQM body in place of the legs/torso/head MD3s. Picks a clip
-from what the player is doing, crossfades on change, and plants a hand on any
-wall beside an airborne, fast-moving player.
+cg_skeletal 1: one IQM body in place of the legs/torso/head MD3s. Loops are
+picked from the movement state and run at a rate matched to ground speed;
+take-offs, landings, flips and dashes play as one-shots on top. The body leans
+into acceleration and rolls into walls, and the chest follows the view pitch.
 ===============
 */
+#define SKEL_SPRINT_SPEED	300.0f	// ground speed the sprint clip reads right at
+
+static qboolean CG_SkelOneShot( int clip ) {
+	return !skelClips[clip].loop;
+}
+
+// which side a wall is on (+1 left, -1 right, 0 none), for wall runs
+static int CG_SkelWallSide( centity_t *cent, const vec3_t left ) {
+	trace_t	tr;
+	vec3_t	end;
+	int		side;
+
+	for ( side = 1; side >= -1; side -= 2 ) {
+		VectorMA( cent->lerpOrigin, 40 * side, left, end );
+		CG_Trace( &tr, cent->lerpOrigin, NULL, NULL, end, cent->currentState.number, MASK_SOLID );
+		if ( tr.fraction < 1.0f && fabs( tr.plane.normal[2] ) < 0.3f ) {
+			return side;
+		}
+	}
+	return 0;
+}
+
 static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	static qhandle_t	model;
 	entityState_t	*s = &cent->currentState;
 	playerEntity_t	*pe = &cent->pe;
 	refEntity_t		ent;
-	float			speed, t, fade;
-	int				clip, f, legs = s->legsAnim & ~ANIM_TOGGLEBIT;
-	int				side;
+	vec3_t			angles, accel, vel;
+	float			speed, rate, fade, fadeMs, k, dt, wantPitch, wantRoll, up;
+	int				clip, f, cur, legs = s->legsAnim & ~ANIM_TOGGLEBIT;
+	int				wall = 0, ground = ( s->groundEntityNum != ENTITYNUM_NONE );
+	qboolean		held;
 
 	if ( !model ) {
 		model = trap_R_RegisterModel( "models/s64/mannequin.iqm" );
 	}
-	speed = sqrt( s->pos.trDelta[0] * s->pos.trDelta[0] + s->pos.trDelta[1] * s->pos.trDelta[1] );
+	dt = cg.frametime * 0.001f;
+	VectorCopy( s->pos.trDelta, vel );
+	speed = sqrt( vel[0] * vel[0] + vel[1] * vel[1] );
+	VectorSubtract( vel, pe->skelVel, accel );
+	cur = pe->skelClip;
+	held = CG_SkelOneShot( cur ) && pe->skelPhase < skelClips[cur].count - 1;
 
-	if ( s->weapon == WP_SWORD && ( s->eFlags & EF_BLOCKING ) ) {
-		clip = SKEL_SWORD_BLOCK;
-	} else if ( s->weapon == WP_SWORD && cg.time - cent->swordSwingTime < 420 ) {
-		clip = SKEL_SWORD_REGULAR_A + ( cent->swordSwingStep % 3 );
-	} else if ( s->eFlags & EF_SLIDING ) {
+	// loops: what the body is doing right now
+	if ( s->eFlags & EF_SLIDING ) {
 		clip = SKEL_SLIDE_LOOP;
-	} else if ( s->groundEntityNum == ENTITYNUM_NONE ) {
-		clip = speed > 500 ? SKEL_NINJAJUMP_IDLE_LOOP : SKEL_JUMP_LOOP;
+	} else if ( !ground ) {
+		wall = speed > 200 ? CG_SkelWallSide( cent, axis[1] ) : 0;
+		clip = wall ? SKEL_SPRINT_LOOP : ( speed > 500 ? SKEL_NINJAJUMP_IDLE_LOOP : SKEL_JUMP_LOOP );
 	} else if ( legs == LEGS_IDLECR ) {
 		clip = SKEL_CROUCH_IDLE_LOOP;
 	} else if ( legs == LEGS_WALKCR ) {
@@ -2876,19 +2904,74 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		clip = SKEL_IDLE_LOOP;
 	}
 
-	t = ( cg.time - pe->skelStart ) * 0.03f;	// baked at 30 fps
-	if ( clip != pe->skelClip ) {
-		pe->skelFrom = skelClips[pe->skelClip].first + Com_Clamp( 0, skelClips[pe->skelClip].count - 1, t );
+	// one-shots: the transitions that sell the move. They hold until done
+	// unless a stronger action interrupts them.
+	if ( s->weapon == WP_SWORD && ( s->eFlags & EF_BLOCKING ) ) {
+		clip = SKEL_SWORD_BLOCK;
+		held = qfalse;
+	} else if ( s->weapon == WP_SWORD && cg.time - cent->swordSwingTime < 420 ) {
+		clip = SKEL_SWORD_REGULAR_A + ( cent->swordSwingStep % 3 );
+		held = qfalse;
+	} else if ( DotProduct( accel, accel ) > 300.0f * 300.0f && accel[2] < 150 && pe->skelGround == ground && !held ) {
+		clip = SKEL_SWORD_DASH;				// horizontal burst
+	} else if ( !ground && accel[2] > 200 && !pe->skelGround ) {
+		clip = SKEL_ROLL;					// air/wall jump: tuck flip
+		held = qfalse;
+	} else if ( !ground && pe->skelGround && vel[2] > 100 ) {
+		clip = speed > 300 ? SKEL_NINJAJUMP_START : SKEL_JUMP_START;
+		held = qfalse;
+	} else if ( ground && !pe->skelGround ) {
+		if ( pe->skelVel[2] < -450 && speed > 200 ) {
+			clip = SKEL_ROLL;				// hard fast landing: roll it out
+		} else if ( pe->skelVel[2] < -300 ) {
+			clip = speed > 300 ? SKEL_NINJAJUMP_LAND : SKEL_JUMP_LAND;
+		}
+		held = qfalse;
+	} else if ( clip == SKEL_SLIDE_LOOP && cur != SKEL_SLIDE_LOOP && cur != SKEL_SLIDE_START ) {
+		clip = SKEL_SLIDE_START;
+	} else if ( clip != SKEL_SLIDE_LOOP && cur == SKEL_SLIDE_LOOP ) {
+		clip = SKEL_SLIDE_EXIT;
+	}
+	if ( held ) {
+		clip = cur;
+	}
+
+	// advance; fast moves get quick fades, settling moves soft ones
+	if ( clip != cur ) {
+		pe->skelFrom = skelClips[cur].first + (int)Com_Clamp( 0, skelClips[cur].count - 1, pe->skelPhase );
 		pe->skelClip = clip;
 		pe->skelStart = cg.time;
-		t = 0;
+		pe->skelPhase = 0;
 	}
+	rate = 1.0f;
+	if ( clip == SKEL_SPRINT_LOOP ) {
+		rate = Com_Clamp( 0.8f, 2.2f, ( speed > 1 ? speed : SKEL_SPRINT_SPEED ) / SKEL_SPRINT_SPEED );
+	} else if ( clip == SKEL_WALK_LOOP ) {
+		rate = Com_Clamp( 0.7f, 1.8f, speed / 110.0f );
+	} else if ( CG_SkelOneShot( clip ) && clip != SKEL_SWORD_BLOCK ) {
+		rate = 1.5f;		// ninja snap: nothing reads as slow
+	}
+	pe->skelPhase += dt * 30.0f * rate;
 	if ( skelClips[clip].loop ) {
-		t -= floor( t / ( skelClips[clip].count - 1 ) ) * ( skelClips[clip].count - 1 );
-	} else if ( t > skelClips[clip].count - 1.01f ) {
-		t = skelClips[clip].count - 1.01f;
+		pe->skelPhase = fmod( pe->skelPhase, skelClips[clip].count - 1 );
+	} else if ( pe->skelPhase > skelClips[clip].count - 1.01f ) {
+		pe->skelPhase = skelClips[clip].count - 1.01f;
 	}
-	f = (int)t;
+	f = (int)pe->skelPhase;
+
+	// lean: into acceleration, and hard over against a wall; eased so it flows
+	wantPitch = Com_Clamp( -18, 22, speed * 0.03f + DotProduct( accel, axis[0] ) * 0.05f );
+	wantRoll = Com_Clamp( -24, 24, DotProduct( accel, axis[1] ) * -0.08f );
+	if ( wall ) {
+		wantRoll = wall * -40.0f;
+		wantPitch *= 0.4f;
+	}
+	if ( !ground && !wall ) {
+		wantPitch *= 0.5f;
+	}
+	k = 1.0f - exp( -dt * 12.0f );
+	pe->skelLean[0] += ( wantPitch - pe->skelLean[0] ) * k;
+	pe->skelLean[1] += ( wantRoll - pe->skelLean[1] ) * k;
 
 	memset( &ent, 0, sizeof( ent ) );
 	ent.hModel = model;
@@ -2896,34 +2979,47 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	ent.origin[2] -= 24;
 	VectorCopy( ent.origin, ent.oldorigin );
 	VectorCopy( cent->lerpOrigin, ent.lightingOrigin );
-	AxisCopy( axis, ent.axis );
+	angles[PITCH] = pe->skelLean[0];
+	vectoangles( axis[0], accel );		// accel is spent; reuse for the facing
+	angles[YAW] = accel[YAW];
+	angles[ROLL] = pe->skelLean[1];
+	AnglesToAxis( angles, ent.axis );
 	ent.renderfx = renderfx | RF_LIGHTING_ORIGIN;
 	ent.frame = skelClips[clip].first + f;
-	ent.oldframe = ent.frame + 1;
-	if ( f + 1 >= skelClips[clip].count ) {
-		ent.oldframe = ent.frame;
-	}
-	ent.backlerp = 1.0f - ( t - f );	// oldframe holds the later frame
+	ent.oldframe = f + 1 < skelClips[clip].count ? ent.frame + 1 : ent.frame;
+	ent.backlerp = 1.0f - ( pe->skelPhase - f );	// oldframe holds the later frame
 
-	// crossfade: hold the pose we left and lerp out of it
-	fade = ( cg.time - pe->skelStart ) / 120.0f;
+	fadeMs = CG_SkelOneShot( clip ) ? 70.0f : 130.0f;
+	fade = ( cg.time - pe->skelStart ) / fadeMs;
 	if ( fade < 1.0f ) {
 		ent.oldframe = pe->skelFrom;
-		ent.backlerp = 1.0f - fade;
+		ent.backlerp = 1.0f - fade * fade * ( 3.0f - 2.0f * fade );
 	}
 
-	if ( s->groundEntityNum == ENTITYNUM_NONE && speed > 200 ) {
-		vec3_t	p, dir;
+	// chest follows the view pitch so the body looks where the blade goes
+	{
+		orientation_t	tag;
+		vec3_t			yaxis = { 0, 1, 0 };
 
-		// the right hand holds the weapon, so only the free hand reaches
-		for ( side = 1; side <= 1; side += 2 ) {
-			if ( CG_JointWorld( &ent, side > 0 ? "upperarm_l" : "upperarm_r", p ) ) {
-				VectorScale( ent.axis[1], side, dir );
-				ent.bonePose = CG_PlantLimb( &ent, ent.bonePose, side > 0 ? "upperarm_l" : "upperarm_r",
-					side > 0 ? "lowerarm_l" : "lowerarm_r", side > 0 ? "hand_l" : "hand_r", p, dir, 36, 2 );
-			}
+		up = AngleNormalize180( cent->lerpAngles[PITCH] ) * 0.5f;
+		if ( !CG_SkelOneShot( clip ) && trap_R_LerpTag( &tag, model, ent.oldframe, ent.frame,
+				1.0f - ent.backlerp, "spine_03" ) ) {
+			ent.bonePose = CG_BoneRotation( &ent, ent.bonePose, "spine_03", &tag, yaxis, DEG2RAD( up ) );
 		}
 	}
+
+	// wall run / wall-side flight: free hand on the surface
+	if ( !ground && wall > 0 ) {
+		vec3_t	p, dir;
+
+		if ( CG_JointWorld( &ent, "upperarm_l", p ) ) {
+			VectorCopy( ent.axis[1], dir );
+			ent.bonePose = CG_PlantLimb( &ent, ent.bonePose, "upperarm_l", "lowerarm_l", "hand_l", p, dir, 44, 2 );
+		}
+	}
+
+	pe->skelGround = ground;
+	VectorCopy( vel, pe->skelVel );
 	trap_R_AddRefEntityToScene( &ent );
 	CG_AddPlayerWeapon( &ent, NULL, cent, cgs.clientinfo[s->clientNum].team );
 }

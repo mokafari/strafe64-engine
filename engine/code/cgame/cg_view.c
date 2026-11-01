@@ -153,7 +153,7 @@ frame the entity is playing. Reads the animated joints through tags, solves in
 model space, and submits local rotation deltas. Returns the bone pose handle.
 =================
 */
-static int CG_BoneRotation( refEntity_t *ent, int pose, const char *joint, const orientation_t *tag,
+int CG_BoneRotation( refEntity_t *ent, int pose, const char *joint, const orientation_t *tag,
 		const vec3_t axis, float angle ) {
 	float	q[4], s = sin( angle * 0.5f );
 
