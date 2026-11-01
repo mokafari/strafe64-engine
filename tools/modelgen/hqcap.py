@@ -23,6 +23,9 @@ MOVES = {
     'wall_right': ('1050 464 40 180', '+forward; wait 60; +moveup; wait 2; -moveup; wait 8', 60),
     'flip':       ('-1250 800 40 0', '+forward; wait 70; +moveup; wait 2; -moveup; wait 16; +moveup; wait 2; -moveup', 90),
     'roll':       ('-300 800 400 0', '+forward; wait 48', 90),
+    'slide':      ('-1250 800 40 0', '+forward; wait 70; +movedown; wait 12', 90),
+    'crouch':     ('-1250 800 40 0', '+movedown; wait 170', 90),
+    'crouchwalk': ('-1250 800 40 0', '+movedown; wait 170; +forward; wait 60', 90),
     'run':        ('-1250 800 40 0', '+forward; wait 90', 90),
     'land':       ('300 800 400 0', 'wait 48', 90),
 }

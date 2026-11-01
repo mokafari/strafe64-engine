@@ -199,6 +199,7 @@ typedef struct {
 	qboolean		skelBack;
 	int				skelUpStart;
 	float			skelWallOff;
+	float			skelFloor;
 	int				skelWallSide;
 	int				skelSpinStart, skelSpinMs, skelSpinAxis;
 	float			skelSpinDir;

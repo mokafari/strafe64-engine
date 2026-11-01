@@ -2982,7 +2982,7 @@ void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t move
 // a scarf off the neck: a verlet chain that trails motion, drawn as a ribbon
 static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
 	orientation_t	tag;
-	vec3_t			root, side, d, t;
+	vec3_t			root, side, d, t, wind;
 	polyVert_t		v[4];
 	float			dt = cg.frametime * 0.001f;
 	int				i, j;
@@ -2998,33 +2998,26 @@ static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
 	if ( cg.time - pe->skelScarfTime > 500 ) {
 		for ( i = 0; i < 8; i++ ) {
 			VectorCopy( root, pe->skelScarf[i] );
-			VectorCopy( root, pe->skelScarfOld[i] );
 		}
 	}
 	pe->skelScarfTime = cg.time;
-	for ( i = 1; i < 8; i++ ) {			// integrate
-		VectorSubtract( pe->skelScarf[i], pe->skelScarfOld[i], d );
-		VectorScale( d, pow( 0.86f, dt * 125.0f ), d );		// air drag per second, not per frame
-		if ( VectorLength( d ) > 10.0f ) {
-			VectorNormalize( d );
-			VectorScale( d, 10.0f, d );
-		}
-		VectorCopy( pe->skelScarf[i], pe->skelScarfOld[i] );
-		VectorAdd( pe->skelScarf[i], d, pe->skelScarf[i] );
-		pe->skelScarf[i][2] -= 700.0f * dt * dt;
-		pe->skelScarf[i][0] += 0.05f * i * sin( cg.time * 0.013f + i * 0.9f );	// flutter
-		pe->skelScarf[i][1] += 0.05f * i * cos( cg.time * 0.011f + i * 1.1f );
-	}
+	// each link eases toward a calm line trailing from the neck: down at rest, back
+	// with speed. It lags more toward the tip, so it streams and can't flap
+	VectorCopy( pe->skelVelF, wind );
+	VectorScale( wind, -0.0035f, wind );
+	wind[2] -= 1.0f;
+	VectorNormalize( wind );
 	VectorCopy( root, pe->skelScarf[0] );
-	for ( j = 0; j < 3; j++ ) {			// hold the link length, root fixed
-		for ( i = 1; i < 8; i++ ) {
-			float	len;
+	for ( i = 1; i < 8; i++ ) {
+		float	k = 1.0f - exp( -dt * ( 26.0f - i * 2.5f ) );
 
-			VectorSubtract( pe->skelScarf[i], pe->skelScarf[i - 1], d );
-			len = VectorLength( d );
-			if ( len > 0.01f ) {
-				VectorMA( pe->skelScarf[i - 1], 3.6f / len, d, pe->skelScarf[i] );
-			}
+		VectorMA( pe->skelScarf[i - 1], 3.6f, wind, t );
+		VectorSubtract( t, pe->skelScarf[i], d );
+		VectorMA( pe->skelScarf[i], k, d, pe->skelScarf[i] );
+		// and it stays a scarf: link length is held
+		VectorSubtract( pe->skelScarf[i], pe->skelScarf[i - 1], d );
+		if ( VectorNormalize( d ) > 0.01f ) {
+			VectorMA( pe->skelScarf[i - 1], 3.6f, d, pe->skelScarf[i] );
 		}
 	}
 	memset( v, 0, sizeof( v ) );
@@ -3125,7 +3118,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	held = CG_SkelOneShot( cur ) && pe->skelPhase < CG_SkelEnd( cur ) - 0.5f;
 
 	// loops: what the body is doing right now
-	if ( s->eFlags & EF_SLIDING ) {
+	if ( ( s->eFlags & EF_SLIDING ) && speed > ( cur == SKEL_SLIDE_LOOP ? 120 : 170 ) ) {
 		clip = SKEL_SLIDE_LOOP;
 	} else if ( grapple ) {
 		clip = SKEL_NINJAJUMP_IDLE_LOOP;
@@ -3145,10 +3138,8 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		} else {
 			clip = speed > 500 ? SKEL_NINJAJUMP_IDLE_LOOP : SKEL_JUMP_LOOP;
 		}
-	} else if ( legs == LEGS_IDLECR ) {
-		clip = SKEL_CROUCH_IDLE_LOOP;
-	} else if ( legs == LEGS_WALKCR ) {
-		clip = SKEL_CROUCH_FWD_LOOP;
+	} else if ( legs == LEGS_IDLECR || legs == LEGS_WALKCR || legs == LEGS_BACKCR || ( s->eFlags & EF_SLIDING ) ) {
+		clip = speed > 15 ? SKEL_CROUCH_FWD_LOOP : SKEL_CROUCH_IDLE_LOOP;
 	} else if ( speed > ( cur == SKEL_SPRINT_LOOP ? 170 : 210 ) ) {
 		clip = SKEL_SPRINT_LOOP;
 	} else if ( speed > ( cur == SKEL_WALK_LOOP || cur == SKEL_SPRINT_LOOP ? 15 : 35 ) ) {
@@ -3556,6 +3547,40 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 			VectorMA( t, -30.0f + 34.0f * kp, ent.axis[2], t );
 			ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, "thigh_r", "calf_r", "foot_r", t );
 		}
+	}
+
+	// crouch and slide poses come at their own height: put the lowest part of the
+	// body on the floor
+	{
+		static const char	*low[4] = { "foot_l", "foot_r", "pelvis", "hand_l" };
+		static const float	rad[4] = { 3, 3, 8, 3 };
+		float	want = 0;
+
+		if ( ground && ( clip == SKEL_CROUCH_IDLE_LOOP || clip == SKEL_CROUCH_FWD_LOOP || clip == SKEL_SLIDE_LOOP
+				|| clip == SKEL_SLIDE_START || clip == SKEL_SLIDE_EXIT ) ) {
+			orientation_t	tag;
+			int				n, i;
+
+			want = 99;
+			for ( n = 0; n < 4; n++ ) {
+				if ( trap_R_BoneTag( &tag, model, ent.frame, ent.oldframe, ent.backlerp, ent.bonePose, low[n] ) ) {
+					float	z = -rad[n];
+
+					for ( i = 0; i < 3; i++ ) {
+						z += tag.origin[i] * ent.axis[i][2];
+					}
+					if ( z < want ) {
+						want = z;
+					}
+				}
+			}
+			if ( want == 99 ) {
+				want = 0;
+			}
+		}
+		pe->skelFloor += ( want - pe->skelFloor ) * ( 1.0f - exp( -dt * 16.0f ) );
+		ent.origin[2] -= pe->skelFloor;
+		VectorCopy( ent.origin, ent.oldorigin );
 	}
 
 	// vault: both hands reach the real lip, then push off it
