@@ -198,7 +198,8 @@ typedef struct {
 	vec3_t			skelVelF;
 	qboolean		skelBack;
 	int				skelUpStart;
-	float			skelWallOff, skelRate, skelLook, skelWallW;
+	float			skelWallOff, skelRate, skelLook, skelWallW, skelRollT;
+	float			skelWallPhase;
 	float			skelFloor;
 	int				skelWallSide;
 	int				skelSpinStart, skelSpinMs, skelSpinAxis;

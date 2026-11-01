@@ -190,7 +190,27 @@ def main():
                 P[k] = P[par_idx[k]] + qrot(Q[par_idx[k]], t)
                 Q[k] = qmul(Q[par_idx[k]], q)
         return np.mean([P[k][:2] for k in body], axis=0), Q[par_idx[pel]]
-    for n, first, count, _ in anims:
+    def smooth(x, win, loop):
+        if loop:				# a loop has no ends: filter around the seam
+            pad = np.concatenate([x[-win - 1:-1], x, x[1:win + 1]])
+        else:
+            pad = np.concatenate([np.repeat(x[:1], win, 0), x, np.repeat(x[-1:], win, 0)])
+        return np.stack([np.convolve(pad[:, a], np.ones(win) / win, 'same')[win:-win] for a in range(x.shape[1])], 1)
+    def seam(seg):
+        h = names.index('hand_r')
+        a, b = hand_pos(seg[0], h), hand_pos(seg[-1], h)
+        return np.linalg.norm(a - b)
+    def hand_pos(row, h):
+        P, Q = [None] * len(jn), [None] * len(jn)
+        for k in range(len(jn)):
+            t, q = row[k, :3], row[k, 3:7] / np.linalg.norm(row[k, 3:7])
+            if par_idx[k] < 0:
+                P[k], Q[k] = t, q
+            else:
+                P[k] = P[par_idx[k]] + qrot(Q[par_idx[k]], t)
+                Q[k] = qmul(Q[par_idx[k]], q)
+        return P[h]
+    for n, first, count, is_loop in anims:
         seg = F[first:first + count]
         cs = []
         for f in range(count):
@@ -198,15 +218,13 @@ def main():
         c0 = np.array([c[0] for c in cs])
         off = c0 - np.array([0.0, 0.0])
         # the slow part of the wander goes, a little quick sway stays
-        win = 9
-        pad = np.r_[np.repeat(off[:1], win, 0), off, np.repeat(off[-1:], win, 0)]
-        low = np.stack([np.convolve(pad[:, a], np.ones(win) / win, 'same')[win:-win] for a in (0, 1)], 1)
+        low = smooth(off, 9, is_loop)
         for f in range(count):
             pq = cs[f][1]
             inv = np.r_[-pq[:3], pq[3]]
             seg[f, pel, :3] -= qrot(inv, np.r_[low[f], 0.0])
         after = np.array([centre(seg[f])[0] for f in range(count)])
-        print('%-22s body off-centre max %5.1f -> %4.1f u' % (n, np.abs(c0).max(), np.abs(after).max()))
+        print('%-22s body off-centre max %5.1f -> %4.1f u  seam %.1f' % (n, np.abs(c0).max(), np.abs(after).max(), seam(seg) if is_loop else 0))
     for i in range(len(jn)):           # keep each quaternion channel continuous
         q = F[:, i, 3:7]
         for f in range(1, len(q)):

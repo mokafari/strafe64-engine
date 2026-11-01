@@ -2978,10 +2978,16 @@ void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t move
 		} else {							// swing: heel to hip, then reach forward
 			float	t = ( u - stance ) / ( 1.0f - stance );
 
-			along = -step + 2.0f * step * t * t * ( 3.0f - 2.0f * t );
+			// foot speed at the seams, partly matched: all of it overshoots into a hard reversal
+			float	m = -0.8f * step / stance * ( 1.0f - stance );
+
+			// Hermite from foot-off to foot-down, so the foot eases through each change
+			along = ( 2*t*t*t - 3*t*t + 1 ) * -step + ( t*t*t - 2*t*t + t ) * m
+				+ ( -2*t*t*t + 3*t*t ) * step + ( t*t*t - t*t ) * m;
 			lift = sin( t * M_PI );
+			lift *= lift;
 		}
-		bend = 1.0f - fabs( along ) / step;	// mid-stance the knee takes the load
+		bend = 1.0f - Com_Clamp( 0, 1, along * along / ( step * step ) );	// mid-stance the knee takes the load
 		VectorCopy( wallPt, pt );
 		VectorMA( pt, along + SKEL_WALL_REACH, fwd, pt );
 		VectorMA( pt, 2.0f + 11.0f * lift + 3.0f * bend * ( 1.0f - lift ), off, pt );
@@ -2993,8 +2999,11 @@ void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t move
 
 			VectorSubtract( pt, anim, reach );
 			dist = VectorLength( reach );
-			if ( dist > SKEL_WALL_LEG ) {
-				VectorMA( anim, SKEL_WALL_LEG / dist, reach, pt );
+			// a soft limit: a hard stop would put a corner in the foot's path
+			if ( dist > SKEL_WALL_LEG - 4.0f ) {
+				float	d0 = SKEL_WALL_LEG - 4.0f;
+
+				VectorMA( anim, ( d0 + 4.0f * ( 1.0f - exp( -( dist - d0 ) / 4.0f ) ) ) / dist, reach, pt );
 			}
 		}
 		if ( weight < 1.0f && CG_JointWorld( ent, leg ? "foot_r" : "foot_l", anim ) ) {
@@ -3375,6 +3384,13 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	}
 	if ( !ground && !wall ) {
 		wantPitch *= 0.5f;
+	}
+	// the tilt target itself is rate limited: attaching steps it by 60 degrees
+	{
+		float	maxStep = 240.0f * dt;
+
+		pe->skelRollT += Com_Clamp( -maxStep, maxStep, wantRoll - pe->skelRollT );
+		wantRoll = pe->skelRollT;
 	}
 	if ( dt > 0.0005f ) {
 		float	want[2], h = dt < 0.03f ? dt : 0.03f;
@@ -3787,8 +3803,12 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 
 	// the stride fades with the blend, so leaving a wall doesn't cut the legs off
 	if ( wallW > 0.02f && !cg_skelWallClip.integer && pe->skelWallSide ) {
+		// its own clock: clip changes reset skelPhase, which would teleport the legs
+		float	cycle = 2.0f * CG_SkelWallStep( gait ) / CG_SkelWallStance( gait );
+
+		pe->skelWallPhase = fmod( pe->skelWallPhase + dt * Com_Clamp( 1.5f, 3.9f, speed / cycle ), 1.0f );
 		CG_SkelWallStride( &ent, pe->skelWallPt, moveLeft, pe->skelVelF, pe->skelWallSide,
-			pe->skelPhase / ( skelClips[clip].count - 1 ) * 2.0f * M_PI, wallW );
+			pe->skelWallPhase * 2.0f * M_PI, wallW );
 	}
 
 	// cg_skelTrace 1: one line a frame for tools/modelgen/animjerk.py

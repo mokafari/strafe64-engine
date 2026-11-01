@@ -186,12 +186,32 @@ static int CG_TwoBoneIK( refEntity_t *ent, int pose, const char *upper, const ch
 	// never quite straight: at full extension the elbow axis is undefined and flips
 	lc = Com_Clamp( fabs( la - lb ) + 0.5f, ( la + lb ) * 0.97f, lc );
 
-	// elbow: open the interior angle until the limb is as long as the reach
-	CrossProduct( ab, cb, m );
-	if ( VectorNormalize( m ) < 0.001f ) {
-		VectorSet( m, 0, 0, 1 );
+	// elbow: a real hinge, fixed to the lower bone. The axis comes from the rest
+	// pose and is carried by the joint, because taking it from the current pose
+	// makes it undefined near a straight limb, and the joint flips over in a frame
+	{
+		orientation_t	ra, rb, rc;
+		vec3_t			rab, rcb, hinge;
+		int				i;
+
+		if ( trap_R_LerpTag( &ra, ent->hModel, 0, 0, 0, upper ) && trap_R_LerpTag( &rb, ent->hModel, 0, 0, 0, lower )
+			&& trap_R_LerpTag( &rc, ent->hModel, 0, 0, 0, end ) ) {
+			VectorSubtract( ra.origin, rb.origin, rab );
+			VectorSubtract( rc.origin, rb.origin, rcb );
+			CrossProduct( rab, rcb, hinge );
+			VectorClear( m );
+			for ( i = 0; i < 3; i++ ) {
+				VectorMA( m, DotProduct( hinge, rb.axis[i] ), b.axis[i], m );
+			}
+		} else {
+			CrossProduct( ab, cb, m );
+		}
+		if ( VectorNormalize( m ) < 0.001f ) {
+			VectorSet( m, 0, 0, 1 );
+		}
 	}
-	cur = acos( Com_Clamp( -1, 1, DotProduct( ab, cb ) / ( la * lb ) ) );
+	CrossProduct( ab, cb, n );
+	cur = atan2( DotProduct( n, m ), DotProduct( ab, cb ) );
 	want = acos( Com_Clamp( -1, 1, ( la * la + lb * lb - lc * lc ) / ( 2 * la * lb ) ) );
 	ang = want - cur;
 	pose = CG_BoneRotation( ent, pose, lower, &b, m, ang );
@@ -256,7 +276,9 @@ qboolean CG_JointWorld( refEntity_t *ent, const char *joint, vec3_t out ) {
 	orientation_t	t;
 	int				i;
 
-	if ( !trap_R_LerpTag( &t, ent->hModel, ent->oldframe, ent->frame, 1.0f - ent->backlerp, joint ) ) {
+	// the pose as built so far: the raw clip can sit 20u away during a blend, and
+	// IK aimed from there drags the limb to it in one frame
+	if ( !trap_R_BoneTag( &t, ent->hModel, ent->frame, ent->oldframe, ent->backlerp, ent->bonePose, joint ) ) {
 		return qfalse;
 	}
 	VectorCopy( ent->origin, out );
