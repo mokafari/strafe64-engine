@@ -319,7 +319,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_playerGlowHue, "cg_playerGlowHue", "0.85", CVAR_ARCHIVE },
 	{ &cg_dashGlitch, "cg_dashGlitch", "1.0", CVAR_ARCHIVE },
 	{ &cg_skeletal, "cg_skeletal", "1", CVAR_ARCHIVE },
-	{ &cg_skelWallClip, "cg_skelWallClip", "1", CVAR_ARCHIVE },
+	{ &cg_skelWallClip, "cg_skelWallClip", "0", CVAR_ARCHIVE },
 	{ &cg_skelFootLock, "cg_skelFootLock", "1", CVAR_ARCHIVE },
 	{ &cg_skelSwingArc, "cg_skelSwingArc", "0.6", CVAR_ARCHIVE },
 	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },

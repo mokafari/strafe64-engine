@@ -2843,7 +2843,7 @@ take-offs, landings, flips and dashes play as one-shots on top. The body leans
 into acceleration and rolls into walls, and the chest follows the view pitch.
 ===============
 */
-#define SKEL_WALL_TILT		38.0f
+#define SKEL_WALL_TILT		46.0f
 #define SKEL_WALL_CLIP_OFF	17.0f	// body stand-off from the wall in the mocap wall run
 #define SKEL_WALL_STANCE	0.35f	// fraction of the cycle a foot is planted
 #define SKEL_WALL_STEP		15.0f	// planted foot travels +-this along the wall
@@ -2924,6 +2924,23 @@ void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t move
 			if ( i == 1 ) {
 				ent->bonePose = CG_BoneRotation( ent, ent->bonePose, spine[i], &tag, up, DEG2RAD( 18.0f ) * sin( a ) * weight );
 			}
+		}
+	}
+
+	// the arm away from the wall flies out for balance, swinging with the stride
+	{
+		const char	*up_a = wall > 0 ? "upperarm_r" : "upperarm_l";
+		const char	*lo_a = wall > 0 ? "lowerarm_r" : "lowerarm_l";
+		const char	*ha_a = wall > 0 ? "hand_r" : "hand_l";
+		vec3_t		sh, hand, t;
+
+		if ( CG_JointWorld( ent, up_a, sh ) && CG_JointWorld( ent, ha_a, hand ) ) {
+			VectorMA( sh, 24.0f, off, t );
+			VectorMA( t, -6.0f + 8.0f * sin( a ), fwd, t );
+			t[2] -= 4.0f + 3.0f * cos( 2.0f * a );
+			VectorSubtract( t, hand, t );
+			VectorMA( hand, weight, t, t );
+			ent->bonePose = CG_LimbToWorld( ent, ent->bonePose, up_a, lo_a, ha_a, t );
 		}
 	}
 

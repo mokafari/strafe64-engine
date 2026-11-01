@@ -330,7 +330,7 @@ static void CG_AddTestModel (void) {
 		// and the wall-run gait against whatever wall is on the model's left
 		trap_Cvar_VariableStringBuffer( "cg_testWallRun", buf, sizeof( buf ) );
 		if ( buf[0] ) {
-			vec3_t	mid, end, ang = { 0, 0, 38 }, testVel = { 320, 0, 0 };
+			vec3_t	mid, end, ang = { 0, 0, 46 }, testVel = { 320, 0, 0 };
 			trace_t	tr;
 			refEntity_t	copy = cg.testModelEntity, *e = &copy;	// per-frame: never touch the original
 
