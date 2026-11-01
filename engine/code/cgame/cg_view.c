@@ -219,7 +219,7 @@ Traces from the limb's root along dir (world space) and, on a hit, solves the
 limb onto the surface, offset back along the normal by standoff.
 =================
 */
-static int CG_PlantLimb( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end,
+int CG_PlantLimb( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end,
 		const vec3_t start, const vec3_t dir, float range, float standoff ) {
 	vec3_t	stop, pt, rel, target;
 	trace_t	tr;
@@ -239,7 +239,7 @@ static int CG_PlantLimb( refEntity_t *ent, int pose, const char *upper, const ch
 }
 
 // model-space joint -> world
-static qboolean CG_JointWorld( refEntity_t *ent, const char *joint, vec3_t out ) {
+qboolean CG_JointWorld( refEntity_t *ent, const char *joint, vec3_t out ) {
 	orientation_t	t;
 	int				i;
 

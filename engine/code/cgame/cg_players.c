@@ -2831,6 +2831,99 @@ int CG_GlowPilotCount( void ) {
 CG_Player
 ===============
 */
+#include "cg_skelclips.h"
+
+/*
+===============
+CG_SkeletalPlayer
+
+cg_skeletal 1: one IQM body in place of the legs/torso/head MD3s. Picks a clip
+from what the player is doing, crossfades on change, and plants a hand on any
+wall beside an airborne, fast-moving player.
+===============
+*/
+static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
+	static qhandle_t	model;
+	entityState_t	*s = &cent->currentState;
+	playerEntity_t	*pe = &cent->pe;
+	refEntity_t		ent;
+	float			speed, t, fade;
+	int				clip, f, legs = s->legsAnim & ~ANIM_TOGGLEBIT;
+	int				side;
+
+	if ( !model ) {
+		model = trap_R_RegisterModel( "models/s64/mannequin.iqm" );
+	}
+	speed = sqrt( s->pos.trDelta[0] * s->pos.trDelta[0] + s->pos.trDelta[1] * s->pos.trDelta[1] );
+
+	if ( cg.time - cent->muzzleFlashTime < 400 ) {
+		clip = SKEL_SWORD_REGULAR_A;
+	} else if ( s->eFlags & EF_SLIDING ) {
+		clip = SKEL_SLIDE_LOOP;
+	} else if ( s->groundEntityNum == ENTITYNUM_NONE ) {
+		clip = speed > 500 ? SKEL_NINJAJUMP_IDLE_LOOP : SKEL_JUMP_LOOP;
+	} else if ( legs == LEGS_IDLECR ) {
+		clip = SKEL_CROUCH_IDLE_LOOP;
+	} else if ( legs == LEGS_WALKCR ) {
+		clip = SKEL_CROUCH_FWD_LOOP;
+	} else if ( speed > 200 ) {
+		clip = SKEL_SPRINT_LOOP;
+	} else if ( speed > 30 ) {
+		clip = SKEL_WALK_LOOP;
+	} else {
+		clip = SKEL_IDLE_LOOP;
+	}
+
+	t = ( cg.time - pe->skelStart ) * 0.03f;	// baked at 30 fps
+	if ( clip != pe->skelClip ) {
+		pe->skelFrom = skelClips[pe->skelClip].first + Com_Clamp( 0, skelClips[pe->skelClip].count - 1, t );
+		pe->skelClip = clip;
+		pe->skelStart = cg.time;
+		t = 0;
+	}
+	if ( skelClips[clip].loop ) {
+		t -= floor( t / ( skelClips[clip].count - 1 ) ) * ( skelClips[clip].count - 1 );
+	} else if ( t > skelClips[clip].count - 1.01f ) {
+		t = skelClips[clip].count - 1.01f;
+	}
+	f = (int)t;
+
+	memset( &ent, 0, sizeof( ent ) );
+	ent.hModel = model;
+	VectorCopy( cent->lerpOrigin, ent.origin );
+	ent.origin[2] -= 24;
+	VectorCopy( ent.origin, ent.oldorigin );
+	VectorCopy( cent->lerpOrigin, ent.lightingOrigin );
+	AxisCopy( axis, ent.axis );
+	ent.renderfx = renderfx | RF_LIGHTING_ORIGIN;
+	ent.frame = skelClips[clip].first + f;
+	ent.oldframe = ent.frame + 1;
+	if ( f + 1 >= skelClips[clip].count ) {
+		ent.oldframe = ent.frame;
+	}
+	ent.backlerp = 1.0f - ( t - f );	// oldframe holds the later frame
+
+	// crossfade: hold the pose we left and lerp out of it
+	fade = ( cg.time - pe->skelStart ) / 120.0f;
+	if ( fade < 1.0f ) {
+		ent.oldframe = pe->skelFrom;
+		ent.backlerp = 1.0f - fade;
+	}
+
+	if ( s->groundEntityNum == ENTITYNUM_NONE && speed > 200 ) {
+		vec3_t	p, dir;
+
+		for ( side = -1; side <= 1; side += 2 ) {
+			if ( CG_JointWorld( &ent, side > 0 ? "upperarm_l" : "upperarm_r", p ) ) {
+				VectorScale( ent.axis[1], side, dir );
+				ent.bonePose = CG_PlantLimb( &ent, ent.bonePose, side > 0 ? "upperarm_l" : "upperarm_r",
+					side > 0 ? "lowerarm_l" : "lowerarm_r", side > 0 ? "hand_l" : "hand_r", p, dir, 36, 2 );
+			}
+		}
+	}
+	trap_R_AddRefEntityToScene( &ent );
+}
+
 void CG_Player( centity_t *cent ) {
 	clientInfo_t	*ci;
 	refEntity_t		legs;
@@ -2890,6 +2983,17 @@ void CG_Player( centity_t *cent ) {
 
 	// get the rotation information
 	CG_PlayerAngles( cent, legs.axis, torso.axis, head.axis );
+
+	{
+		char	sk[8];
+
+		trap_Cvar_VariableStringBuffer( "cg_skeletal", sk, sizeof( sk ) );
+		if ( atoi( sk ) ) {
+			CG_SkeletalPlayer( cent, legs.axis, renderfx );
+			CG_PlayerSprites( cent );
+			return;
+		}
+	}
 
 	// STRAFE 64: procedural wall-grip lean, layered on the MD3 axes before the
 	// tag chain composes torso/head onto the legs.

@@ -181,6 +181,8 @@ typedef struct {
 	// system for the kung-fu tornado spin.
 	int				kickTime;		// cg.time the kick pose began (0 = none)
 	int				kickFlags;		// EV_KICK eventParm: 1 = airborne, 2 = hit, 4 = ninja launch
+	// STRAFE 64: skeletal player clip state
+	int				skelClip, skelStart, skelFrom;
 } playerEntity_t;
 
 //=================================================
@@ -1903,6 +1905,9 @@ void		trap_R_SetColor( const float *rgba );	// NULL = 1,1,1,1
 void		trap_R_DrawStretchPic( float x, float y, float w, float h, 
 			float s1, float t1, float s2, float t2, qhandle_t hShader );
 void		trap_R_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs );
+int			CG_PlantLimb( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end,
+				const vec3_t start, const vec3_t dir, float range, float standoff );
+qboolean	CG_JointWorld( refEntity_t *ent, const char *joint, vec3_t out );
 int			trap_R_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat );
 int			trap_R_LerpTag( orientation_t *tag, clipHandle_t mod, int startFrame, int endFrame, 
 					   float frac, const char *tagName );
