@@ -1791,14 +1791,16 @@ static void ComputePoseMatsUncached( iqmData_t *data, int frame, int oldframe,
 		}
 	}
 
-	// masked joints collapse their vertices onto the joint, which removes the
-	// section from the mesh and leaves the rest of the skeleton alone
+	// masked joints all collapse their vertices onto the cut joint, which removes
+	// the section from the mesh and leaves the rest of the skeleton alone. One
+	// point for the whole section: a point per joint leaves thin triangles
+	// stretched between them
 	if ( bonePose ) {
-		qboolean	hide[IQM_MAX_JOINTS];
-		qboolean	any = qfalse, sub[IQM_MAX_JOINTS];
+		int			into[IQM_MAX_JOINTS];
+		qboolean	sub[IQM_MAX_JOINTS];
 		int			m;
 
-		Com_Memset( hide, 0, sizeof( hide ) );
+		Com_Memset( into, -1, sizeof( into ) );
 		for ( m = 0; m < bonePose->num; m++ ) {
 			if ( !BONE_IS_MASK( bonePose->rot[m] ) ) {
 				continue;
@@ -1807,23 +1809,42 @@ static void ComputePoseMatsUncached( iqmData_t *data, int frame, int oldframe,
 				int	parent = data->jointParents[i];
 
 				sub[i] = i == bonePose->joint[m] || ( parent >= 0 && sub[parent] );
-				hide[i] |= bonePose->rot[m][3] == 0 ? sub[i] : !sub[i];
+				if ( bonePose->rot[m][3] == 0 ? sub[i] : !sub[i] ) {
+					into[i] = bonePose->joint[m];
+				}
 			}
-			any = qtrue;
 		}
-		for ( i = 0; any && i < data->num_poses; i++ ) {
-			if ( hide[i] ) {
-				float		*m34 = &poseMats[i * 12];
-				const float	*b = &data->bindJoints[i * 12];
-				vec3_t		p;
+		for ( m = 0; m < bonePose->num; m++ ) {
+			int			j = bonePose->joint[m];
+			const float	*m34 = &poseMats[j * 12];
+			const float	*b = &data->bindJoints[j * 12];
+			vec3_t		p;
 
-				p[0] = m34[0] * b[3] + m34[1] * b[7] + m34[2] * b[11] + m34[3];
-				p[1] = m34[4] * b[3] + m34[5] * b[7] + m34[6] * b[11] + m34[7];
-				p[2] = m34[8] * b[3] + m34[9] * b[7] + m34[10] * b[11] + m34[11];
-				Com_Memset( m34, 0, 12 * sizeof( float ) );
-				m34[3] = p[0];
-				m34[7] = p[1];
-				m34[11] = p[2];
+			if ( !BONE_IS_MASK( bonePose->rot[m] ) ) {
+				continue;
+			}
+			p[0] = m34[0] * b[3] + m34[1] * b[7] + m34[2] * b[11] + m34[3];
+			p[1] = m34[4] * b[3] + m34[5] * b[7] + m34[6] * b[11] + m34[7];
+			p[2] = m34[8] * b[3] + m34[9] * b[7] + m34[10] * b[11] + m34[11];
+			for ( i = 0; i < data->num_poses; i++ ) {
+				if ( into[i] == j ) {
+					float	*out = &poseMats[i * 12];
+
+					if ( out != m34 ) {
+						Com_Memset( out, 0, 12 * sizeof( float ) );
+						out[3] = p[0];
+						out[7] = p[1];
+						out[11] = p[2];
+					}
+				}
+			}
+			if ( into[j] == j ) {
+				float	*out = &poseMats[j * 12];
+
+				Com_Memset( out, 0, 12 * sizeof( float ) );
+				out[3] = p[0];
+				out[7] = p[1];
+				out[11] = p[2];
 			}
 		}
 	}

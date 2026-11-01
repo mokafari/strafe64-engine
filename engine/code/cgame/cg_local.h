@@ -216,6 +216,9 @@ typedef struct {
 	float			skelDrop, skelDropV;	// landing compression spring
 	float			skelPhaseUp;
 	float			skelUpper;			// upper-body sword layer weight
+	int				skelLastTime, skelLastFrame, skelLastOld;
+	float			skelLastBack;
+	vec3_t			skelLastOrigin, skelLastAxis[3];
 } playerEntity_t;
 
 //=================================================
