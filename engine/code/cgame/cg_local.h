@@ -191,6 +191,9 @@ typedef struct {
 	int				skelAirStart, skelFlipTime;
 	int				skelEvent, skelEventTime;	// last movement event, for one-shots
 	int				skelClipUp, skelFlipKind;
+	float			skelLeanV[2], skelLeanX[2];
+	vec3_t			skelScarf[8], skelScarfOld[8];
+	int				skelScarfTime;
 	float			skelDrop, skelDropV;	// landing compression spring
 	float			skelPhaseUp;
 	float			skelUpper;			// upper-body sword layer weight

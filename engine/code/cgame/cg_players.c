@@ -2843,7 +2843,85 @@ take-offs, landings, flips and dashes play as one-shots on top. The body leans
 into acceleration and rolls into walls, and the chest follows the view pitch.
 ===============
 */
-#define SKEL_SPRINT_SPEED	300.0f	// ground speed the sprint clip reads right at
+#define SKEL_SPRINT_SPEED	230.0f	// ground speed the sprint clip reads right at
+
+// second-order follow: reacts ahead of the target, overshoots, then settles.
+// f 3.5 Hz, damping 0.55, response 1.6 (above 1 anticipates the change)
+static void CG_SkelSecondOrder( float *y, float *yd, float *xPrev, float x, float dt ) {
+	const float	f = 3.5f, z = 0.55f, r = 1.6f;
+	const float	k1 = z / ( M_PI * f );
+	const float	k2 = 1.0f / ( ( 2 * M_PI * f ) * ( 2 * M_PI * f ) );
+	const float	k3 = r * z / ( 2 * M_PI * f );
+	float		xd = ( x - *xPrev ) / dt;
+
+	*xPrev = x;
+	*y += dt * *yd;
+	*yd += dt * ( x + k3 * xd - *y - k1 * *yd ) / k2;
+}
+
+// a scarf off the neck: a verlet chain that trails motion, drawn as a ribbon
+static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
+	orientation_t	tag;
+	vec3_t			root, side, d, t;
+	polyVert_t		v[4];
+	float			dt = cg.frametime * 0.001f;
+	int				i, j;
+
+	if ( ( renderfx & RF_THIRD_PERSON ) || !trap_R_BoneTag( &tag, ent->hModel, ent->frame, ent->oldframe,
+			ent->backlerp, ent->bonePose, "neck_01" ) ) {
+		return;
+	}
+	VectorCopy( ent->origin, root );
+	for ( i = 0; i < 3; i++ ) {
+		VectorMA( root, tag.origin[i], ent->axis[i], root );
+	}
+	if ( cg.time - pe->skelScarfTime > 500 ) {
+		for ( i = 0; i < 8; i++ ) {
+			VectorCopy( root, pe->skelScarf[i] );
+			VectorCopy( root, pe->skelScarfOld[i] );
+		}
+	}
+	pe->skelScarfTime = cg.time;
+	for ( i = 1; i < 8; i++ ) {			// integrate
+		VectorSubtract( pe->skelScarf[i], pe->skelScarfOld[i], d );
+		VectorScale( d, 0.96f, d );
+		VectorCopy( pe->skelScarf[i], pe->skelScarfOld[i] );
+		VectorAdd( pe->skelScarf[i], d, pe->skelScarf[i] );
+		pe->skelScarf[i][2] -= 200.0f * dt * dt;
+	}
+	VectorCopy( root, pe->skelScarf[0] );
+	for ( j = 0; j < 3; j++ ) {			// hold the link length, root fixed
+		for ( i = 1; i < 8; i++ ) {
+			float	len;
+
+			VectorSubtract( pe->skelScarf[i], pe->skelScarf[i - 1], d );
+			len = VectorLength( d );
+			if ( len > 0.01f ) {
+				VectorMA( pe->skelScarf[i - 1], 7.0f / len, d, pe->skelScarf[i] );
+			}
+		}
+	}
+	memset( v, 0, sizeof( v ) );
+	for ( i = 0; i < 7; i++ ) {
+		float	w = 3.0f * ( 1.0f - i / 8.0f );
+
+		VectorSubtract( pe->skelScarf[i + 1], pe->skelScarf[i], d );
+		VectorSubtract( cg.refdef.vieworg, pe->skelScarf[i], t );
+		CrossProduct( d, t, side );
+		VectorNormalize( side );
+		VectorMA( pe->skelScarf[i], w, side, v[0].xyz );
+		VectorMA( pe->skelScarf[i], -w, side, v[1].xyz );
+		VectorMA( pe->skelScarf[i + 1], -w * 0.85f, side, v[2].xyz );
+		VectorMA( pe->skelScarf[i + 1], w * 0.85f, side, v[3].xyz );
+		for ( j = 0; j < 4; j++ ) {
+			v[j].modulate[0] = 200;
+			v[j].modulate[1] = 24;
+			v[j].modulate[2] = 40;
+			v[j].modulate[3] = 255;
+		}
+		trap_R_AddPolyToScene( cgs.media.whiteShader, 4, v );
+	}
+}
 
 static qboolean CG_SkelOneShot( int clip ) {
 	return !skelClips[clip].loop;
@@ -2975,7 +3053,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	}
 	rate = 1.0f;
 	if ( clip == SKEL_SPRINT_LOOP ) {
-		rate = Com_Clamp( 0.8f, 2.2f, ( speed > 1 ? speed : SKEL_SPRINT_SPEED ) / SKEL_SPRINT_SPEED );
+		rate = Com_Clamp( 0.8f, 3.0f, ( speed > 1 ? speed : SKEL_SPRINT_SPEED ) / SKEL_SPRINT_SPEED );
 	} else if ( clip == SKEL_WALK_LOOP ) {
 		rate = Com_Clamp( 0.7f, 1.8f, speed / 110.0f );
 	} else if ( CG_SkelOneShot( clip ) && clip != SKEL_SWORD_BLOCK ) {
@@ -2999,9 +3077,16 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	if ( !ground && !wall ) {
 		wantPitch *= 0.5f;
 	}
-	k = 1.0f - exp( -dt * 12.0f );
-	pe->skelLean[0] += ( wantPitch - pe->skelLean[0] ) * k;
-	pe->skelLean[1] += ( wantRoll - pe->skelLean[1] ) * k;
+	if ( dt > 0.0005f ) {
+		float	want[2], h = dt < 0.03f ? dt : 0.03f;
+		int		a;
+
+		want[0] = wantPitch;
+		want[1] = wantRoll;
+		for ( a = 0; a < 2; a++ ) {
+			CG_SkelSecondOrder( &pe->skelLean[a], &pe->skelLeanV[a], &pe->skelLeanX[a], want[a], h );
+		}
+	}
 
 	memset( &ent, 0, sizeof( ent ) );
 	ent.hModel = model;
@@ -3137,6 +3222,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	pe->skelGround = ground;
 	VectorCopy( vel, pe->skelVel );
 	trap_R_AddRefEntityToScene( &ent );
+	CG_SkelScarf( &ent, pe, renderfx );
 	CG_AddPlayerWeapon( &ent, NULL, cent, cgs.clientinfo[s->clientNum].team );
 }
 
