@@ -3064,7 +3064,19 @@ static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
 
 // the flip clip runs on into a recovery the game doesn't want: stop at the tuck-out
 static float CG_SkelEnd( int clip ) {
-	return clip == SKEL_RUN_FLIP ? 37.0f : skelClips[clip].count - 1;
+	if ( clip == SKEL_RUN_FLIP ) {
+		return 37.0f;
+	}
+	if ( clip == SKEL_NINJAJUMP_START ) {
+		return 20.0f;			// the leap is done; the rest is a long hold in the air
+	}
+	if ( clip == SKEL_JUMP_START ) {
+		return 22.0f;
+	}
+	if ( clip == SKEL_HARD_LAND ) {
+		return 42.0f;			// up off the knee; the clip's long stand-up isn't needed
+	}
+	return skelClips[clip].count - 1;
 }
 
 static qboolean CG_SkelOneShot( int clip ) {
@@ -3138,6 +3150,16 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	}
 	held = CG_SkelOneShot( cur ) && pe->skelPhase < CG_SkelEnd( cur ) - 0.5f;
 
+	// take-offs and flips belong to the air: touching down releases them at once
+	if ( ground && ( cur == SKEL_RUN_FLIP || cur == SKEL_NINJAJUMP_START || cur == SKEL_JUMP_START ) ) {
+		held = qfalse;
+	}
+
+	// once the impact is absorbed, moving off breaks out of a landing
+	if ( ( cur == SKEL_HARD_LAND || cur == SKEL_FALL_ROLL ) && pe->skelPhase > 18 && gait > 120 ) {
+		held = qfalse;
+	}
+
 	// loops: what the body is doing right now
 	if ( ( s->eFlags & EF_SLIDING ) && speed > ( cur == SKEL_SLIDE_LOOP ? 120 : 170 ) ) {
 		clip = SKEL_SLIDE_LOOP;
@@ -3194,7 +3216,8 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 			VectorCopy( tr.endpos, pe->skelVaultPt );
 			VectorCopy( moveLeft, pe->skelVaultSide );
 		} else if ( pe->skelEvent == EV_DOUBLE_JUMP ) {
-			clip = SKEL_RUN_FLIP;
+			// a repeat press mid-flip lets the flip finish instead of restarting it
+			clip = cur == SKEL_RUN_FLIP && pe->skelPhase < 30 ? cur : SKEL_RUN_FLIP;
 		} else if ( pe->skelEvent == EV_WALLJUMP ) {
 			clip = SKEL_NINJAJUMP_START;
 		} else if ( speed < 200 ) {
@@ -3211,11 +3234,13 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		pe->skelEvent = 0;
 		held = qfalse;
 	} else if ( ground && !pe->skelGround ) {
-		if ( pe->skelVel[2] < -650 && speed > 200 ) {
-			clip = SKEL_FALL_ROLL;			// hard fast landing: roll it out
+		// at real speed there's no stopping: the landing spring absorbs it and the
+		// run carries on. Rolls and the heavy landing are for arriving with less pace
+		if ( pe->skelVel[2] < -650 && speed > 200 && speed < 480 ) {
+			clip = SKEL_FALL_ROLL;
 			held = qfalse;
-		} else if ( pe->skelVel[2] < -600 ) {
-			clip = SKEL_HARD_LAND;			// straight down: take it on the knees and a hand
+		} else if ( pe->skelVel[2] < -600 && speed <= 200 ) {
+			clip = SKEL_HARD_LAND;
 			held = qfalse;
 		} else if ( pe->skelVel[2] < -300 && speed < 200 ) {
 			clip = SKEL_JUMP_LAND;
@@ -3279,7 +3304,8 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	} else if ( clip == SKEL_WALK_LOOP ) {
 		rate = Com_Clamp( 0.7f, 1.8f, speed / 110.0f );
 	} else if ( CG_SkelOneShot( clip ) && clip != SKEL_SWORD_BLOCK ) {
-		rate = clip == SKEL_RUN_FLIP ? 1.5f : 1.2f;
+		rate = clip == SKEL_RUN_FLIP ? 1.7f : clip == SKEL_NINJAJUMP_START || clip == SKEL_JUMP_START ? 1.5f
+			: clip == SKEL_FALL_ROLL || clip == SKEL_HARD_LAND ? 1.6f : 1.2f;
 	}
 	// speed steps (a hop, a network update) mustn't kick the cycle's tempo
 	pe->skelRate += ( rate - pe->skelRate ) * ( 1.0f - exp( -dt * 7.0f ) );
