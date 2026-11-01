@@ -39,6 +39,10 @@ static int RE_BoneInertia( qhandle_t model, int pose, int slot, float weight ) {
 	return pose;
 }
 
+static int RE_BoneCubic( qhandle_t model, int pose, int before, int after ) {
+	return pose;
+}
+
 static int RE_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat ) {
 	return 0;
 }
@@ -1388,6 +1392,7 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.BoneTag = RE_BoneTag;
 	re.BoneInertiaCapture = RE_BoneInertiaCapture;
 	re.BoneInertia = RE_BoneInertia;
+	re.BoneCubic = RE_BoneCubic;
 	re.BoneDelta = RE_BoneDelta;
 	re.LerpTag = R_LerpTag;
 	re.ModelBounds = R_ModelBounds;

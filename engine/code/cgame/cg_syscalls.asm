@@ -108,3 +108,4 @@ equ	trap_R_BoneLayer			-114
 equ	trap_R_BoneTag				-115
 equ	trap_R_BoneInertiaCapture	-116
 equ	trap_R_BoneInertia			-117
+equ	trap_R_BoneCubic			-118

@@ -311,6 +311,10 @@ int		trap_R_BoneInertia( qhandle_t model, int pose, int slot, float weight ) {
 	return syscall( CG_R_BONEINERTIA, model, pose, slot, PASSFLOAT( weight ) );
 }
 
+int		trap_R_BoneCubic( qhandle_t model, int pose, int before, int after ) {
+	return syscall( CG_R_BONECUBIC, model, pose, before, after );
+}
+
 int		trap_R_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat ) {
 	return syscall( CG_R_BONEDELTA, model, pose, joint, quat );
 }

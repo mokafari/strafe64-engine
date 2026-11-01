@@ -1816,6 +1816,7 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.BoneTag = RE_BoneTag;
 	re.BoneInertiaCapture = RE_BoneInertiaCapture;
 	re.BoneInertia = RE_BoneInertia;
+	re.BoneCubic = RE_BoneCubic;
 	re.BoneDelta = RE_BoneDelta;
 	re.LerpTag = R_LerpTag;
 	re.ModelBounds = R_ModelBounds;

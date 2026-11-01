@@ -183,7 +183,8 @@ static int CG_TwoBoneIK( refEntity_t *ent, int pose, const char *upper, const ch
 	lb = VectorLength( cb );
 	VectorSubtract( target, a.origin, at );
 	lc = VectorLength( at );
-	lc = Com_Clamp( fabs( la - lb ) + 0.01f, la + lb - 0.01f, lc );
+	// never quite straight: at full extension the elbow axis is undefined and flips
+	lc = Com_Clamp( fabs( la - lb ) + 0.5f, ( la + lb ) * 0.97f, lc );
 
 	// elbow: open the interior angle until the limb is as long as the reach
 	CrossProduct( ab, cb, m );
@@ -343,7 +344,7 @@ static void CG_AddTestModel (void) {
 			VectorCopy( mid, e->origin );
 			e->origin[2] += 8;
 			VectorMA( e->origin, -32, e->axis[2], e->origin );
-			CG_SkelWallStride( e, tr.endpos, end, 1, atof( buf ) );
+			CG_SkelWallStride( e, tr.endpos, end, 1, atof( buf ), 1.0f );
 			trap_R_AddRefEntityToScene( e );
 			return;
 		}
