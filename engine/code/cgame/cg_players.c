@@ -2844,6 +2844,7 @@ into acceleration and rolls into walls, and the chest follows the view pitch.
 ===============
 */
 #define SKEL_WALL_TILT		38.0f
+#define SKEL_WALL_CLIP_OFF	17.0f	// body stand-off from the wall in the mocap wall run
 #define SKEL_WALL_STANCE	0.35f	// fraction of the cycle a foot is planted
 #define SKEL_WALL_STEP		15.0f	// planted foot travels +-this along the wall
 #define SKEL_WALL_REACH		5.0f	// stride centre sits ahead of the hips: the back leg never locks
@@ -3031,6 +3032,11 @@ static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
 	}
 }
 
+// the flip clip runs on into a recovery the game doesn't want: stop at the tuck-out
+static float CG_SkelEnd( int clip ) {
+	return clip == SKEL_RUN_FLIP ? 37.0f : skelClips[clip].count - 1;
+}
+
 static qboolean CG_SkelOneShot( int clip ) {
 	return !skelClips[clip].loop;
 }
@@ -3099,7 +3105,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	} else {
 		VectorCopy( axis[1], moveLeft );
 	}
-	held = CG_SkelOneShot( cur ) && pe->skelPhase < skelClips[cur].count - 1.5f;
+	held = CG_SkelOneShot( cur ) && pe->skelPhase < CG_SkelEnd( cur ) - 0.5f;
 
 	// loops: what the body is doing right now
 	if ( s->eFlags & EF_SLIDING ) {
@@ -3109,6 +3115,9 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	} else if ( wallrun ) {
 		wall = CG_SkelWallSide( cent, moveLeft, vec3_origin, pe->skelWallPt );
 		clip = SKEL_SPRINT_LOOP;
+		if ( cg_skelWallClip.integer && wall ) {
+			clip = wall > 0 ? SKEL_WALL_RUN_L : SKEL_WALL_RUN_R;
+		}
 	} else if ( !ground ) {
 		if ( pe->skelGround ) {
 			pe->skelAirStart = cg.time;
@@ -3155,7 +3164,9 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 			pe->skelVaultHit = tr.fraction < 1.0f && !tr.startsolid;
 			VectorCopy( tr.endpos, pe->skelVaultPt );
 			VectorCopy( moveLeft, pe->skelVaultSide );
-		} else if ( pe->skelEvent == EV_WALLJUMP || pe->skelEvent == EV_DOUBLE_JUMP ) {
+		} else if ( pe->skelEvent == EV_DOUBLE_JUMP ) {
+			clip = SKEL_RUN_FLIP;
+		} else if ( pe->skelEvent == EV_WALLJUMP ) {
 			clip = SKEL_NINJAJUMP_START;
 		} else if ( speed < 200 ) {
 			clip = SKEL_JUMP_START;
@@ -3163,14 +3174,19 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		// a flip in progress runs out: restarting it snaps the body upright mid-spin
 		if ( ( pe->skelEvent == EV_WALLJUMP || pe->skelEvent == EV_DOUBLE_JUMP )
 				&& cg.time - pe->skelFlipTime >= 450 ) {
-			pe->skelFlipTime = cg.time;
+			if ( pe->skelEvent == EV_WALLJUMP ) {	// the double jump's flip is now a clip
+				pe->skelFlipTime = cg.time;
+			}
 			pe->skelFlipKind = pe->skelEvent;
 		}
 		pe->skelEvent = 0;
 		held = qfalse;
 	} else if ( ground && !pe->skelGround ) {
 		if ( pe->skelVel[2] < -650 && speed > 200 ) {
-			clip = SKEL_ROLL;				// hard fast landing: roll it out
+			clip = SKEL_FALL_ROLL;			// hard fast landing: roll it out
+			held = qfalse;
+		} else if ( pe->skelVel[2] < -600 ) {
+			clip = SKEL_HARD_LAND;			// straight down: take it on the knees and a hand
 			held = qfalse;
 		} else if ( pe->skelVel[2] < -300 && speed < 200 ) {
 			clip = SKEL_JUMP_LAND;
@@ -3202,7 +3218,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 			if ( ( clip == SKEL_SPRINT_LOOP && cur == SKEL_WALK_LOOP ) || ( clip == SKEL_WALK_LOOP && cur == SKEL_SPRINT_LOOP ) ) {
 				pe->skelPhase *= (float)( skelClips[clip].count - 1 ) / ( skelClips[cur].count - 1 );
 			} else {
-				pe->skelPhase = 0;
+				pe->skelPhase = clip == SKEL_RUN_FLIP ? 9 : clip == SKEL_FALL_ROLL ? 4 : clip == SKEL_HARD_LAND ? 3 : 0;
 			}
 			toF = (int)pe->skelPhase;
 			toB = 1.0f - ( pe->skelPhase - toF );
@@ -3229,7 +3245,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	} else if ( clip == SKEL_WALK_LOOP ) {
 		rate = Com_Clamp( 0.7f, 1.8f, speed / 110.0f );
 	} else if ( CG_SkelOneShot( clip ) && clip != SKEL_SWORD_BLOCK ) {
-		rate = clip == SKEL_SWORD_DASH ? 3.0f : 1.5f;		// ninja snap: nothing reads as slow
+		rate = clip == SKEL_SWORD_DASH ? 3.0f : clip == SKEL_RUN_FLIP ? 1.8f : clip == SKEL_FALL_ROLL ? 1.3f : 1.5f;		// ninja snap: nothing reads as slow
 	}
 	// moving backward: same gait, cycle played in reverse
 	{
@@ -3243,13 +3259,18 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	}
 	back = pe->skelBack && ground && ( clip == SKEL_SPRINT_LOOP || clip == SKEL_WALK_LOOP );
 	pe->skelPhase += dt * 30.0f * ( back ? -rate : rate );
-	if ( skelClips[clip].loop ) {
+	if ( clip == SKEL_WALL_RUN_L || clip == SKEL_WALL_RUN_R ) {
+		// the wall stretch of the clip repeats for as long as the ride lasts
+		if ( pe->skelPhase > 21.0f ) {
+			pe->skelPhase = 11.0f + fmod( pe->skelPhase - 21.0f, 10.0f );
+		}
+	} else if ( skelClips[clip].loop ) {
 		pe->skelPhase = fmod( pe->skelPhase, skelClips[clip].count - 1 );
 		if ( pe->skelPhase < 0 ) {
 			pe->skelPhase += skelClips[clip].count - 1;
 		}
-	} else if ( pe->skelPhase > skelClips[clip].count - 1.01f ) {
-		pe->skelPhase = skelClips[clip].count - 1.01f;
+	} else if ( pe->skelPhase > CG_SkelEnd( clip ) - 0.01f ) {
+		pe->skelPhase = CG_SkelEnd( clip ) - 0.01f;
 	}
 	f = (int)pe->skelPhase;
 
@@ -3264,7 +3285,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		wantPitch = 38.0f;
 	}
 	if ( wall ) {
-		wantRoll = wall * SKEL_WALL_TILT;	// hang out from the wall, feet on it
+		wantRoll = cg_skelWallClip.integer ? 0 : wall * SKEL_WALL_TILT;	// hang out from the wall, feet on it
 		wantPitch *= 0.4f;
 	}
 	if ( !ground && !wall ) {
@@ -3285,6 +3306,17 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	ent.hModel = model;
 	VectorCopy( cent->lerpOrigin, ent.origin );
 	ent.origin[2] -= 24;
+	// the mocap's feet reach out to the wall: stand the body off it so they land on
+	// the surface instead of through it
+	pe->skelWallOff += ( ( wall && cg_skelWallClip.integer ? 1.0f : 0.0f ) - pe->skelWallOff ) * ( 1.0f - exp( -dt * 14.0f ) );
+	if ( pe->skelWallOff > 0.01f ) {
+		float	away = pe->skelWallSide * -SKEL_WALL_CLIP_OFF * pe->skelWallOff;
+
+		VectorMA( ent.origin, away, moveLeft, ent.origin );
+	}
+	if ( wall ) {
+		pe->skelWallSide = wall;
+	}
 	VectorCopy( ent.origin, ent.oldorigin );
 	VectorCopy( cent->lerpOrigin, ent.lightingOrigin );
 	angles[PITCH] = pe->skelLean[0];
@@ -3592,7 +3624,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		}
 	}
 
-	if ( wall ) {
+	if ( wall && !cg_skelWallClip.integer ) {
 		CG_SkelWallStride( &ent, pe->skelWallPt, moveLeft, vel, wall,
 			pe->skelPhase / ( skelClips[clip].count - 1 ) * 2.0f * M_PI, wallW );
 	}

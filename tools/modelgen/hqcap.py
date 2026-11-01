@@ -18,8 +18,10 @@ MOVES = {
     # start pos, keys before filming, frames of lead-in at full speed, camera angle
     'wall_left':  ('-1050 464 40 0', '+forward; wait 60; +moveup; wait 2; -moveup; wait 8', 300),
     'wall_right': ('1050 464 40 180', '+forward; wait 60; +moveup; wait 2; -moveup; wait 8', 60),
+    'flip':       ('-1250 800 40 0', '+forward; wait 70; +moveup; wait 2; -moveup; wait 16; +moveup; wait 2; -moveup', 90),
+    'roll':       ('-1000 -560 400 0', '+forward; wait 48', 90),
     'run':        ('-1250 800 40 0', '+forward; wait 90', 90),
-    'land':       ('-160 -400 700 0', 'wait 40', 90),
+    'land':       ('-160 -560 400 0', 'wait 48', 90),
 }
 
 def main():

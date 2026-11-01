@@ -60,6 +60,9 @@ def main():
     ap.add_argument('out'); ap.add_argument('--mesh', required=True)
     ap.add_argument('--shader', default='*white'); ap.add_argument('--height', type=float, default=64)
     ap.add_argument('--anims', nargs='*', default=[])
+    ap.add_argument('--mixamo', nargs='*', default=[], help='file.glb:ClipName, retargeted')
+    ap.add_argument('--tpose', help='file.glb:ClipName holding the target T-pose')
+    ap.add_argument('--bind', help='skinned Mixamo .glb, bind pose for skinless clips')
     ap.add_argument('--header', help='write the cgame clip table here')
     o = ap.parse_args()
     g = Glb(o.mesh); j = g.j
@@ -142,6 +145,22 @@ def main():
                     ss = sample(*tr[(nm, 'scale')], t, False) if (nm, 'scale') in tr else rs
                     row.append(np.r_[swap(tt) * sc, swap(qq[:3]), qq[3], ss])
                 frames.append(row)
+            anims.append((clip, first, nf, 'Loop' in clip))
+            print('clip %-22s %3d frames @%d' % (clip, nf, first))
+    if o.mixamo:
+        import os, sys
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import retarget as rt
+        tp, tclip = o.tpose.rsplit(':', 1)
+        tg = Glb(tp)
+        rest_tr = rt.tracks_of(tg, next(x for x in tg.j['animations'] if x['name'] == tclip))
+        for spec in o.mixamo:
+            path, clip = spec.rsplit(':', 1)
+            first = len(frames)
+            mirror = clip.endswith('_R')
+            nf, _, fr = rt.retarget(Glb(path), tg, [next(i for i, nd in enumerate(tg.j['nodes']) if nd.get('name') == names[k]) for k in range(len(jn))], rest_tr, sample, FPS, bind=Glb(o.bind) if o.bind else None, mirror=mirror, hold_y=clip.startswith(('Run_Flip', 'Wall_Run')))
+            for row_t, row_q in fr:
+                frames.append([np.r_[swap(np.array(t)) * sc, swap(np.array(q[:3])), q[3], 1, 1, 1] for t, q in zip(row_t, row_q)])
             anims.append((clip, first, nf, 'Loop' in clip))
             print('clip %-22s %3d frames @%d' % (clip, nf, first))
     F = np.array(frames) if frames else np.zeros((1, len(jn), 10))

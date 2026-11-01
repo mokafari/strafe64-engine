@@ -59,15 +59,18 @@ def main():
     ap.add_argument('--out', default=ROOT + '/generated/animsheets')
     ap.add_argument('--only', default='')
     ap.add_argument('--cols', type=int, default=6)
+    ap.add_argument('--match', default='', help='only clips whose name contains this')
     o = ap.parse_args()
     os.makedirs(o.out, exist_ok=True)
-    base = 'setviewpos -200 800 -26 0; wait 5; setviewpos -200 800 -26 0; wait 5; testmodel models/s64/mannequin.iqm; wait 5; setviewpos -250 720 32 28; wait 10'
+    base = 'setviewpos -200 800 -26 0; wait 5; setviewpos -200 800 -26 0; wait 5; testmodel models/s64/mannequin.iqm; wait 5; setviewpos -190 760 32 24; wait 10'
     if o.only != 'wall':
         shots = []
         for n, first, count in clips():
+            if o.match and not any(m in n for m in o.match.split(',')):
+                continue
             for k in range(o.cols):
                 f = first + (count - 1) * k // (o.cols - 1)
-                shots.append((f'{n} {f - first}/{count}', f'setviewpos -250 720 32 28; set cg_testFrame {f}'))
+                shots.append((f'{n} {f - first}/{count}', f'setviewpos -190 760 32 24; set cg_testFrame {f}'))
         files = capture(o.home, 'clip', shots, base)
         sheet(files, [l for l, _ in shots], o.cols, o.out + '/clips.png')
     if o.only != 'clips':

@@ -185,6 +185,7 @@ vmCvar_t	cg_playerGlowHue;	// 0-1: blend the glow toward a DISTINCT per-clientNu
 vmCvar_t	cg_dashGlitch;		// 0-2: chromatic-ghost glitch trail intensity on air-dash
 vmCvar_t	cg_skelSwingArc;		// how far the directional arc bends the clip's swing (0 = clip only)
 vmCvar_t	cg_skelFootLock;		// 1: planted feet stay put while running
+vmCvar_t	cg_skelWallClip;		// 1: wall run plays the mocap clip; 0: procedural gait
 vmCvar_t	cg_skeletal;			// 1: players are the skeletal IQM body; 0: legacy MD3s
 vmCvar_t	cg_ragdoll;				// 1: dead bodies ragdoll; 0: stock death animation
 vmCvar_t	cg_ragdollDamp;			// Verlet velocity retention per step (0..1)
@@ -318,6 +319,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_playerGlowHue, "cg_playerGlowHue", "0.85", CVAR_ARCHIVE },
 	{ &cg_dashGlitch, "cg_dashGlitch", "1.0", CVAR_ARCHIVE },
 	{ &cg_skeletal, "cg_skeletal", "1", CVAR_ARCHIVE },
+	{ &cg_skelWallClip, "cg_skelWallClip", "1", CVAR_ARCHIVE },
 	{ &cg_skelFootLock, "cg_skelFootLock", "1", CVAR_ARCHIVE },
 	{ &cg_skelSwingArc, "cg_skelSwingArc", "0.6", CVAR_ARCHIVE },
 	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },

@@ -198,6 +198,8 @@ typedef struct {
 	vec3_t			skelVelF;
 	qboolean		skelBack;
 	int				skelUpStart;
+	float			skelWallOff;
+	int				skelWallSide;
 	int				skelSpinStart, skelSpinMs, skelSpinAxis;
 	float			skelSpinDir;
 	float			skelInertK;			// decay rate of the current transition
@@ -1383,6 +1385,7 @@ extern	vmCvar_t		cg_dofBase;
 extern	vmCvar_t		cg_dofMax;
 extern	vmCvar_t		cg_dofFocusTrace;
 extern	vmCvar_t		cg_skeletal;
+extern	vmCvar_t		cg_skelWallClip;
 extern	vmCvar_t		cg_skelFootLock;
 extern	vmCvar_t		cg_skelSwingArc;
 extern	vmCvar_t		cg_ragdoll;

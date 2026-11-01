@@ -21,6 +21,11 @@ typedef enum {
 	SKEL_SWORD_REGULAR_C,
 	SKEL_SWORD_BLOCK,
 	SKEL_CLIMBUP_1M,
+	SKEL_WALL_RUN_L,
+	SKEL_WALL_RUN_R,
+	SKEL_RUN_FLIP,
+	SKEL_FALL_ROLL,
+	SKEL_HARD_LAND,
 	SKEL_NUM
 } skelClip_t;
 
@@ -46,4 +51,9 @@ static const struct { int first, count; qboolean loop; } skelClips[SKEL_NUM] = {
 	{ 801, 61, qfalse },	// Sword_Regular_C
 	{ 862, 38, qfalse },	// Sword_Block
 	{ 900, 21, qfalse },	// ClimbUp_1m
+	{ 921, 29, qfalse },	// Wall_Run_L
+	{ 950, 29, qfalse },	// Wall_Run_R
+	{ 979, 68, qfalse },	// Run_Flip
+	{ 1047, 45, qfalse },	// Fall_Roll
+	{ 1092, 61, qfalse },	// Hard_Land
 };

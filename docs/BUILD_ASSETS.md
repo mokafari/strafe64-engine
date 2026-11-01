@@ -66,3 +66,7 @@ current: baked maps use its `*_lm` and `*_bk` shader variants.
 `tools/modelgen/bake_mannequin.sh` turns the tracked CC0 rigs in `tools/modelgen/assets_src/`
 into `assets/openarena/baseoa/models/s64/mannequin.iqm` and regenerates
 `engine/code/cgame/cg_skelclips.h`. Without the model the game falls back to the MD3 players.
+
+The bake also reads retargeted Mixamo clips from `assets/_src/mixamo_glb/` (FBX converted
+with `assimp export`). Those are licensed per user and stay out of git, so a fresh checkout
+needs them downloaded and converted first, or the clip list in `bake_mannequin.sh` trimmed.
