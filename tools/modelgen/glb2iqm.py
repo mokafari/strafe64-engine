@@ -163,7 +163,23 @@ def main():
                 frames.append([np.r_[swap(np.array(t)) * sc, swap(np.array(q[:3])), q[3], 1, 1, 1] for t, q in zip(row_t, row_q)])
             anims.append((clip, first, nf, 'Loop' in clip))
             print('clip %-22s %3d frames @%d' % (clip, nf, first))
+    def rest_xy(jt, ch):
+        return (swap(rest(jn[jt])[0]) * sc)[ch]
     F = np.array(frames) if frames else np.zeros((1, len(jn), 10))
+    # root motion: the game moves the player, so a clip's hips mustn't travel. Keep
+    # sway (motion quicker than about a third of a second), drop the path itself
+    pel = names.index('pelvis'); rootj = names.index('root')
+    for n, first, count, _ in anims:
+        seg = F[first:first + count]
+        before = np.ptp(seg[:, pel, :2], axis=0)
+        win = 11
+        for ch in (0, 1):
+            for jt in (pel, rootj):
+                x = seg[:, jt, ch].copy()
+                pad = np.r_[np.full(win, x[0]), x, np.full(win, x[-1])]
+                low = np.convolve(pad, np.ones(win) / win, 'same')[win:-win]
+                seg[:, jt, ch] = x - low + rest_xy(jt, ch)
+        print('%-22s hip travel %5.1f,%5.1f u -> %4.1f,%4.1f' % (n, before[0], before[1], np.ptp(seg[:, pel, 0]), np.ptp(seg[:, pel, 1])))
     for i in range(len(jn)):           # keep each quaternion channel continuous
         q = F[:, i, 3:7]
         for f in range(1, len(q)):
