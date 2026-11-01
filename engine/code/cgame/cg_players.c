@@ -3362,20 +3362,12 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 
 		if ( !pe->skelSpinMs || cg.time - pe->skelSpinStart >= pe->skelSpinMs ) {
 			pe->skelSpinMs = 0;
-			if ( pe->skelFlipTime == cg.time ) {
-				pe->skelSpinMs = 450;
-				pe->skelSpinAxis = pe->skelFlipKind == EV_WALLJUMP ? YAW : PITCH;
-				pe->skelSpinDir = 1;
-			} else if ( pe->kickTime && ( pe->kickFlags & 1 ) && cg.time - pe->kickTime < 40 ) {
+			if ( pe->kickTime && ( pe->kickFlags & 1 ) && cg.time - pe->kickTime < 40 ) {
+				// the only whole-body spin left: wall kicks and air cuts have clips,
+				// and spinning the model on top threw it around its centre
 				pe->skelSpinMs = 450;
 				pe->skelSpinAxis = YAW;
 				pe->skelSpinDir = pe->flipDir;
-			} else if ( !ground && !wall && s->weapon == WP_SWORD && cent->swordSwingStep % 3 == 2
-					&& cg.time >= cent->swordSwingTime && cg.time - cent->swordSwingTime < 60 ) {
-				// only the combo finisher spins: on every cut the body never settles
-				pe->skelSpinMs = 560;
-				pe->skelSpinAxis = YAW;
-				pe->skelSpinDir = 1;
 			}
 			if ( pe->skelSpinMs ) {
 				pe->skelSpinStart = cg.time;
