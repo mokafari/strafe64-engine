@@ -2983,6 +2983,7 @@ void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t move
 static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
 	orientation_t	tag;
 	vec3_t			root, side, d, t, wind;
+	float			ripple;
 	polyVert_t		v[4];
 	float			dt = cg.frametime * 0.001f;
 	int				i, j;
@@ -2998,22 +2999,30 @@ static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
 	if ( cg.time - pe->skelScarfTime > 500 ) {
 		for ( i = 0; i < 8; i++ ) {
 			VectorCopy( root, pe->skelScarf[i] );
+			VectorClear( pe->skelScarfOld[i] );
 		}
 	}
 	pe->skelScarfTime = cg.time;
-	// each link eases toward a calm line trailing from the neck: down at rest, back
-	// with speed. It lags more toward the tip, so it streams and can't flap
+	// each link is an underdamped spring on a calm line trailing from the neck: down
+	// at rest, back with speed. It keeps its own momentum, so it swings and settles
+	// while the line stops it flapping. skelScarfOld holds the link velocities
 	VectorCopy( pe->skelVelF, wind );
 	VectorScale( wind, -0.0035f, wind );
 	wind[2] -= 1.0f;
 	VectorNormalize( wind );
 	VectorCopy( root, pe->skelScarf[0] );
+	CrossProduct( wind, ent->axis[2], t );
+	ripple = VectorLength( pe->skelVelF ) * 0.0012f;
 	for ( i = 1; i < 8; i++ ) {
-		float	k = 1.0f - exp( -dt * ( 26.0f - i * 2.5f ) );
+		float	w = 34.0f - i * 3.0f, h = dt < 0.03f ? dt : 0.03f;
+		vec3_t	target;
 
-		VectorMA( pe->skelScarf[i - 1], 3.6f, wind, t );
-		VectorSubtract( t, pe->skelScarf[i], d );
-		VectorMA( pe->skelScarf[i], k, d, pe->skelScarf[i] );
+		VectorMA( pe->skelScarf[i - 1], 3.6f, wind, target );
+		VectorMA( target, ripple * i * sin( cg.time * 0.012f - i * 0.8f ), t, target );
+		VectorSubtract( target, pe->skelScarf[i], d );
+		VectorMA( pe->skelScarfOld[i], w * w * h, d, pe->skelScarfOld[i] );
+		VectorScale( pe->skelScarfOld[i], 1.0f / ( 1.0f + 2.0f * 0.45f * w * h ), pe->skelScarfOld[i] );
+		VectorMA( pe->skelScarf[i], h, pe->skelScarfOld[i], pe->skelScarf[i] );
 		// and it stays a scarf: link length is held
 		VectorSubtract( pe->skelScarf[i], pe->skelScarf[i - 1], d );
 		if ( VectorNormalize( d ) > 0.01f ) {
