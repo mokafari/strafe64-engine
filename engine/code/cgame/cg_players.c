@@ -2945,8 +2945,8 @@ void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t move
 
 		if ( CG_JointWorld( ent, up_a, sh ) && CG_JointWorld( ent, ha_a, hand ) ) {
 			VectorMA( sh, 24.0f, off, t );
-			VectorMA( t, -6.0f + 8.0f * sin( a ), fwd, t );
-			t[2] -= 4.0f + 3.0f * cos( 2.0f * a );
+			VectorMA( t, -4.0f + 15.0f * sin( a ), fwd, t );
+			t[2] -= 3.0f + 6.0f * cos( 2.0f * a );
 			VectorSubtract( t, hand, t );
 			VectorMA( hand, weight, t, t );
 			ent->bonePose = CG_LimbToWorld( ent, ent->bonePose, up_a, lo_a, ha_a, t );
@@ -3351,7 +3351,8 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	}
 	if ( wall ) {
 		wantRoll = cg_skelWallClip.integer ? 0 : wall * SKEL_WALL_TILT;	// hang out from the wall, feet on it
-		wantPitch *= 0.4f;
+		// lean along the actual path: into a climb, back on the way down
+		wantPitch = Com_Clamp( -10, 14, RAD2DEG( atan2( vel[2], speed > 1 ? speed : 1 ) ) * 0.3f + 3.0f );
 	}
 	if ( !ground && !wall ) {
 		wantPitch *= 0.5f;
@@ -3741,6 +3742,23 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 					leg ? "calf_r" : "calf_l", foot, p );
 			}
 		}
+	}
+
+	// on a wall the body runs along it, so the chest and head turn toward the look
+	if ( wall ) {
+		orientation_t	tag;
+		vec3_t			zaxis = { 0, 0, 1 };
+		float			look = Com_Clamp( -45, 45, AngleNormalize180( cent->lerpAngles[YAW] - angles[YAW] ) );
+
+		pe->skelLook += ( look - pe->skelLook ) * ( 1.0f - exp( -dt * 10.0f ) );
+		if ( trap_R_LerpTag( &tag, model, ent.oldframe, ent.frame, 1.0f - ent.backlerp, "spine_03" ) ) {
+			ent.bonePose = CG_BoneRotation( &ent, ent.bonePose, "spine_03", &tag, zaxis, DEG2RAD( pe->skelLook * 0.35f ) );
+		}
+		if ( trap_R_LerpTag( &tag, model, ent.oldframe, ent.frame, 1.0f - ent.backlerp, "Head" ) ) {
+			ent.bonePose = CG_BoneRotation( &ent, ent.bonePose, "Head", &tag, zaxis, DEG2RAD( pe->skelLook * 0.5f ) );
+		}
+	} else {
+		pe->skelLook = 0;
 	}
 
 	if ( wall && !cg_skelWallClip.integer ) {

@@ -30,6 +30,9 @@ MOVES = {
     'wall_fast':  ('-1050 464 40 0', 'g_speed 620; +forward; wait 60; +moveup; wait 2; -moveup; wait 8', 300),
     'hold':       ('-1250 800 40 0', 'wait 90', 90),
     'swing':      ('-1250 800 40 0', 'wait 90; +attack; wait 4; -attack', 90),
+    'wall_in':    ('-1050 464 40 0', '+forward; wait 60; +moveup; wait 2; -moveup; wait 14; +right; wait 7; -right', 300),
+    'wall_out':   ('-1050 464 40 0', '+forward; wait 60; +moveup; wait 2; -moveup; wait 14; +left; wait 7; -left', 300),
+    'wall_down':  ('-1050 464 40 0', '+forward; wait 60; +moveup; wait 2; -moveup; wait 64', 300),
     'run':        ('-1250 800 40 0', '+forward; wait 90', 90),
     'land':       ('300 800 400 0', 'wait 48', 90),
 }
