@@ -2845,7 +2845,6 @@ into acceleration and rolls into walls, and the chest follows the view pitch.
 */
 #define SKEL_WALL_TILT		46.0f
 #define SKEL_WALL_CLIP_OFF	17.0f	// body stand-off from the wall in the mocap wall run
-#define SKEL_WALL_STANCE	0.35f	// fraction of the cycle a foot is planted
 #define SKEL_WALL_STEP		15.0f	// planted foot travels +-this along the wall
 #define SKEL_WALL_REACH		5.0f	// stride centre sits ahead of the hips: the back leg never locks
 #define SKEL_SPRINT_SPEED	230.0f	// ground speed the sprint clip reads right at
@@ -2897,7 +2896,17 @@ static void CG_SkelFootFlat( refEntity_t *ent, const char *foot, const vec3_t of
 	ent->bonePose = CG_BoneRotation( ent, ent->bonePose, foot, &tag, axis, ang );
 }
 
+// faster runs bound: longer stride, longer flight, so cadence stays human
+static float CG_SkelWallStance( float speed ) {
+	return Com_Clamp( 0.2f, 0.35f, 110.0f / ( speed > 1 ? speed : 1 ) );
+}
+
+static float CG_SkelWallStep( float speed ) {
+	return Com_Clamp( SKEL_WALL_STEP, 20.0f, SKEL_WALL_STEP + ( speed - 320.0f ) * 0.015f );
+}
+
 void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t moveLeft, const vec3_t vel, int wall, float a, float weight ) {
+	float	pace = sqrt( vel[0] * vel[0] + vel[1] * vel[1] ), stance, step;
 	static const char	*spine[3] = { "spine_01", "spine_02", "spine_03" };
 	orientation_t	tag;
 	vec3_t			fwd, pt, off, anim, up = { 0, 0, 1 }, mfwd = { 1, 0, 0 };
@@ -2948,6 +2957,8 @@ void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t move
 	// and there's a flight phase between steps. Cadence is set by speed (see the
 	// sprint rate) so the planted foot holds still on the wall. Feet sit high and
 	// close to the hips: at wall-hug distance that's what keeps the knees bent.
+	stance = CG_SkelWallStance( pace );
+	step = CG_SkelWallStep( pace );
 	for ( leg = 0; leg < 2; leg++ ) {
 		float	bend;
 
@@ -2955,16 +2966,16 @@ void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t move
 		if ( u < 0 ) {
 			u += 1.0f;
 		}
-		if ( u < SKEL_WALL_STANCE ) {		// stance: planted, travels backward
-			along = SKEL_WALL_STEP - 2.0f * SKEL_WALL_STEP * ( u / SKEL_WALL_STANCE );
+		if ( u < stance ) {		// stance: planted, travels backward
+			along = step - 2.0f * step * ( u / stance );
 			lift = 0;
 		} else {							// swing: heel to hip, then reach forward
-			float	t = ( u - SKEL_WALL_STANCE ) / ( 1.0f - SKEL_WALL_STANCE );
+			float	t = ( u - stance ) / ( 1.0f - stance );
 
-			along = -SKEL_WALL_STEP + 2.0f * SKEL_WALL_STEP * t * t * ( 3.0f - 2.0f * t );
+			along = -step + 2.0f * step * t * t * ( 3.0f - 2.0f * t );
 			lift = sin( t * M_PI );
 		}
-		bend = 1.0f - fabs( along ) / SKEL_WALL_STEP;	// mid-stance the knee takes the load
+		bend = 1.0f - fabs( along ) / step;	// mid-stance the knee takes the load
 		VectorCopy( wallPt, pt );
 		VectorMA( pt, along + SKEL_WALL_REACH, fwd, pt );
 		VectorMA( pt, 2.0f + 11.0f * lift + 3.0f * bend * ( 1.0f - lift ), off, pt );
@@ -3093,7 +3104,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	char			dbg[8];
 	int				hold = 0;
 	qboolean		kicking, back;
-	float			wallW = 0, pivot = 0;
+	float			wallW = 0, pivot = 0, gait;
 
 	model = cgs.media.skelModel;
 	dt = cg.frametime * 0.001f;
@@ -3111,6 +3122,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		VectorSubtract( pe->skelVelF, before, accel );
 		VectorScale( accel, dt > 0.0005f ? 1.0f / dt : 0, accel );
 	}
+	gait = sqrt( pe->skelVelF[0] * pe->skelVelF[0] + pe->skelVelF[1] * pe->skelVelF[1] );
 	cur = pe->skelClip;
 	// the game's own wall-run state, where we have it (the local or followed player)
 	wallrun = ( s->frame & 3 ) != 0;
@@ -3149,9 +3161,9 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		}
 	} else if ( legs == LEGS_IDLECR || legs == LEGS_WALKCR || legs == LEGS_BACKCR || ( s->eFlags & EF_SLIDING ) ) {
 		clip = speed > 15 ? SKEL_CROUCH_FWD_LOOP : SKEL_CROUCH_IDLE_LOOP;
-	} else if ( speed > ( cur == SKEL_SPRINT_LOOP ? 170 : 210 ) ) {
-		clip = SKEL_SPRINT_LOOP;
-	} else if ( speed > ( cur == SKEL_WALK_LOOP || cur == SKEL_SPRINT_LOOP ? 15 : 35 ) ) {
+	} else if ( gait > ( cur == SKEL_SPRINT_LOOP ? 160 : 210 ) ) {
+		clip = SKEL_SPRINT_LOOP;		// filtered: a landing's one-frame dip can't change gait
+	} else if ( gait > ( cur == SKEL_WALK_LOOP || cur == SKEL_SPRINT_LOOP ? 15 : 35 ) ) {
 		clip = SKEL_WALK_LOOP;
 	} else {
 		clip = SKEL_IDLE_LOOP;
@@ -3217,6 +3229,11 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	if ( held ) {
 		clip = cur;
 	}
+	// loops hold for a moment: a gait that lasts a few frames is just noise
+	if ( clip != cur && !CG_SkelOneShot( clip ) && !CG_SkelOneShot( cur ) && cg.time - pe->skelStart < 140
+			&& ( clip == SKEL_WALK_LOOP || clip == SKEL_SPRINT_LOOP || clip == SKEL_IDLE_LOOP ) ) {
+		clip = cur;
+	}
 
 	// advance; fast moves get quick fades, settling moves soft ones
 	if ( clip != cur ) {
@@ -3255,9 +3272,9 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		rate = Com_Clamp( 0.8f, 3.0f, ( speed > 1 ? speed : SKEL_SPRINT_SPEED ) / SKEL_SPRINT_SPEED );
 		if ( wall ) {
 			// cycle length on the wall = stride / stance fraction, so the foot sticks
-			float	cycle = 2.0f * SKEL_WALL_STEP / SKEL_WALL_STANCE;
+			float	cycle = 2.0f * CG_SkelWallStep( gait ) / CG_SkelWallStance( gait );
 
-			rate = Com_Clamp( 1.0f, 3.5f, speed / cycle * ( skelClips[clip].count - 1 ) / 30.0f );
+			rate = Com_Clamp( 1.0f, 2.6f, speed / cycle * ( skelClips[clip].count - 1 ) / 30.0f );
 		}
 	} else if ( clip == SKEL_WALK_LOOP ) {
 		rate = Com_Clamp( 0.7f, 1.8f, speed / 110.0f );
@@ -3701,7 +3718,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	}
 
 	if ( wall && !cg_skelWallClip.integer ) {
-		CG_SkelWallStride( &ent, pe->skelWallPt, moveLeft, vel, wall,
+		CG_SkelWallStride( &ent, pe->skelWallPt, moveLeft, pe->skelVelF, wall,
 			pe->skelPhase / ( skelClips[clip].count - 1 ) * 2.0f * M_PI, wallW );
 	}
 
