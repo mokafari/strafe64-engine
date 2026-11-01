@@ -170,11 +170,11 @@ static int CG_TwoBoneIK( refEntity_t *ent, int pose, const char *upper, const ch
 	orientation_t	a, b, c;
 	vec3_t			ab, cb, ac, at, n, m, rel, c2;
 	float			la, lb, lc, cur, want, ang, t;
-	float			frac = 1.0f - ent->backlerp;
 
-	if ( !trap_R_LerpTag( &a, ent->hModel, ent->oldframe, ent->frame, frac, upper )
-		|| !trap_R_LerpTag( &b, ent->hModel, ent->oldframe, ent->frame, frac, lower )
-		|| !trap_R_LerpTag( &c, ent->hModel, ent->oldframe, ent->frame, frac, end ) ) {
+	// solve from the pose as built so far: layers and earlier deltas move the limb
+	if ( !trap_R_BoneTag( &a, ent->hModel, ent->frame, ent->oldframe, ent->backlerp, pose, upper )
+		|| !trap_R_BoneTag( &b, ent->hModel, ent->frame, ent->oldframe, ent->backlerp, pose, lower )
+		|| !trap_R_BoneTag( &c, ent->hModel, ent->frame, ent->oldframe, ent->backlerp, pose, end ) ) {
 		return pose;
 	}
 	VectorSubtract( a.origin, b.origin, ab );

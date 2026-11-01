@@ -3350,6 +3350,38 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		}
 	}
 
+	// directional cut: the clip keeps its swing and the hand is nudged along the
+	// server's start->end compass line, peaking mid-swing. Additive, so it bends
+	// the authored motion rather than replacing it; the chest turns into the cut
+	if ( s->weapon == WP_SWORD && !( s->eFlags & EF_BLOCKING ) && cg_skelSwingArc.value > 0
+			&& cg.time >= cent->swordSwingTime && cg.time - cent->swordSwingTime < 420 ) {
+		static const float	qx[SQ_NUM_QUADS] = { 0, 0.7f, 1, 0.7f, 0, -0.7f, -1, -0.7f };
+		static const float	qy[SQ_NUM_QUADS] = { 1, 0.7f, 0, -0.7f, -1, -0.7f, 0, 0.7f };
+		float			f = ( cg.time - cent->swordSwingTime ) / 420.0f;
+		float			g = sin( f * M_PI );
+		float			rx, ry;
+		int				a = cent->swordStartQuad & 7, b = cent->swordEndQuad & 7, i;
+		vec3_t			h, t, zaxis = { 0, 0, 1 };
+		orientation_t	tag;
+
+		g *= g * cg_skelSwingArc.value;
+		f = f * f * ( 3 - 2 * f );
+		rx = qx[a] + ( qx[b] - qx[a] ) * f;
+		ry = qy[a] + ( qy[b] - qy[a] ) * f;
+		if ( trap_R_LerpTag( &tag, model, ent.oldframe, ent.frame, 1.0f - ent.backlerp, "spine_03" ) ) {
+			ent.bonePose = CG_BoneRotation( &ent, ent.bonePose, "spine_03", &tag, zaxis, DEG2RAD( -18.0f * rx * g ) );
+		}
+		if ( trap_R_BoneTag( &tag, model, ent.frame, ent.oldframe, ent.backlerp, ent.bonePose, "hand_r" ) ) {
+			VectorCopy( ent.origin, h );
+			for ( i = 0; i < 3; i++ ) {
+				VectorMA( h, tag.origin[i], ent.axis[i], h );
+			}
+			VectorMA( h, -14.0f * rx * g, ent.axis[1], t );
+			VectorMA( t, 14.0f * ry * g, ent.axis[2], t );
+			ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, "upperarm_r", "lowerarm_r", "hand_r", t );
+		}
+	}
+
 	// grapple: the free arm pulls on the line
 	if ( grapple ) {
 		vec3_t	t, d;

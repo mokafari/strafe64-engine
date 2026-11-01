@@ -1376,6 +1376,7 @@ extern	vmCvar_t		cg_dofBase;
 extern	vmCvar_t		cg_dofMax;
 extern	vmCvar_t		cg_dofFocusTrace;
 extern	vmCvar_t		cg_skeletal;
+extern	vmCvar_t		cg_skelSwingArc;
 extern	vmCvar_t		cg_ragdoll;
 extern	vmCvar_t		cg_ragdollDamp;
 extern	vmCvar_t		cg_ragdollIterations;
