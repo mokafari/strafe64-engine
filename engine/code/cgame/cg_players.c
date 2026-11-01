@@ -2859,6 +2859,39 @@ static void CG_SkelSecondOrder( float *y, float *yd, float *xPrev, float x, floa
 	*yd += dt * ( x + k3 * xd - *y - k1 * *yd ) / k2;
 }
 
+/*
+===============
+CG_SkelWallStride
+
+Wall-run gait: feet alternate along the real surface, the hips bob twice per
+cycle, and the chest counter-rotates against the leading leg. a = cycle angle.
+===============
+*/
+void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t moveLeft, int wall, float a ) {
+	orientation_t	tag;
+	vec3_t			fwd, pt, off, up = { 0, 0, 1 };
+	float			lift, push;
+	int				leg;
+
+	ent->origin[2] += 3.0f * sin( 2.0f * a );
+	VectorCopy( ent->origin, ent->oldorigin );
+	VectorSet( fwd, moveLeft[1], -moveLeft[0], 0 );
+	VectorScale( moveLeft, -wall, off );
+	if ( trap_R_LerpTag( &tag, ent->hModel, ent->oldframe, ent->frame, 1.0f - ent->backlerp, "spine_02" ) ) {
+		ent->bonePose = CG_BoneRotation( ent, ent->bonePose, "spine_02", &tag, up, DEG2RAD( 16.0f ) * cos( a ) );
+	}
+	for ( leg = 0; leg < 2; leg++, a += M_PI ) {
+		lift = sin( a );
+		push = lift > 0 ? lift : 0;
+		VectorCopy( wallPt, pt );
+		VectorMA( pt, 26.0f * cos( a ), fwd, pt );
+		VectorMA( pt, 2.0f + 13.0f * push, off, pt );	// recovery leg swings clear
+		pt[2] += -18.0f + 12.0f * push;
+		ent->bonePose = CG_LimbToWorld( ent, ent->bonePose, leg ? "thigh_r" : "thigh_l",
+			leg ? "calf_r" : "calf_l", leg ? "foot_r" : "foot_l", pt );
+	}
+}
+
 // a scarf off the neck: a verlet chain that trails motion, drawn as a ribbon
 static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
 	orientation_t	tag;
@@ -2884,10 +2917,14 @@ static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
 	pe->skelScarfTime = cg.time;
 	for ( i = 1; i < 8; i++ ) {			// integrate
 		VectorSubtract( pe->skelScarf[i], pe->skelScarfOld[i], d );
-		VectorScale( d, 0.96f, d );
+		VectorScale( d, 0.86f, d );			// air drag: it trails, it doesn't whip
+		if ( VectorLength( d ) > 10.0f ) {
+			VectorNormalize( d );
+			VectorScale( d, 10.0f, d );
+		}
 		VectorCopy( pe->skelScarf[i], pe->skelScarfOld[i] );
 		VectorAdd( pe->skelScarf[i], d, pe->skelScarf[i] );
-		pe->skelScarf[i][2] -= 200.0f * dt * dt;
+		pe->skelScarf[i][2] -= 700.0f * dt * dt;
 	}
 	VectorCopy( root, pe->skelScarf[0] );
 	for ( j = 0; j < 3; j++ ) {			// hold the link length, root fixed
@@ -2897,13 +2934,13 @@ static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
 			VectorSubtract( pe->skelScarf[i], pe->skelScarf[i - 1], d );
 			len = VectorLength( d );
 			if ( len > 0.01f ) {
-				VectorMA( pe->skelScarf[i - 1], 7.0f / len, d, pe->skelScarf[i] );
+				VectorMA( pe->skelScarf[i - 1], 4.5f / len, d, pe->skelScarf[i] );
 			}
 		}
 	}
 	memset( v, 0, sizeof( v ) );
 	for ( i = 0; i < 7; i++ ) {
-		float	w = 3.0f * ( 1.0f - i / 8.0f );
+		float	w = 2.2f * ( 1.0f - i / 8.0f );
 
 		VectorSubtract( pe->skelScarf[i + 1], pe->skelScarf[i], d );
 		VectorSubtract( cg.refdef.vieworg, pe->skelScarf[i], t );
@@ -3057,7 +3094,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	} else if ( clip == SKEL_WALK_LOOP ) {
 		rate = Com_Clamp( 0.7f, 1.8f, speed / 110.0f );
 	} else if ( CG_SkelOneShot( clip ) && clip != SKEL_SWORD_BLOCK ) {
-		rate = 1.5f;		// ninja snap: nothing reads as slow
+		rate = clip == SKEL_SWORD_DASH ? 3.0f : 1.5f;		// ninja snap: nothing reads as slow
 	}
 	pe->skelPhase += dt * 30.0f * rate;
 	if ( skelClips[clip].loop ) {
@@ -3150,7 +3187,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		} else if ( s->weapon == WP_SWORD && cg.time >= cent->swordSwingTime
 				&& cg.time - cent->swordSwingTime < 480 ) {
 			sclip = SKEL_SWORD_REGULAR_A + ( cent->swordSwingStep % 3 );
-			sphase = ( cg.time - cent->swordSwingTime ) * 0.045f;
+			sphase = ( cg.time - cent->swordSwingTime ) / 480.0f * ( skelClips[sclip].count - 1 );	// whole clip fits the swing
 			want = 1;
 		}
 		pe->skelUpper += ( want - pe->skelUpper ) * ( 1.0f - exp( -dt * ( want > 0 ? 40.0f : 14.0f ) ) );
@@ -3200,23 +3237,9 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		}
 	}
 
-	// wall run: stride along the real surface, feet alternating on the wall
 	if ( wall ) {
-		vec3_t	fwd, pt, off;
-		float	a = pe->skelPhase / ( skelClips[clip].count - 1 ) * 2.0f * M_PI, lift;
-		int		leg;
-
-		VectorSet( fwd, moveLeft[1], -moveLeft[0], 0 );
-		VectorScale( moveLeft, -wall, off );		// off the wall
-		for ( leg = 0; leg < 2; leg++, a += M_PI ) {
-			lift = sin( a );
-			VectorCopy( pe->skelWallPt, pt );
-			VectorMA( pt, 18.0f * cos( a ), fwd, pt );
-			VectorMA( pt, 2.0f + 9.0f * ( lift > 0 ? lift : 0 ), off, pt );
-			pt[2] += -16.0f + 7.0f * lift;
-			ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, leg ? "thigh_r" : "thigh_l",
-				leg ? "calf_r" : "calf_l", leg ? "foot_r" : "foot_l", pt );
-		}
+		CG_SkelWallStride( &ent, pe->skelWallPt, moveLeft, wall,
+			pe->skelPhase / ( skelClips[clip].count - 1 ) * 2.0f * M_PI );
 	}
 
 	pe->skelGround = ground;

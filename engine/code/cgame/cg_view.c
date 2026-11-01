@@ -319,6 +319,29 @@ static void CG_AddTestModel (void) {
 		vec3_t	target;
 
 		cg.testModelEntity.bonePose = 0;
+
+		// tools/modelgen/animsheet.py: hold an exact frame
+		trap_Cvar_VariableStringBuffer( "cg_testFrame", buf, sizeof( buf ) );
+		if ( buf[0] ) {
+			cg.testModelEntity.frame = cg.testModelEntity.oldframe = atoi( buf );
+			cg.testModelEntity.backlerp = 0;
+		}
+		// and the wall-run gait against whatever wall is on the model's left
+		trap_Cvar_VariableStringBuffer( "cg_testWallRun", buf, sizeof( buf ) );
+		if ( buf[0] ) {
+			vec3_t	mid, end, ang = { 0, 0, 22 };
+			trace_t	tr;
+			refEntity_t	*e = &cg.testModelEntity;
+
+			vectoangles( e->axis[0], end );
+			ang[YAW] = end[YAW];
+			VectorCopy( e->origin, mid );
+			VectorMA( mid, 40, e->axis[1], end );
+			CG_Trace( &tr, mid, NULL, NULL, end, -1, MASK_SOLID );
+			VectorCopy( e->axis[1], end );
+			AnglesToAxis( ang, e->axis );
+			CG_SkelWallStride( e, tr.endpos, end, 1, atof( buf ) );
+		}
 		trap_Cvar_VariableStringBuffer( "cg_testIK", buf, sizeof( buf ) );
 		if ( sscanf( buf, "%f %f %f", &target[0], &target[1], &target[2] ) == 3 ) {
 			cg.testModelEntity.bonePose = CG_TwoBoneIK( &cg.testModelEntity, 0, "upperarm_r", "lowerarm_r", "hand_r", target );

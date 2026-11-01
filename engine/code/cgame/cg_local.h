@@ -1921,6 +1921,7 @@ void		trap_R_DrawStretchPic( float x, float y, float w, float h,
 void		trap_R_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs );
 int			CG_PlantLimb( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end,
 				const vec3_t start, const vec3_t dir, float range, float standoff );
+void		CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t moveLeft, int wall, float a );
 int			CG_LimbToWorld( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end, const vec3_t pt );
 qboolean	CG_JointWorld( refEntity_t *ent, const char *joint, vec3_t out );
 int			CG_BoneRotation( refEntity_t *ent, int pose, const char *joint, const orientation_t *tag,
