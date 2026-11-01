@@ -3464,7 +3464,11 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		{
 			float	wp = Com_Clamp( 0, 1, fabs( pe->skelLean[1] ) / SKEL_WALL_TILT );
 
-			wallW = wall ? wp * wp * ( 3 - 2 * wp ) : 0;
+			// follows the eased tilt on the way out too: if this drops with the wall the
+			// body swings around its feet in a frame
+			wallW = wp * wp * ( 3 - 2 * wp );
+			pe->skelWallW += ( ( wall ? 1.0f : 0.0f ) - pe->skelWallW ) * ( 1.0f - exp( -dt * ( wall ? 10.0f : 9.0f ) ) );
+			wallW = wall ? wallW : wallW * pe->skelWallW;
 			if ( wallW > pivot ) {
 				pivot = wallW;
 			}
@@ -3781,8 +3785,9 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		pe->skelLook = 0;
 	}
 
-	if ( wall && !cg_skelWallClip.integer ) {
-		CG_SkelWallStride( &ent, pe->skelWallPt, moveLeft, pe->skelVelF, wall,
+	// the stride fades with the blend, so leaving a wall doesn't cut the legs off
+	if ( wallW > 0.02f && !cg_skelWallClip.integer && pe->skelWallSide ) {
+		CG_SkelWallStride( &ent, pe->skelWallPt, moveLeft, pe->skelVelF, pe->skelWallSide,
 			pe->skelPhase / ( skelClips[clip].count - 1 ) * 2.0f * M_PI, wallW );
 	}
 
