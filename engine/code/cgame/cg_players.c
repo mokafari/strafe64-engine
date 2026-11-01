@@ -3141,9 +3141,16 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	vec3_t			moveLeft;
 	char			dbg[8];
 	int				hold = 0;
-	qboolean		kicking, back;
+	qboolean		kicking, back, near;
 	float			wallW = 0, pivot = 0, gait;
 
+	// the fine detail is for bodies you can see the feet of
+	{
+		vec3_t	d;
+
+		VectorSubtract( cent->lerpOrigin, cg.refdef.vieworg, d );
+		near = s->clientNum == cg.snap->ps.clientNum || VectorLength( d ) < 320.0f;
+	}
 	model = cgs.media.skelModel;
 	dt = cg.frametime * 0.001f;
 	VectorCopy( s->pos.trDelta, vel );
@@ -3592,7 +3599,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 
 		pe->skelYawF = AngleNormalize180( pe->skelYawF + AngleNormalize180( angles[YAW] - pe->skelYawF ) * ( 1.0f - exp( -dt * 10.0f ) ) );
 		twist = Com_Clamp( -30, 30, AngleNormalize180( pe->skelYawF - angles[YAW] ) );
-		if ( trap_R_LerpTag( &tag, model, ent.oldframe, ent.frame, 1.0f - ent.backlerp, "spine_02" ) ) {
+		if ( near && trap_R_LerpTag( &tag, model, ent.oldframe, ent.frame, 1.0f - ent.backlerp, "spine_02" ) ) {
 			vec3_t	zaxis = { 0, 0, 1 };
 
 			ent.bonePose = CG_BoneRotation( &ent, ent.bonePose, "spine_02", &tag, zaxis, DEG2RAD( twist * 0.6f ) );
@@ -3756,9 +3763,13 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		for ( leg = 0; leg < 2; leg++ ) {
 			vec3_t	p, d;
 			const char	*foot = leg ? "foot_r" : "foot_l";
-			qboolean	can = cg_skelFootLock.integer && ground && speed <= 520 && fabs( pe->skelDrop ) < 0.5f && !( kicking && leg )
+			qboolean	can = near && cg_skelFootLock.integer && ground && speed <= 520 && fabs( pe->skelDrop ) < 0.5f && !( kicking && leg )
 				&& ( clip == SKEL_SPRINT_LOOP || clip == SKEL_WALK_LOOP );
 
+			if ( !can && pe->skelFootW[leg] < 0.02f ) {
+				pe->skelFootOn[leg] = qfalse;
+				continue;
+			}
 			if ( !CG_JointWorld( &ent, foot, p ) ) {
 				continue;
 			}

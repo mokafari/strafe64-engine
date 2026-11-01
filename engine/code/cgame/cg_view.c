@@ -311,6 +311,44 @@ static int CG_PlantOnWorld( refEntity_t *ent ) {
 	return pose;
 }
 
+/*
+=================
+CG_TestCut_f
+
+"testcut <1 limb, 2 decap, 3 bisect>": drops a cut corpse in front of the view with
+the real blood and ragdoll, so every kind of cut can be filmed on demand
+=================
+*/
+static centity_t	testCutEnt;
+
+void CG_TestCut_f( void ) {
+	vec3_t	dir, up;
+	int		cut = atoi( CG_Argv( 1 ) );
+
+	memset( &testCutEnt, 0, sizeof( testCutEnt ) );
+	testCutEnt.currentState.number = MAX_GENTITIES - 3;
+	testCutEnt.currentState.clientNum = cg.snap->ps.clientNum;
+	testCutEnt.currentState.eFlags = EF_DEAD;
+	testCutEnt.currentState.time2 = cut;
+	VectorMA( cg.refdef.vieworg, 150, cg.refdef.viewaxis[0], testCutEnt.lerpOrigin );
+	{
+		trace_t	tr;
+		vec3_t	down;
+
+		testCutEnt.lerpOrigin[2] = cg.refdef.vieworg[2];
+		VectorCopy( testCutEnt.lerpOrigin, down );
+		down[2] -= 2000;
+		CG_Trace( &tr, testCutEnt.lerpOrigin, NULL, NULL, down, cg.snap->ps.clientNum, MASK_SOLID );
+		testCutEnt.lerpOrigin[2] = tr.endpos[2] + 30;
+	}
+	testCutEnt.lerpAngles[YAW] = cg.refdefViewAngles[YAW] + 90;
+	VectorCopy( cg.refdef.viewaxis[1], dir );
+	VectorSet( up, 0, 0, 1 );
+	CG_RagdollReset();
+	CG_RagdollAdd( &testCutEnt, 0, 0 );
+	CG_DismemberPlayer( testCutEnt.lerpOrigin, dir, up, cut - 1, testCutEnt.currentState.number );
+}
+
 static void CG_AddTestModel (void) {
 	int		i;
 
@@ -1966,6 +2004,9 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 #endif
 
 	// finish up the rest of the refdef
+	if ( testCutEnt.currentState.eFlags & EF_DEAD ) {
+		CG_RagdollAdd( &testCutEnt, 0, 0 );
+	}
 	if ( cg.testModelEntity.hModel ) {
 		CG_AddTestModel();
 	}

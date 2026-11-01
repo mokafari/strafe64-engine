@@ -1496,6 +1496,7 @@ void CG_BuildSpectatorString( void );
 // cg_view.c
 //
 void CG_TestModel_f (void);
+void CG_TestCut_f (void);
 void CG_TestGun_f (void);
 void CG_TestModelNextFrame_f (void);
 void CG_TestModelPrevFrame_f (void);
@@ -1670,6 +1671,7 @@ qboolean CG_RagdollAdd( centity_t *cent, int renderfx, float shadowPlane );
 #define RAG_PART_PELVIS	1
 #define RAG_PART_CHEST	2
 #define RAG_PART_HEAD	3
+#define RAG_PART_LIMB	4
 qboolean CG_RagdollWound( int entnum, int part, vec3_t out );
 void CG_SpawnSwordCut( vec3_t origin, vec3_t normal, vec3_t fwd );
 void CG_AddSwordCuts( void );

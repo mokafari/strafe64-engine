@@ -48,6 +48,10 @@ typedef struct {
 	int			airQuietTime;	// when the body first went quiet without ground
 								// support (0 = moving/grounded); drives the
 								// stuck-in-air -> ground-snap recovery
+	int			limb;			// severed limb on a RAG_CUT_LIMB: 1 arm l, 2 arm r, 3 leg l, 4 leg r
+	vec3_t		limbPos, limbVel, limbAxis;
+	int			limbTime;
+	float		limbSpin, limbRate;
 	float		spin;			// accumulated tumble phase (rad) for severed
 								// pieces; frozen once the body settles
 } cgRagdoll_t;
@@ -455,9 +459,9 @@ static void CG_RagdollSeed( cgRagdoll_t *rag, centity_t *cent, int cut ) {
 	if ( cut == RAG_CUT_BISECT ) {
 		// upper body (chest + head) slides off the waist and lifts
 		for ( i = RP_CHEST ; i <= RP_HEAD ; i++ ) {
-			rag->prev[i][0] -= fwd[0] * 150.0f * dt;
-			rag->prev[i][1] -= fwd[1] * 150.0f * dt;
-			rag->prev[i][2] -= 110.0f * dt;
+			rag->prev[i][0] -= fwd[0] * 70.0f * dt;
+			rag->prev[i][1] -= fwd[1] * 70.0f * dt;
+			rag->prev[i][2] -= 90.0f * dt;
 		}
 		// lower body settles back the other way a touch
 		rag->prev[RP_PELVIS][0] += fwd[0] * 40.0f * dt;
@@ -467,6 +471,20 @@ static void CG_RagdollSeed( cgRagdoll_t *rag, centity_t *cent, int cut ) {
 		rag->prev[RP_HEAD][0] -= fwd[0] * 90.0f * dt;
 		rag->prev[RP_HEAD][1] -= fwd[1] * 90.0f * dt;
 		rag->prev[RP_HEAD][2] -= 200.0f * dt;
+	} else if ( cut == RAG_CUT_LIMB ) {
+		// which limb comes off, and it goes flying
+		char	force[8];
+
+		trap_Cvar_VariableStringBuffer( "cg_testCutLimb", force, sizeof( force ) );
+		rag->limb = atoi( force ) ? atoi( force ) : 1 + ( cent->currentState.number + cg.time / 13 ) % 4;
+		VectorCopy( rag->pos[rag->limb <= 2 ? RP_CHEST : RP_PELVIS], rag->limbPos );
+		VectorSet( rag->limbVel, fwd[0] * 170.0f + crandom() * 60.0f, fwd[1] * 170.0f + crandom() * 60.0f, 260.0f );
+		VectorSet( rag->limbAxis, random() * 360.0f, random() * 360.0f, 0 );
+		rag->limbSpin = 0;
+		rag->limbRate = 500.0f + random() * 300.0f;
+		rag->limbTime = cg.time;
+	} else {
+		rag->limb = 0;
 	}
 }
 
@@ -760,6 +778,9 @@ static void CG_RagdollSegment( cgRagdoll_t *rag, qhandle_t model, qhandle_t skin
 		int		i;
 
 		VectorMA( ent.origin, -ragPiece->pivot, up, ent.origin );
+		// particles sit on the floor, the mesh is centred on them: a body lying
+		// flat would be half under it
+		ent.origin[2] += 7.0f * ( 1.0f - fabs( up[2] ) );
 		model = cgs.media.skelModel;
 		skin = 0;
 		for ( i = 0; i < 4 && ragPiece->joint[i]; i++ ) {
@@ -779,6 +800,67 @@ static void CG_RagdollSegment( cgRagdoll_t *rag, qhandle_t model, qhandle_t skin
 	CG_AddRefEntityWithPowerups( &ent, &cent->currentState, cgs.clientinfo[ cent->currentState.clientNum ].team );
 }
 
+static const char	*ragLimbJoint[5] = { NULL, "upperarm_l", "upperarm_r", "thigh_l", "thigh_r" };
+
+/*
+===============
+CG_RagdollSkeletalLimb
+
+The severed arm or leg: the same mannequin showing only that limb, thrown clear
+on its own arc, tumbling, and stopping where it lands.
+===============
+*/
+static void CG_RagdollSkeletalLimb( cgRagdoll_t *rag, centity_t *cent, int renderfx ) {
+	static const float	keep[4] = { 0, 0, 0, 2 };
+	float		dt = ( cg.time - rag->limbTime ) * 0.001f;
+	orientation_t	tag;
+	refEntity_t	ent;
+	vec3_t		angles, stop;
+	trace_t		tr;
+	int			i;
+
+	if ( !rag->limb ) {
+		return;
+	}
+	rag->limbTime = cg.time;
+	if ( dt > 0 && dt < 0.1f && VectorLength( rag->limbVel ) > 0.01f ) {
+		rag->limbVel[2] -= RAG_GRAVITY * dt;
+		VectorMA( rag->limbPos, dt, rag->limbVel, stop );
+		CG_Trace( &tr, rag->limbPos, NULL, NULL, stop, cent->currentState.number, MASK_SOLID );
+		VectorCopy( tr.endpos, rag->limbPos );
+		if ( tr.fraction < 1.0f ) {
+			float	d = DotProduct( rag->limbVel, tr.plane.normal );
+
+			VectorMA( rag->limbVel, -1.6f * d, tr.plane.normal, rag->limbVel );
+			VectorScale( rag->limbVel, 0.4f, rag->limbVel );
+			rag->limbRate *= 0.5f;
+			if ( VectorLength( rag->limbVel ) < 30.0f ) {
+				VectorClear( rag->limbVel );
+				rag->limbRate = 0;
+			}
+		}
+		rag->limbSpin += rag->limbRate * dt;
+	}
+
+	memset( &ent, 0, sizeof( ent ) );
+	ent.hModel = cgs.media.skelModel;
+	VectorCopy( rag->limbAxis, angles );
+	angles[PITCH] += rag->limbSpin;
+	angles[ROLL] += rag->limbSpin * 0.7f;
+	AnglesToAxis( angles, ent.axis );
+	ent.bonePose = trap_R_BoneDelta( ent.hModel, 0, ragLimbJoint[rag->limb], keep );
+	VectorCopy( rag->limbPos, ent.origin );
+	if ( trap_R_LerpTag( &tag, ent.hModel, 0, 0, 0, ragLimbJoint[rag->limb] ) ) {
+		for ( i = 0; i < 3; i++ ) {
+			VectorMA( ent.origin, -tag.origin[i], ent.axis[i], ent.origin );
+		}
+	}
+	VectorCopy( ent.origin, ent.oldorigin );
+	VectorCopy( rag->limbPos, ent.lightingOrigin );
+	ent.renderfx = renderfx | RF_LIGHTING_ORIGIN;
+	trap_R_AddRefEntityToScene( &ent );
+}
+
 /*
 ===============
 CG_RagdollAddSkeletal
@@ -788,26 +870,35 @@ so a cut opens the real mesh. Pieces match the MD3 segments below.
 ===============
 */
 static void CG_RagdollAddSkeletal( cgRagdoll_t *rag, centity_t *cent, int renderfx, float shadowPlane ) {
-	static const ragPiece_t	legs = { 0, 0, { "spine_01" } };
 	static const ragPiece_t	torso = { 33, 0, { "thigh_l", "thigh_r", "neck_01" } };
-	static const ragPiece_t	torsoNoArm = { 33, 0, { "thigh_l", "thigh_r", "neck_01", "lowerarm_r" } };
 	static const ragPiece_t	head = { 54, 1, { "neck_01" } };
-	const ragPiece_t		*body = rag->cut == RAG_CUT_LIMB ? &torsoNoArm : &torso;
+	ragPiece_t		legsCut = { 0, 0, { "spine_01" } };
+	ragPiece_t		torsoCut = torso;
+	const ragPiece_t		*body = &torsoCut;
 
-	ragPiece = &legs;
-	CG_RagdollSegment( rag, 0, 0, RP_FEET, RP_FEET, RP_PELVIS, cent, renderfx, shadowPlane, 0 );
+	if ( rag->cut == RAG_CUT_LIMB && rag->limb >= 1 && rag->limb <= 2 ) {
+		torsoCut.joint[3] = ragLimbJoint[rag->limb];
+	} else if ( rag->cut == RAG_CUT_LIMB && rag->limb >= 3 ) {
+		legsCut.joint[1] = ragLimbJoint[rag->limb];
+	}
+	ragPiece = &legsCut;
+	CG_RagdollSegment( rag, cgs.media.skelModel, 0, RP_FEET, RP_FEET, RP_PELVIS, cent, renderfx, shadowPlane, 0 );
 	ragPiece = body;
+	if ( rag->cut == RAG_CUT_LIMB ) {
+		CG_RagdollSkeletalLimb( rag, cent, renderfx );
+	}
 	if ( rag->cut == RAG_CUT_BISECT ) {
-		CG_RagdollSegment( rag, 0, 0, RP_CHEST, RP_CHEST, RP_HEAD, cent, renderfx, shadowPlane, rag->spin );
+		torsoCut.pivot = 45;		// this half rides the chest particle, not the pelvis
+		CG_RagdollSegment( rag, cgs.media.skelModel, 0, RP_CHEST, RP_CHEST, RP_HEAD, cent, renderfx, shadowPlane, rag->spin );
 		ragPiece = &head;
-		CG_RagdollSegment( rag, 0, 0, RP_HEAD, RP_CHEST, RP_HEAD, cent, renderfx, shadowPlane, rag->spin );
+		CG_RagdollSegment( rag, cgs.media.skelModel, 0, RP_HEAD, RP_CHEST, RP_HEAD, cent, renderfx, shadowPlane, rag->spin );
 	} else {
-		CG_RagdollSegment( rag, 0, 0, RP_PELVIS, RP_PELVIS, RP_CHEST, cent, renderfx, shadowPlane, 0 );
+		CG_RagdollSegment( rag, cgs.media.skelModel, 0, RP_PELVIS, RP_PELVIS, RP_CHEST, cent, renderfx, shadowPlane, 0 );
 		ragPiece = &head;
 		if ( rag->cut == RAG_CUT_DECAP ) {
-			CG_RagdollSegment( rag, 0, 0, RP_HEAD, RP_HEAD, RP_HEAD, cent, renderfx, shadowPlane, rag->spin );
+			CG_RagdollSegment( rag, cgs.media.skelModel, 0, RP_HEAD, RP_HEAD, RP_HEAD, cent, renderfx, shadowPlane, rag->spin );
 		} else {
-			CG_RagdollSegment( rag, 0, 0, RP_HEAD, RP_CHEST, RP_HEAD, cent, renderfx, shadowPlane, 0 );
+			CG_RagdollSegment( rag, cgs.media.skelModel, 0, RP_HEAD, RP_CHEST, RP_HEAD, cent, renderfx, shadowPlane, 0 );
 		}
 	}
 	ragPiece = NULL;
@@ -908,10 +999,17 @@ qboolean CG_RagdollWound( int entnum, int part, vec3_t out ) {
 	if ( entnum < 0 || entnum >= MAX_GENTITIES ) {
 		return qfalse;
 	}
+	rag = &cg_ragdolls[ entnum ];
+	if ( part == RAG_PART_LIMB ) {			// the flying limb's own stump
+		if ( !rag->active || !rag->limb ) {
+			return qfalse;
+		}
+		VectorCopy( rag->limbPos, out );
+		return qtrue;
+	}
 	if ( part < 0 || part >= RP_COUNT ) {
 		return qfalse;
 	}
-	rag = &cg_ragdolls[ entnum ];
 	if ( !rag->active ) {
 		return qfalse;
 	}

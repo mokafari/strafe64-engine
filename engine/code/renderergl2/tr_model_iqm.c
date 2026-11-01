@@ -1628,7 +1628,7 @@ static const bonePose_t *R_BonePoseForEntity( const refEntity_t *e ) {
 
 #define DotProduct4(a,b)	( (a)[0]*(b)[0] + (a)[1]*(b)[1] + (a)[2]*(b)[2] + (a)[3]*(b)[3] )
 
-static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
+static void ComputePoseMatsUncached( iqmData_t *data, int frame, int oldframe,
 			      float backlerp, float *poseMats, const bonePose_t *bonePose ) {
 	iqmTransform_t relativeJoints[IQM_MAX_JOINTS];
 	iqmTransform_t *relativeJoint;
@@ -1827,6 +1827,66 @@ static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
 			}
 		}
 	}
+}
+
+/*
+=================
+ComputePoseMats
+
+IK asks for joints many times between pose changes, and the renderer again for
+every surface of the same body. A pose costs far more than a copy, so the last
+few results are kept, keyed on everything that decides the pose.
+=================
+*/
+#define	POSE_CACHE	4
+
+typedef struct {
+	const iqmData_t	*data;
+	int			frame, oldframe;
+	float		backlerp;
+	const bonePose_t	*bonePose;
+	int			numDeltas, layerRoot, layerFrame;
+	float		layerBack, layerWeight, inertWeight, inertVel, upperWeight;
+	int			frameCount;
+} poseKey_t;
+
+static poseKey_t	poseCacheKey[POSE_CACHE];
+static float		poseCache[POSE_CACHE][IQM_MAX_JOINTS * 12];
+static int			poseCacheNext;
+
+static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
+			      float backlerp, float *poseMats, const bonePose_t *bonePose ) {
+	poseKey_t	key;
+	int			i;
+
+	Com_Memset( &key, 0, sizeof( key ) );
+	key.data = data;
+	key.frame = frame;
+	key.oldframe = oldframe;
+	key.backlerp = backlerp;
+	key.bonePose = bonePose;
+	key.frameCount = tr.frameCount;
+	if ( bonePose ) {
+		key.numDeltas = bonePose->num;
+		key.layerRoot = bonePose->layerRoot;
+		key.layerFrame = bonePose->layerFrame;
+		key.layerBack = bonePose->layerBacklerp;
+		key.layerWeight = bonePose->layerWeight;
+		key.inertWeight = bonePose->inertWeight;
+		key.inertVel = bonePose->inertWeightVel;
+		key.upperWeight = bonePose->upperWeight;
+	}
+	for ( i = 0; i < POSE_CACHE; i++ ) {
+		if ( !memcmp( &key, &poseCacheKey[i], sizeof( key ) ) ) {
+			Com_Memcpy( poseMats, poseCache[i], data->num_poses * 12 * sizeof( float ) );
+			return;
+		}
+	}
+	ComputePoseMatsUncached( data, frame, oldframe, backlerp, poseMats, bonePose );
+	i = poseCacheNext;
+	poseCacheNext = ( poseCacheNext + 1 ) % POSE_CACHE;
+	poseCacheKey[i] = key;
+	Com_Memcpy( poseCache[i], poseMats, data->num_poses * 12 * sizeof( float ) );
 }
 
 static void ComputeJointMats( iqmData_t *data, int frame, int oldframe,
