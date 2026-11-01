@@ -183,6 +183,8 @@ vmCvar_t	cg_playerGlowClamp;	// 0-1: count-aware soft clamp so N pilots' lights 
 vmCvar_t	cg_playerGlowAudio;	// 0-2: each pilot reacts to a DIFFERENT music band (per-clientNum spectrum) -> they flare out of phase, colours mix over time
 vmCvar_t	cg_playerGlowHue;	// 0-1: blend the glow toward a DISTINCT per-clientNum rainbow hue (0=player's own colour, 1=full rainbow spread) so pilots aren't all the same colour
 vmCvar_t	cg_dashGlitch;		// 0-2: chromatic-ghost glitch trail intensity on air-dash
+vmCvar_t	cg_skelBody;			// the body on the skeleton: a mesh fitted to the mannequin's rig
+vmCvar_t	cg_skelScarf;			// the procedural scarf; the robot wears its own
 vmCvar_t	cg_skelSwingArc;		// how far the directional arc bends the clip's swing (0 = clip only)
 vmCvar_t	cg_skelFootLock;		// 1: planted feet stay put while running
 vmCvar_t	cg_skelWallClip;		// 1: wall run plays the mocap clip; 0: procedural gait
@@ -321,6 +323,8 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_skeletal, "cg_skeletal", "1", CVAR_ARCHIVE },
 	{ &cg_skelWallClip, "cg_skelWallClip", "0", CVAR_ARCHIVE },
 	{ &cg_skelFootLock, "cg_skelFootLock", "1", CVAR_ARCHIVE },
+	{ &cg_skelBody, "cg_skelBody", "models/s64/robot.iqm", CVAR_ARCHIVE },
+	{ &cg_skelScarf, "cg_skelScarf", "0", CVAR_ARCHIVE },
 	{ &cg_skelSwingArc, "cg_skelSwingArc", "0.6", CVAR_ARCHIVE },
 	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },
 	{ &cg_ragdollDamp, "cg_ragdollDamp", "0.97", CVAR_ARCHIVE },
@@ -1172,7 +1176,10 @@ static void CG_RegisterGraphics( void ) {
 	cgs.media.gibFist = trap_R_RegisterModel( "models/gibs/fist.md3" );
 	cgs.media.gibFoot = trap_R_RegisterModel( "models/gibs/foot.md3" );
 	cgs.media.gibForearm = trap_R_RegisterModel( "models/gibs/forearm.md3" );
-	cgs.media.skelModel = trap_R_RegisterModel( "models/s64/mannequin.iqm" );
+	cgs.media.skelModel = trap_R_RegisterModel( cg_skelBody.string );
+	if ( !cgs.media.skelModel ) {
+		cgs.media.skelModel = trap_R_RegisterModel( "models/s64/mannequin.iqm" );
+	}
 	cgs.media.gibIntestine = trap_R_RegisterModel( "models/gibs/intestine.md3" );
 	cgs.media.gibLeg = trap_R_RegisterModel( "models/gibs/leg.md3" );
 	cgs.media.gibSkull = trap_R_RegisterModel( "models/gibs/skull.md3" );

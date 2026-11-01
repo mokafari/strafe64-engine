@@ -1393,6 +1393,8 @@ extern	vmCvar_t		cg_dofFocusTrace;
 extern	vmCvar_t		cg_skeletal;
 extern	vmCvar_t		cg_skelWallClip;
 extern	vmCvar_t		cg_skelFootLock;
+extern	vmCvar_t		cg_skelBody;
+extern	vmCvar_t		cg_skelScarf;
 extern	vmCvar_t		cg_skelSwingArc;
 extern	vmCvar_t		cg_ragdoll;
 extern	vmCvar_t		cg_ragdollDamp;

@@ -3861,7 +3861,9 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	VectorCopy( ent.origin, pe->skelLastOrigin );
 	AxisCopy( ent.axis, pe->skelLastAxis );
 	trap_R_AddRefEntityToScene( &ent );
-	CG_SkelScarf( &ent, pe, renderfx );
+	if ( cg_skelScarf.integer ) {
+		CG_SkelScarf( &ent, pe, renderfx );
+	}
 	CG_AddPlayerWeapon( &ent, NULL, cent, cgs.clientinfo[s->clientNum].team );
 }
 

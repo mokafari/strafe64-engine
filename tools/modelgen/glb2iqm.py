@@ -64,6 +64,7 @@ def main():
     ap.add_argument('--tpose', help='file.glb:ClipName holding the target T-pose')
     ap.add_argument('--bind', help='skinned Mixamo .glb, bind pose for skinless clips')
     ap.add_argument('--header', help='write the cgame clip table here')
+    ap.add_argument('--refit', help='Mixamo-rigged .glb whose mesh replaces the --mesh one, fitted to its skeleton')
     o = ap.parse_args()
     g = Glb(o.mesh); j = g.j
     skin = j['skins'][0]; jn = skin['joints']; idx = {n: i for i, n in enumerate(jn)}
@@ -82,6 +83,14 @@ def main():
         tris.append(ind + base); base += len(p)
     P = np.concatenate(P); N = np.concatenate(N); U = np.concatenate(U)
     JI = np.concatenate(JI).astype(np.uint8); W = np.concatenate(W); tris = np.concatenate(tris)
+    sc = o.height / (P[:, 1].max() - P[:, 1].min())
+    if o.refit:
+        import os, sys
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import refit as rf
+        ibm = g.acc(skin['inverseBindMatrices']).reshape(-1, 4, 4).transpose(0, 2, 1)
+        P, N, U, JI, W, tris = rf.refit(Glb(o.refit), names, ibm)
+        JI = JI.astype(np.uint8)
     # the renderer takes under SHADER_MAX_VERTEXES (4000) per surface: split
     # greedily, duplicating the vertices shared across a chunk boundary
     remap, new_tris, meshes = [], [], []
@@ -101,7 +110,6 @@ def main():
     flush()
     P, N, U, JI, W = P[remap], N[remap], U[remap], JI[remap], W[remap]
     tris = np.array(new_tris)
-    sc = o.height / (P[:, 1].max() - P[:, 1].min())
     print('bind height %.3f scale %.2f' % (P[:, 1].max() - P[:, 1].min(), sc))
     pos = swap(P) * sc; nrm = swap(N)
     w8 = np.round(W / W.sum(1, keepdims=True) * 255).astype(int)
@@ -109,6 +117,8 @@ def main():
     tan = np.cross(nrm, np.array([0.0, 0.0, 1.0])); bad = np.linalg.norm(tan, axis=1) < 1e-4
     tan[bad] = [1, 0, 0]; tan /= np.linalg.norm(tan, axis=1, keepdims=True)
     tan4 = np.c_[tan, np.ones(len(tan))]
+    if o.refit:
+        tan4 = rf.tangents(pos, nrm, U, tris)
 
     def rest(n):
         nd = j['nodes'][n]
