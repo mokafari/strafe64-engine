@@ -1363,7 +1363,7 @@ typedef struct {
 	int			layerFrame, layerOldframe;
 	float		layerBacklerp, layerWeight;
 	int			inertSlot;			// transition offset to add, -1 for none
-	float		inertWeight;
+	float		inertWeight, inertWeightVel;
 	int			cubicBefore, cubicAfter;	// frames either side of the pair, -1 for linear
 	int			upperSlot;			// same, for the upper-body layer only
 	float		upperWeight;
@@ -1428,9 +1428,10 @@ so motion never stalls the way a crossfade between two poses does.
 #define	MAX_INERTIA_SLOTS	128		// MAX_CLIENTS full body, then MAX_CLIENTS upper layers
 
 typedef struct {
-	quat_t	rot[IQM_MAX_JOINTS];
+	vec3_t	rot[IQM_MAX_JOINTS];	// rotation offset, scaled angle-axis
+	vec3_t	rotVel[IQM_MAX_JOINTS];	// its rate per second
 	vec3_t	trans[IQM_MAX_JOINTS];
-	float	weight;				// what was showing last frame, for chained changes
+	float	weight, weightVel;		// what was showing last frame, for chained changes
 } boneInertia_t;
 
 static boneInertia_t	boneInertia[MAX_INERTIA_SLOTS];
@@ -1442,10 +1443,24 @@ static void R_QuatMul( const float *a, const float *b, float *q ) {
 	q[3] = a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2];
 }
 
-static void R_InertiaRot( const quat_t off, float weight, quat_t out ) {
-	static const quat_t	identity = { 0, 0, 0, 1 };
+static void R_QuatLog( const float *q, vec3_t out ) {
+	float	s = sqrt( q[0]*q[0] + q[1]*q[1] + q[2]*q[2] );
+	float	w = q[3] < 0 ? -q[3] : q[3], sign = q[3] < 0 ? -1.0f : 1.0f;
+	float	k = s > 0.0001f ? 2.0f * atan2( s, w ) / s : 2.0f;
 
-	QuatSlerp( identity, off, weight, out );
+	out[0] = q[0] * k * sign;
+	out[1] = q[1] * k * sign;
+	out[2] = q[2] * k * sign;
+}
+
+static void R_QuatExp( const vec3_t v, float *q ) {
+	float	a = VectorLength( v ) * 0.5f;
+	float	k = a > 0.0001f ? sin( a ) / ( a * 2.0f ) : 0.5f;
+
+	q[0] = v[0] * k;
+	q[1] = v[1] * k;
+	q[2] = v[2] * k;
+	q[3] = cos( a );
 }
 
 static void R_LerpJoint( const iqmData_t *data, int frame, int oldframe, float back, int j, vec3_t t, quat_t q ) {
@@ -1458,7 +1473,15 @@ static void R_LerpJoint( const iqmData_t *data, int frame, int oldframe, float b
 	QuatSlerp( a->rotate, b->rotate, 1.0f - back, q );
 }
 
-void RE_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack ) {
+static void R_InertiaRot( const boneInertia_t *in, int j, float w, float wv, quat_t out ) {
+	vec3_t	v;
+
+	VectorScale( in->rot[j], w, v );
+	VectorMA( v, wv, in->rotVel[j], v );
+	R_QuatExp( v, out );
+}
+
+void RE_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack, int fromNext, int toNext ) {
 	model_t			*mod = R_GetModelByHandle( model );
 	iqmData_t		*data;
 	boneInertia_t	*in;
@@ -1476,37 +1499,59 @@ void RE_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOl
 	fromOld %= data->num_frames;
 	toFrame %= data->num_frames;
 	toOld %= data->num_frames;
+	fromNext %= data->num_frames;
+	toNext %= data->num_frames;
 	for ( j = 0; j < data->num_poses; j++ ) {
-		vec3_t	ft, tt;
-		quat_t	fq, tq, shown, inv;
+		vec3_t	ft, tt, ft2, tt2, log2;
+		quat_t	fq, tq, fq2, tq2, shown, tmp, inv;
 
 		R_LerpJoint( data, fromFrame, fromOld, fromBack, j, ft, fq );
 		R_LerpJoint( data, toFrame, toOld, toBack, j, tt, tq );
+		R_LerpJoint( data, fromNext, fromNext, 0, j, ft2, fq2 );
+		R_LerpJoint( data, toNext, toNext, 0, j, tt2, tq2 );
 
 		// start from what's on screen, including any offset still decaying
 		if ( in->weight > 0.001f ) {
-			R_InertiaRot( in->rot[j], in->weight, shown );
-			R_QuatMul( shown, fq, inv );
-			QuatCopy( inv, fq );
+			R_InertiaRot( in, j, in->weight, in->weightVel, shown );
+			R_QuatMul( shown, fq, tmp );
+			QuatCopy( tmp, fq );
+			R_QuatMul( shown, fq2, tmp );
+			QuatCopy( tmp, fq2 );
 			VectorMA( ft, in->weight, in->trans[j], ft );
 		}
 		inv[0] = -tq[0];
 		inv[1] = -tq[1];
 		inv[2] = -tq[2];
 		inv[3] = tq[3];
-		R_QuatMul( fq, inv, in->rot[j] );
+		R_QuatMul( fq, inv, tmp );
+		R_QuatLog( tmp, in->rot[j] );
+		inv[0] = -tq2[0];
+		inv[1] = -tq2[1];
+		inv[2] = -tq2[2];
+		inv[3] = tq2[3];
+		R_QuatMul( fq2, inv, tmp );
+		R_QuatLog( tmp, log2 );
+		// one key apart at the bake rate; capped so a clip's big swing can't fling a limb
+		VectorSubtract( log2, in->rot[j], in->rotVel[j] );
+		VectorScale( in->rotVel[j], 30.0f, in->rotVel[j] );
+		if ( VectorLength( in->rotVel[j] ) > 12.0f ) {
+			VectorNormalize( in->rotVel[j] );
+			VectorScale( in->rotVel[j], 12.0f, in->rotVel[j] );
+		}
 		VectorSubtract( ft, tt, in->trans[j] );
 	}
 	in->weight = 1.0f;
+	in->weightVel = 0;
 }
 
-int RE_BoneInertia( qhandle_t model, int pose, int slot, float weight ) {
+int RE_BoneInertia( qhandle_t model, int pose, int slot, float weight, float weightVel ) {
 	bonePose_t	*bp;
 
 	if ( slot < 0 || slot >= MAX_INERTIA_SLOTS ) {
 		return pose;
 	}
 	boneInertia[slot].weight = weight;
+	boneInertia[slot].weightVel = weightVel;
 	bp = R_BonePoseForEdit( model, &pose );
 	if ( bp ) {
 		if ( slot >= MAX_INERTIA_SLOTS / 2 ) {
@@ -1515,6 +1560,7 @@ int RE_BoneInertia( qhandle_t model, int pose, int slot, float weight ) {
 		} else {
 			bp->inertSlot = slot;
 			bp->inertWeight = weight;
+			bp->inertWeightVel = weightVel;
 		}
 	}
 	return pose;
@@ -1686,7 +1732,7 @@ static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
 			if ( inLayer[i] ) {
 				quat_t	off, q;
 
-				R_InertiaRot( in->rot[i], bonePose->upperWeight, off );
+				R_InertiaRot( in, i, bonePose->upperWeight, 0, off );
 				R_QuatMul( off, relativeJoints[i].rotate, q );
 				QuatCopy( q, relativeJoints[i].rotate );
 			}
@@ -1700,7 +1746,7 @@ static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
 		for ( i = 0; i < data->num_poses; i++ ) {
 			quat_t	off, q;
 
-			R_InertiaRot( in->rot[i], bonePose->inertWeight, off );
+			R_InertiaRot( in, i, bonePose->inertWeight, bonePose->inertWeightVel, off );
 			R_QuatMul( off, relativeJoints[i].rotate, q );
 			QuatCopy( q, relativeJoints[i].rotate );
 			VectorMA( relativeJoints[i].translate, bonePose->inertWeight, in->trans[i], relativeJoints[i].translate );

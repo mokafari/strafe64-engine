@@ -71,7 +71,7 @@ def main():
         files = capture(o.home, 'clip', shots, base)
         sheet(files, [l for l, _ in shots], o.cols, o.out + '/clips.png')
     if o.only != 'clips':
-        wall = 'setviewpos 100 460 0 180; wait 5; setviewpos 100 460 0 180; wait 5; testmodel models/s64/mannequin.iqm; wait 10'
+        wall = 'setviewpos 100 465 0 180; wait 5; setviewpos 100 465 0 180; wait 5; testmodel models/s64/mannequin.iqm; wait 10'
         sprint = next(c for c in clips() if c[0] == 'Sprint_Loop')
         shots = []
         for view, pos in (('side', '-40 340 60 72'), ('along', '-130 410 50 18')):

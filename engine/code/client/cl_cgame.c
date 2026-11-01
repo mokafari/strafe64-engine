@@ -579,10 +579,10 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_BONETAG:
 		return re.BoneTag( VMA(1), args[2], args[3], args[4], VMF(5), args[6], VMA(7) );
 	case CG_R_BONEINERTIACAPTURE:
-		re.BoneInertiaCapture( args[1], args[2], args[3], args[4], VMF(5), args[6], args[7], VMF(8) );
+		re.BoneInertiaCapture( args[1], args[2], args[3], args[4], VMF(5), args[6], args[7], VMF(8), args[9], args[10] );
 		return 0;
 	case CG_R_BONEINERTIA:
-		return re.BoneInertia( args[1], args[2], args[3], VMF(4) );
+		return re.BoneInertia( args[1], args[2], args[3], VMF(4), VMF(5) );
 	case CG_R_BONECUBIC:
 		return re.BoneCubic( args[1], args[2], args[3], args[4] );
 	case CG_R_BONEDELTA:

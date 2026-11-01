@@ -2843,7 +2843,9 @@ take-offs, landings, flips and dashes play as one-shots on top. The body leans
 into acceleration and rolls into walls, and the chest follows the view pitch.
 ===============
 */
-#define SKEL_WALL_TILT		45.0f
+#define SKEL_WALL_TILT		38.0f
+#define SKEL_WALL_STANCE	0.35f	// fraction of the cycle a foot is planted
+#define SKEL_WALL_STEP		20.0f	// planted foot travels +-this along the wall
 #define SKEL_SPRINT_SPEED	230.0f	// ground speed the sprint clip reads right at
 
 // second-order follow: overshoots a little, then settles. Acceleration-limited
@@ -2893,45 +2895,61 @@ static void CG_SkelFootFlat( refEntity_t *ent, const char *foot, const vec3_t of
 	ent->bonePose = CG_BoneRotation( ent, ent->bonePose, foot, &tag, axis, ang );
 }
 
-void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t moveLeft, int wall, float a, float weight ) {
+void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t moveLeft, const vec3_t vel, int wall, float a, float weight ) {
 	static const char	*spine[3] = { "spine_01", "spine_02", "spine_03" };
 	orientation_t	tag;
 	vec3_t			fwd, pt, off, anim, up = { 0, 0, 1 }, mfwd = { 1, 0, 0 };
 	float			u, along, lift;
 	int				i, leg;
 
+	// the stride runs along the actual path: up the wall while rising, down it
+	// while sliding off, so a planted foot holds still in the world
 	VectorSet( fwd, moveLeft[1], -moveLeft[0], 0 );
+	VectorScale( fwd, sqrt( vel[0] * vel[0] + vel[1] * vel[1] ), fwd );
+	fwd[2] = vel[2];
+	if ( VectorNormalize( fwd ) < 1.0f ) {
+		VectorSet( fwd, moveLeft[1], -moveLeft[0], 0 );
+	}
 	VectorScale( moveLeft, -wall, off );
 	ent->origin[2] += 2.5f * cos( 2.0f * a ) * weight;
 	VectorCopy( ent->origin, ent->oldorigin );
 
 	for ( i = 0; i < 3; i++ ) {
 		if ( trap_R_LerpTag( &tag, ent->hModel, ent->oldframe, ent->frame, 1.0f - ent->backlerp, spine[i] ) ) {
-			ent->bonePose = CG_BoneRotation( ent, ent->bonePose, spine[i], &tag, mfwd, DEG2RAD( -wall * 11.0f * weight ) );
+			// curve back to upright, rocking over the leg that's down
+			ent->bonePose = CG_BoneRotation( ent, ent->bonePose, spine[i], &tag, mfwd,
+				DEG2RAD( -wall * ( 9.0f + 3.0f * sin( 2.0f * a ) ) * weight ) );
 			if ( i == 1 ) {
 				ent->bonePose = CG_BoneRotation( ent, ent->bonePose, spine[i], &tag, up, DEG2RAD( 18.0f ) * sin( a ) * weight );
 			}
 		}
 	}
 
+	// Running, not walking: each foot is down for SKEL_WALL_STANCE of the cycle
+	// and there's a flight phase between steps. Cadence is set by speed (see the
+	// sprint rate) so the planted foot holds still on the wall. Feet sit high and
+	// close to the hips: at wall-hug distance that's what keeps the knees bent.
 	for ( leg = 0; leg < 2; leg++ ) {
+		float	bend;
+
 		u = fmod( a / ( 2.0f * M_PI ) + leg * 0.5f, 1.0f );
 		if ( u < 0 ) {
 			u += 1.0f;
 		}
-		if ( u < 0.55f ) {			// stance: planted, travels backward
-			along = 24.0f - 48.0f * ( u / 0.55f );
+		if ( u < SKEL_WALL_STANCE ) {		// stance: planted, travels backward
+			along = SKEL_WALL_STEP - 2.0f * SKEL_WALL_STEP * ( u / SKEL_WALL_STANCE );
 			lift = 0;
-		} else {					// swing: off the wall, whips forward
-			float	t = ( u - 0.55f ) / 0.45f;
+		} else {							// swing: heel to hip, then reach forward
+			float	t = ( u - SKEL_WALL_STANCE ) / ( 1.0f - SKEL_WALL_STANCE );
 
-			along = -24.0f + 48.0f * t * t * ( 3.0f - 2.0f * t );
+			along = -SKEL_WALL_STEP + 2.0f * SKEL_WALL_STEP * t * t * ( 3.0f - 2.0f * t );
 			lift = sin( t * M_PI );
 		}
+		bend = 1.0f - fabs( along ) / SKEL_WALL_STEP;	// mid-stance the knee takes the load
 		VectorCopy( wallPt, pt );
 		VectorMA( pt, along, fwd, pt );
-		VectorMA( pt, 3.0f + 15.0f * lift, off, pt );
-		pt[2] += -14.0f + 8.0f * lift;
+		VectorMA( pt, 2.0f + 11.0f * lift + 3.0f * bend * ( 1.0f - lift ), off, pt );
+		pt[2] += -13.0f + 11.0f * lift + 3.0f * bend * ( 1.0f - lift );
 		if ( weight < 1.0f && CG_JointWorld( ent, leg ? "foot_r" : "foot_l", anim ) ) {
 			VectorSubtract( pt, anim, pt );
 			VectorMA( anim, weight, pt, pt );
@@ -3089,12 +3107,11 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		wall = CG_SkelWallSide( cent, moveLeft, vec3_origin, pe->skelWallPt );
 		clip = SKEL_SPRINT_LOOP;
 	} else if ( !ground ) {
-		wall = ( speed > 200 && vel[2] > -300 ) ? CG_SkelWallSide( cent, moveLeft, vel, pe->skelWallPt ) : 0;
 		if ( pe->skelGround ) {
 			pe->skelAirStart = cg.time;
 		}
 		// bunny hops are part of the run: stay in stride through short air time
-		if ( wall || ( cur == SKEL_SPRINT_LOOP && cg.time - pe->skelAirStart < 350 ) ) {
+		if ( cur == SKEL_SPRINT_LOOP && cg.time - pe->skelAirStart < 350 ) {
 			clip = SKEL_SPRINT_LOOP;
 		} else {
 			clip = speed > 500 ? SKEL_NINJAJUMP_IDLE_LOOP : SKEL_JUMP_LOOP;
@@ -3188,7 +3205,9 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 			toB = 1.0f - ( pe->skelPhase - toF );
 			trap_R_BoneInertiaCapture( model, s->clientNum,
 				fromFirst + ( fromF + 1 < fromN ? fromF + 1 : fromF ), fromFirst + fromF, fromB,
-				skelClips[clip].first + ( toF + 1 < skelClips[clip].count ? toF + 1 : toF ), skelClips[clip].first + toF, toB );
+				skelClips[clip].first + ( toF + 1 < skelClips[clip].count ? toF + 1 : toF ), skelClips[clip].first + toF, toB,
+				fromFirst + ( fromF + 2 < fromN ? fromF + 2 : fromN - 1 ),
+				skelClips[clip].first + ( toF + 2 < skelClips[clip].count ? toF + 2 : skelClips[clip].count - 1 ) );
 			pe->skelStart = cg.time;
 			// snappy into action, soft into rest
 			pe->skelInertK = ( clip == SKEL_IDLE_LOOP || clip == SKEL_CROUCH_IDLE_LOOP ) ? 10.0f
@@ -3198,6 +3217,12 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	rate = 1.0f;
 	if ( clip == SKEL_SPRINT_LOOP ) {
 		rate = Com_Clamp( 0.8f, 3.0f, ( speed > 1 ? speed : SKEL_SPRINT_SPEED ) / SKEL_SPRINT_SPEED );
+		if ( wall ) {
+			// cycle length on the wall = stride / stance fraction, so the foot sticks
+			float	cycle = 2.0f * SKEL_WALL_STEP / SKEL_WALL_STANCE;
+
+			rate = Com_Clamp( 1.0f, 3.5f, speed / cycle * ( skelClips[clip].count - 1 ) / 30.0f );
+		}
 	} else if ( clip == SKEL_WALK_LOOP ) {
 		rate = Com_Clamp( 0.7f, 1.8f, speed / 110.0f );
 	} else if ( CG_SkelOneShot( clip ) && clip != SKEL_SWORD_BLOCK ) {
@@ -3332,7 +3357,11 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	{
 		float	it = ( cg.time - pe->skelStart ) * 0.001f * pe->skelInertK;
 
-		ent.bonePose = trap_R_BoneInertia( model, ent.bonePose, s->clientNum, it < 8.0f ? ( 1.0f + it ) * exp( -it ) : 0 );
+		// offset and its velocity on a critically damped spring (Bollo's inertialization)
+		float	sec = ( cg.time - pe->skelStart ) * 0.001f;
+
+		ent.bonePose = trap_R_BoneInertia( model, ent.bonePose, s->clientNum,
+			it < 8.0f ? ( 1.0f + it ) * exp( -it ) : 0, it < 8.0f ? sec * exp( -it ) : 0 );
 	}
 
 	{
@@ -3373,7 +3402,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 				int		oa = skelClips[pe->skelClipUp].first + of, na = skelClips[sclip].first + nf;
 
 				trap_R_BoneInertiaCapture( model, s->clientNum + 64, oa + 1, oa, 1.0f - ( pe->skelPhaseUp - of ),
-					na + 1, na, 1.0f - ( nphase - nf ) );
+					na + 1, na, 1.0f - ( nphase - nf ), oa + 1, na + 1 );
 				pe->skelUpStart = cg.time;
 			}
 			pe->skelClipUp = sclip;
@@ -3387,7 +3416,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 			{
 				float	ut = ( cg.time - pe->skelUpStart ) * 0.03f;
 
-				ent.bonePose = trap_R_BoneInertia( model, ent.bonePose, s->clientNum + 64, ut < 8.0f ? ( 1.0f + ut ) * exp( -ut ) : 0 );
+				ent.bonePose = trap_R_BoneInertia( model, ent.bonePose, s->clientNum + 64, ut < 8.0f ? ( 1.0f + ut ) * exp( -ut ) : 0, 0 );
 			}
 		}
 	}
@@ -3561,7 +3590,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	}
 
 	if ( wall ) {
-		CG_SkelWallStride( &ent, pe->skelWallPt, moveLeft, wall,
+		CG_SkelWallStride( &ent, pe->skelWallPt, moveLeft, vel, wall,
 			pe->skelPhase / ( skelClips[clip].count - 1 ) * 2.0f * M_PI, wallW );
 	}
 
@@ -3589,6 +3618,8 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 				}
 			}
 			Com_Printf( "%s\n", line );
+			Com_Printf( "SKW t=%d o=%.0f,%.0f,%.0f v=%.0f,%.0f,%.0f wr=%d g=%d\n", cg.time, cent->lerpOrigin[0], cent->lerpOrigin[1], cent->lerpOrigin[2],
+				vel[0], vel[1], vel[2], cg.predictedPlayerState.stats[STAT_WALLRUN], ground );
 		}
 	}
 

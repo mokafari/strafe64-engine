@@ -32,10 +32,10 @@ static int RE_BoneTag( orientation_t *tag, qhandle_t model, int frame, int oldfr
 	return R_LerpTag( tag, model, frame, oldframe, backlerp, joint );
 }
 
-static void RE_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack ) {
+static void RE_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack, int fromNext, int toNext ) {
 }
 
-static int RE_BoneInertia( qhandle_t model, int pose, int slot, float weight ) {
+static int RE_BoneInertia( qhandle_t model, int pose, int slot, float weight, float weightVel ) {
 	return pose;
 }
 

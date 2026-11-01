@@ -1939,15 +1939,15 @@ void		trap_R_DrawStretchPic( float x, float y, float w, float h,
 void		trap_R_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs );
 int			CG_PlantLimb( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end,
 				const vec3_t start, const vec3_t dir, float range, float standoff );
-void		CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t moveLeft, int wall, float a, float weight );
+void		CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t moveLeft, const vec3_t vel, int wall, float a, float weight );
 int			CG_LimbToWorld( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end, const vec3_t pt );
 qboolean	CG_JointWorld( refEntity_t *ent, const char *joint, vec3_t out );
 int			CG_BoneRotation( refEntity_t *ent, int pose, const char *joint, const orientation_t *tag,
 				const vec3_t axis, float angle );
 int			trap_R_BoneLayer( qhandle_t model, int pose, const char *root, int frame, int oldframe, float backlerp, float weight );
 int			trap_R_BoneTag( orientation_t *tag, qhandle_t model, int frame, int oldframe, float backlerp, int pose, const char *joint );
-void		trap_R_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack );
-int			trap_R_BoneInertia( qhandle_t model, int pose, int slot, float weight );
+void		trap_R_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack, int fromNext, int toNext );
+int			trap_R_BoneInertia( qhandle_t model, int pose, int slot, float weight, float weightVel );
 int			trap_R_BoneCubic( qhandle_t model, int pose, int before, int after );
 int			trap_R_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat );
 int			trap_R_LerpTag( orientation_t *tag, clipHandle_t mod, int startFrame, int endFrame, 
