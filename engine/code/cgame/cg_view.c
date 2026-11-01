@@ -329,9 +329,9 @@ static void CG_AddTestModel (void) {
 		// and the wall-run gait against whatever wall is on the model's left
 		trap_Cvar_VariableStringBuffer( "cg_testWallRun", buf, sizeof( buf ) );
 		if ( buf[0] ) {
-			vec3_t	mid, end, ang = { 0, 0, 22 };
+			vec3_t	mid, end, ang = { 0, 0, 45 };
 			trace_t	tr;
-			refEntity_t	*e = &cg.testModelEntity;
+			refEntity_t	copy = cg.testModelEntity, *e = &copy;	// per-frame: never touch the original
 
 			vectoangles( e->axis[0], end );
 			ang[YAW] = end[YAW];
@@ -340,7 +340,12 @@ static void CG_AddTestModel (void) {
 			CG_Trace( &tr, mid, NULL, NULL, end, -1, MASK_SOLID );
 			VectorCopy( e->axis[1], end );
 			AnglesToAxis( ang, e->axis );
+			VectorCopy( mid, e->origin );
+			e->origin[2] += 8;
+			VectorMA( e->origin, -32, e->axis[2], e->origin );
 			CG_SkelWallStride( e, tr.endpos, end, 1, atof( buf ) );
+			trap_R_AddRefEntityToScene( e );
+			return;
 		}
 		trap_Cvar_VariableStringBuffer( "cg_testIK", buf, sizeof( buf ) );
 		if ( sscanf( buf, "%f %f %f", &target[0], &target[1], &target[2] ) == 3 ) {

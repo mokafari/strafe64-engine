@@ -71,14 +71,15 @@ def main():
         files = capture(o.home, 'clip', shots, base)
         sheet(files, [l for l, _ in shots], o.cols, o.out + '/clips.png')
     if o.only != 'clips':
-        wall = 'setviewpos 100 460 0 180; wait 5; setviewpos 100 460 0 180; wait 5; testmodel models/s64/mannequin.iqm; wait 5; setviewpos -30 345 60 70; wait 10'
+        wall = 'setviewpos 100 460 0 180; wait 5; setviewpos 100 460 0 180; wait 5; testmodel models/s64/mannequin.iqm; wait 10'
         sprint = next(c for c in clips() if c[0] == 'Sprint_Loop')
         shots = []
-        for k in range(12):
-            a = 2 * math.pi * k / 12
-            shots.append((f'wallrun {k * 30} deg', f'set cg_testFrame {sprint[1] + sprint[2] * k // 12}; set cg_testWallRun {a:.3f}'))
+        for view, pos in (('side', '-40 340 60 72'), ('along', '-130 410 50 18')):
+            for k in range(8):
+                a = 2 * math.pi * k / 8
+                shots.append((f'{view} {k * 45} deg', f'setviewpos {pos}; set cg_testFrame {sprint[1] + sprint[2] * k // 8}; set cg_testWallRun {a:.3f}'))
         files = capture(o.home, 'wall', shots, wall)
-        sheet(files, [l for l, _ in shots], 6, o.out + '/wallrun.png')
+        sheet(files, [l for l, _ in shots], 8, o.out + '/wallrun.png')
 
 if __name__ == '__main__':
     main()
