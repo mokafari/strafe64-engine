@@ -1226,9 +1226,7 @@ The main player will have this called for BOTH cases, so effects like light and
 sound should only be done on the world model case.
 =============
 */
-#define CG_SKEL_GRIP_PITCH	0
-#define CG_SKEL_GRIP_YAW	0
-#define CG_SKEL_GRIP_ROLL	0
+#define CG_SKEL_SWORD_SCALE	1.45f	// the model is 24u: about a real katana on a 64u body
 
 void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent, int team ) {
 	qboolean	skeletal;
@@ -1288,20 +1286,28 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	skeletal = !trap_R_LerpTag(&lerped, parent->hModel, parent->oldframe, parent->frame,
 		1.0 - parent->backlerp, "tag_weapon");
 	if ( skeletal ) {
-		vec3_t	gripAng, grip[3], temp[3];
+		orientation_t	knuckle, index, pinky;
+		vec3_t			across, fingers;
 
-		orientation_t	knuckle;
-
-		// the real posed hand (layers, IK, aim); the grip sits in the palm
+		// a handle lies across the knuckles, so the grip is read off the posed fist:
+		// handle along pinky->index, edge facing out over the fingers
 		trap_R_BoneTag(&lerped, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "hand_r");
-		if ( trap_R_BoneTag(&knuckle, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "middle_01_r") ) {
-			VectorAdd( lerped.origin, knuckle.origin, lerped.origin );
-			VectorScale( lerped.origin, 0.5f, lerped.origin );
+		if ( trap_R_BoneTag(&knuckle, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "middle_01_r")
+			&& trap_R_BoneTag(&index, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "index_01_r")
+			&& trap_R_BoneTag(&pinky, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "pinky_01_r") ) {
+			VectorSubtract( index.origin, pinky.origin, across );
+			VectorNormalize( across );
+			VectorSubtract( knuckle.origin, lerped.origin, fingers );
+			VectorMA( fingers, -DotProduct( fingers, across ), across, fingers );
+			VectorNormalize( fingers );
+			VectorMA( lerped.origin, 3.0f, fingers, lerped.origin );		// inside the curled fingers
+			VectorCopy( across, lerped.axis[0] );
+			VectorCopy( fingers, lerped.axis[2] );
+			CrossProduct( lerped.axis[2], lerped.axis[0], lerped.axis[1] );
+			// seat the handle's centre (model 3, 0, -2.3) on that point
+			VectorMA( lerped.origin, -3.0f * CG_SKEL_SWORD_SCALE, lerped.axis[0], lerped.origin );
+			VectorMA( lerped.origin, 2.3f * CG_SKEL_SWORD_SCALE, lerped.axis[2], lerped.origin );
 		}
-		VectorSet( gripAng, CG_SKEL_GRIP_PITCH, CG_SKEL_GRIP_YAW, CG_SKEL_GRIP_ROLL );
-		AnglesToAxis( gripAng, grip );
-		MatrixMultiply( grip, lerped.axis, temp );
-		AxisCopy( temp, lerped.axis );
 	}
 	VectorCopy(parent->origin, gun.origin);
 
@@ -1317,6 +1323,12 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 	MatrixMultiply(lerped.axis, ((refEntity_t *)parent)->axis, gun.axis);
 	gun.backlerp = parent->backlerp;
+	if ( skeletal && weaponNum == WP_SWORD ) {
+		VectorScale( gun.axis[0], CG_SKEL_SWORD_SCALE, gun.axis[0] );
+		VectorScale( gun.axis[1], CG_SKEL_SWORD_SCALE, gun.axis[1] );
+		VectorScale( gun.axis[2], CG_SKEL_SWORD_SCALE, gun.axis[2] );
+		gun.nonNormalizedAxes = qtrue;
+	}
 
 	// STRAFE 64: third-person blade pose for OTHER players/bots. The stock
 	// TORSO_ATTACK md3 frames only thrust the arm forward — a flat "poke" that
