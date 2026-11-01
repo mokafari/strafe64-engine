@@ -2897,6 +2897,11 @@ static void CG_SkelFootFlat( refEntity_t *ent, const char *foot, const vec3_t of
 }
 
 // faster runs bound: longer stride, longer flight, so cadence stays human
+// 1 running level along the wall, 0 climbing or dropping
+static float CG_SkelWallFlat( float vz ) {
+	return 1.0f - Com_Clamp( 0, 1, fabs( vz ) / 170.0f );
+}
+
 static float CG_SkelWallStance( float speed ) {
 	return Com_Clamp( 0.2f, 0.35f, 110.0f / ( speed > 1 ? speed : 1 ) );
 }
@@ -2979,7 +2984,7 @@ void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t move
 		VectorCopy( wallPt, pt );
 		VectorMA( pt, along + SKEL_WALL_REACH, fwd, pt );
 		VectorMA( pt, 2.0f + 11.0f * lift + 3.0f * bend * ( 1.0f - lift ), off, pt );
-		pt[2] += -13.0f + 11.0f * lift + 3.0f * bend * ( 1.0f - lift );
+		pt[2] += -13.0f + 7.0f * CG_SkelWallFlat( vel[2] ) + 11.0f * lift + 3.0f * bend * ( 1.0f - lift );
 		if ( weight < 1.0f && CG_JointWorld( ent, leg ? "foot_r" : "foot_l", anim ) ) {
 			VectorSubtract( pt, anim, pt );
 			VectorMA( anim, weight, pt, pt );
@@ -3350,7 +3355,9 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		wantPitch = 24.0f;
 	}
 	if ( wall ) {
-		wantRoll = cg_skelWallClip.integer ? 0 : wall * SKEL_WALL_TILT;	// hang out from the wall, feet on it
+		// flat runs lay the body over further than climbs: the legs have to drive
+		// sideways into the wall, not stand down it
+		wantRoll = cg_skelWallClip.integer ? 0 : wall * ( SKEL_WALL_TILT + 16.0f * CG_SkelWallFlat( pe->skelVelF[2] ) );
 		// lean along the actual path: into a climb, back on the way down
 		wantPitch = Com_Clamp( -10, 14, RAD2DEG( atan2( vel[2], speed > 1 ? speed : 1 ) ) * 0.3f + 3.0f );
 	}
@@ -3374,7 +3381,8 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	ent.origin[2] -= 24;
 	// the mocap's feet reach out to the wall: stand the body off it so they land on
 	// the surface instead of through it
-	pe->skelWallOff += ( ( wall && cg_skelWallClip.integer ? 1.0f : 0.0f ) - pe->skelWallOff ) * ( 1.0f - exp( -dt * 14.0f ) );
+	pe->skelWallOff += ( ( wall ? ( cg_skelWallClip.integer ? 1.0f : 0.7f * CG_SkelWallFlat( pe->skelVelF[2] ) ) : 0.0f )
+		- pe->skelWallOff ) * ( 1.0f - exp( -dt * 14.0f ) );
 	if ( pe->skelWallOff > 0.01f ) {
 		float	away = pe->skelWallSide * -SKEL_WALL_CLIP_OFF * pe->skelWallOff;
 

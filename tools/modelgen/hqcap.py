@@ -33,6 +33,7 @@ MOVES = {
     'wall_in':    ('-1050 464 40 0', '+forward; wait 60; +moveup; wait 2; -moveup; wait 14; +right; wait 7; -right', 300),
     'wall_out':   ('-1050 464 40 0', '+forward; wait 60; +moveup; wait 2; -moveup; wait 14; +left; wait 7; -left', 300),
     'wall_down':  ('-1050 464 40 0', '+forward; wait 60; +moveup; wait 2; -moveup; wait 64', 300),
+    'wall_flat':  ('-880 464 170 0', '+forward; wait 34', 300),
     'run':        ('-1250 800 40 0', '+forward; wait 90', 90),
     'land':       ('300 800 400 0', 'wait 48', 90),
 }
@@ -91,7 +92,17 @@ def main():
     ap.add_argument('--angles', default='')
     ap.add_argument('--set', default='')
     ap.add_argument('--tag', default='')
+    ap.add_argument('--big', type=int, help='one angle, large frames')
     o = ap.parse_args()
+    if o.big is not None:
+        files = film(o, o.big)
+        pick = [files[6 + k * (len(files) - 7) // 7] for k in range(8)]
+        c = Image.new('RGB', (1800, 900))
+        for k, f in enumerate(pick):
+            c.paste(Image.open(f).crop((460, 140, 1460, 1140)).resize((450, 450)), ((k % 4) * 450, (k // 4) * 450))
+        c.save(f'{o.out}/{o.tag or o.move}_big.jpg', quality=93)
+        print('wrote big')
+        return
     if o.angles:
         run_angles(o)
         return
