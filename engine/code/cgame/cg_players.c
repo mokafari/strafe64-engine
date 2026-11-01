@@ -3093,6 +3093,28 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		}
 	}
 
+	// landing: a critically damped spring sinks the hips, feet stay put so the
+	// knees take the weight. Harder drops compress deeper
+	{
+		float	w = 13.0f;
+
+		if ( ground && !pe->skelGround && pe->skelVel[2] < -200 ) {
+			pe->skelDropV = Com_Clamp( 0, 700, -pe->skelVel[2] * 0.7f );
+		}
+		pe->skelDropV += ( -w * w * pe->skelDrop - 2 * w * pe->skelDropV ) * dt;
+		pe->skelDrop += pe->skelDropV * dt;
+		if ( pe->skelDrop > 0.5f && ground ) {
+			vec3_t	fl, fr;
+
+			if ( CG_JointWorld( &ent, "foot_l", fl ) && CG_JointWorld( &ent, "foot_r", fr ) ) {
+				ent.origin[2] -= pe->skelDrop;
+				VectorCopy( ent.origin, ent.oldorigin );
+				ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, "thigh_l", "calf_l", "foot_l", fl );
+				ent.bonePose = CG_LimbToWorld( &ent, ent.bonePose, "thigh_r", "calf_r", "foot_r", fr );
+			}
+		}
+	}
+
 	// wall run: stride along the real surface, feet alternating on the wall
 	if ( wall ) {
 		vec3_t	fwd, pt, off;
@@ -3115,12 +3137,6 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	pe->skelGround = ground;
 	VectorCopy( vel, pe->skelVel );
 	trap_R_AddRefEntityToScene( &ent );
-	// the hand follows the layer, so the weapon reads its tag from those frames
-	if ( pe->skelUpper > 0.5f ) {
-		ent.oldframe = hold;
-		ent.frame = hold + 1;
-		ent.backlerp = 1.0f - ( pe->skelPhaseUp - (int)pe->skelPhaseUp );
-	}
 	CG_AddPlayerWeapon( &ent, NULL, cent, cgs.clientinfo[s->clientNum].team );
 }
 

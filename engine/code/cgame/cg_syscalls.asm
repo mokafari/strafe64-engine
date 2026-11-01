@@ -105,3 +105,4 @@ equ	testPrintFloat				-111
 
 equ	trap_R_BoneDelta			-113
 equ	trap_R_BoneLayer			-114
+equ	trap_R_BoneTag				-115

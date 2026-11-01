@@ -1813,6 +1813,7 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 
 	re.MarkFragments = R_MarkFragments;
 	re.BoneLayer = RE_BoneLayer;
+	re.BoneTag = RE_BoneTag;
 	re.BoneDelta = RE_BoneDelta;
 	re.LerpTag = R_LerpTag;
 	re.ModelBounds = R_ModelBounds;

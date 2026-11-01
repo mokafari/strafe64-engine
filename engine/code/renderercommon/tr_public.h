@@ -87,6 +87,7 @@ typedef struct {
 				   int maxPoints, vec3_t pointBuffer, int maxFragments, markFragment_t *fragmentBuffer );
 
 	int		(*BoneLayer)( qhandle_t model, int pose, const char *root, int frame, int oldframe, float backlerp, float weight );
+	int		(*BoneTag)( orientation_t *tag, qhandle_t model, int frame, int oldframe, float backlerp, int pose, const char *joint );
 	int		(*BoneDelta)( qhandle_t model, int pose, const char *joint, const float *quat );
 	int		(*LerpTag)( orientation_t *tag,  qhandle_t model, int startFrame, int endFrame, 
 					 float frac, const char *tagName );

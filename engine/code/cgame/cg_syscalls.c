@@ -299,6 +299,10 @@ int		trap_R_BoneLayer( qhandle_t model, int pose, const char *root, int frame, i
 	return syscall( CG_R_BONELAYER, model, pose, root, frame, oldframe, PASSFLOAT( backlerp ), PASSFLOAT( weight ) );
 }
 
+int		trap_R_BoneTag( orientation_t *tag, qhandle_t model, int frame, int oldframe, float backlerp, int pose, const char *joint ) {
+	return syscall( CG_R_BONETAG, tag, model, frame, oldframe, PASSFLOAT( backlerp ), pose, joint );
+}
+
 int		trap_R_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat ) {
 	return syscall( CG_R_BONEDELTA, model, pose, joint, quat );
 }

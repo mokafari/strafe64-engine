@@ -1290,8 +1290,14 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	if ( skeletal ) {
 		vec3_t	gripAng, grip[3], temp[3];
 
-		trap_R_LerpTag(&lerped, parent->hModel, parent->oldframe, parent->frame,
-			1.0 - parent->backlerp, "hand_r");
+		orientation_t	knuckle;
+
+		// the real posed hand (layers, IK, aim); the grip sits in the palm
+		trap_R_BoneTag(&lerped, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "hand_r");
+		if ( trap_R_BoneTag(&knuckle, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "middle_01_r") ) {
+			VectorAdd( lerped.origin, knuckle.origin, lerped.origin );
+			VectorScale( lerped.origin, 0.5f, lerped.origin );
+		}
 		VectorSet( gripAng, CG_SKEL_GRIP_PITCH, CG_SKEL_GRIP_YAW, CG_SKEL_GRIP_ROLL );
 		AnglesToAxis( gripAng, grip );
 		MatrixMultiply( grip, lerped.axis, temp );

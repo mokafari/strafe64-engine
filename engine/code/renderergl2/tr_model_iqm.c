@@ -1909,6 +1909,31 @@ void RB_IQMSurfaceAnimVao(srfVaoIQModel_t * surface)
 	glState.boneAnimation = 0;
 }
 
+// a joint's final transform, with the entity's layers and deltas applied
+int RE_BoneTag( orientation_t *tag, qhandle_t model, int frame, int oldframe, float backlerp, int pose, const char *joint ) {
+	model_t		*mod = R_GetModelByHandle( model );
+	iqmData_t	*data;
+	float		mats[IQM_MAX_JOINTS * 12], out[12];
+	const float	*m;
+	int			j = R_FindJoint( model, joint ), i;
+
+	if ( j < 0 ) {
+		return qfalse;
+	}
+	data = mod->modelData;
+	ComputePoseMats( data, data->num_frames ? frame % data->num_frames : 0, data->num_frames ? oldframe % data->num_frames : 0,
+		backlerp, mats, pose > 0 && pose <= numBonePoses ? &bonePoses[pose - 1] : NULL );
+	Matrix34Multiply( &mats[j * 12], data->bindJoints + 12 * j, out );
+	m = out;
+	for ( i = 0; i < 3; i++ ) {
+		tag->axis[i][0] = m[i];
+		tag->axis[i][1] = m[i + 4];
+		tag->axis[i][2] = m[i + 8];
+		tag->origin[i] = m[i * 4 + 3];
+	}
+	return qtrue;
+}
+
 int R_IQMLerpTag( orientation_t *tag, iqmData_t *data,
 		  int startFrame, int endFrame, 
 		  float frac, const char *tagName ) {

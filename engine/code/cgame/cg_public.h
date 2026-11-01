@@ -184,7 +184,8 @@ typedef enum {
 	CG_TESTPRINTFLOAT,
 	CG_ACOS,
 	CG_R_BONEDELTA,
-	CG_R_BONELAYER
+	CG_R_BONELAYER,
+	CG_R_BONETAG
 } cgameImport_t;
 
 
