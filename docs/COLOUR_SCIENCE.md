@@ -2,6 +2,44 @@
 
 Goal look: **hyper-real, ethereal night**: believable light and material response, moonlit and dreamy, with the sky and the ground belonging to one world. This file records what was researched, how we measure, the numeric targets, and what to change next. Tooling is in `tools/colour/metrics.py`, targets in `docs/colour-targets.json`, shots and scopes in `docs/screenshots/baseline/`.
 
+## 0. Look targets from the concept art (2026-11-02, supersedes the proposals in section 4)
+
+Reference set: your four concept images (`assets/concept-art/nocturne-reservoir/{causeway,waterside}.png`, `nocturne-world-v1/{moon-court,rain-gallery}.png`; prompts in the two `generation.json` files). Measured with `tools/colour/metrics.py`; numbers in `docs/screenshots/references/metrics.json`; targets rewritten in `docs/colour-targets.json` (the references pass them, our shots do not).
+
+**What the look is, in numbers** (4 references):
+
+| Trait | Reference | Our latest shots (round 6) |
+|---|---|---|
+| Mean Oklab chroma | 0.021-0.025 | 0.050-0.065 (2-3x too colourful) |
+| Ground chroma (bottom quarter) | 0.017-0.021, neutral grey-ivory stone | 0.053-0.060, periwinkle |
+| Sky chroma (top quarter) | 0.024-0.030 | 0.056-0.066 |
+| Ground luma / sky luma | 1.3-2.5 | 4-7 |
+| Ground luma | 0.21-0.30 | 0.39-0.58 |
+| Sky luma | 0.12-0.17 | 0.08-0.15 |
+| Black level P1 | 0.030-0.055 (lifted) | 0.013-0.027 |
+| Crushed (< 0.03) | 0.04-1.0 % | 2-8 % |
+| Highlights P99 | 0.71-0.83 | 0.63-0.84 (already in range, so the old 0.85 target was wrong) |
+| Clipped | 0.06-0.45 % | < 0.1 % |
+| Warm (amber) pixels, share of coloured pixels | 3-23 % | 0.1-0.7 % (overview 4 %) |
+| Shadow hue / highlight hue | about 255 deg (blue) / 65-95 deg (amber): gap 107-172 | gap 4-62 |
+
+**Reading of the art** (what to copy):
+1. **Neutral stone, coloured light.** The stone is pale warm-grey ivory and black-veined marble; blue lives in the sky, the shade and the water, not in the material. Ours is a blue-tinted floor, which is where most of the extra chroma comes from.
+2. **The ground is darker than we think.** It sits only about 1.3-2.5x brighter than the sky; the moon and the warm lamps are the brightest things in frame. Our plaza is the brightest object by 4-7x.
+3. **Warm amber is a real second colour,** carried by many small recessed floor and step strips (and wall lights), with cyan only on a few thin seam lines and a lintel. These warm points are what create the 100+ degree hue gap.
+4. **Lifted blacks and almost no clipping:** nothing is pure black, nothing is blown, and highlights stop around 0.8.
+5. **Reflective surfaces.** Still water or wet polished stone mirrors the moon, lamps and structures. This is a large part of the "hyper-real" read and we have none of it (r_pbr / cubemaps are off; planar reflection would need map or renderer work).
+6. **Structure:** large monolithic forms, human-scale detail (stone joints, chisel marks, cracks), uneven stone, steps with lit nosings, volumetric haze and cloud sea at the horizon.
+
+**Gap list** (ordered by how far we are from the references, and what to try):
+1. Floor and wall material: re-tint to a neutral warm-grey (texture or vertex colour), keep the blue in the shade only. Biggest chroma and luma win.
+2. Lower the key light on the ground so ground/sky ends up at 1.3-2.5; the moon, sky and the warm strips become the brightest things.
+3. Replace the blue split-tone with the references' scheme: cool blue shadows, amber highlights; add many low warm point/strip lights (step nosings, floor strips, column bases) instead of a few big pools.
+4. Raise the black level (`r_gradeLift` about 0.04-0.06) and reduce crush.
+5. Lower overall saturation (`r_gradeSaturation` about 0.6) once the floor is neutral; do not do this first, or the neon dies.
+6. Reflections: water/wet stone planes, then PBR/cubemaps once the floor is not blown out.
+7. Detail and haze: stone joints, chisel marks, horizon haze and cloud sea (the overview already has the clouds).
+
 ## 1. What went wrong in rounds 2-4 (measured, not by eye)
 
 Your report: the sky is too dark and doesn't fit the world, and the light looks weird (the pillar with an orange lower half and a ragged edge).
@@ -68,7 +106,7 @@ python3 -I tools/colour/metrics.py compare REF.jpg TEST.jpg -o out_dir
 ```
 The sky/floor ROI boxes assume the framing of the five nocturne views; in the long-axis shot the "sky" box lands on a lit lintel, so its sky numbers there are not meaningful. Capture protocol: pinned post stack, 1280x720, wait about 7 s per teleport for exposure to settle, same camera positions.
 
-## 4. Targets (`docs/colour-targets.json`)
+## 4. Earlier targets (proposals; superseded by section 0 and the current `docs/colour-targets.json`)
 
 | Metric | Target | Basis |
 |---|---|---|

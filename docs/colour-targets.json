@@ -1,57 +1,70 @@
 {
-  "_about": "Numeric targets for the nocturne 'hyper-real ethereal night' look. Checked by tools/colour/metrics.py report --targets. 'basis' says where each number comes from: R = backed by the research in docs/COLOUR_SCIENCE.md, A = user-approved reference (the original baseline look the user said felt right), P = proposal derived from reasoning, to be confirmed against reference stills.",
+  "_about": "Targets for the nocturne 'hyper-real ethereal night' look, DERIVED FROM THE USER'S CONCEPT ART (assets/concept-art/nocturne-reservoir + nocturne-world-v1, 4 images, measured with tools/colour/metrics.py; reference values in docs/screenshots/references/metrics.json). Ranges = reference min/max widened ~15%. Checked by metrics.py report --targets. Framing-independent band metrics (top/bottom quarter) are used instead of ROIs.",
   "global": {
     "clip_pct_any_ch_ge250": {
-      "max": 1.0,
-      "basis": "R: filmic shoulder / tonemapper docs: clipped highlights lose detail"
+      "max": 0.6,
+      "basis": "ref 0.06-0.45"
     },
     "crushed_pct_luma_lt_0.03": {
-      "min": 2.0,
-      "max": 8.0,
-      "basis": "P: ethereal wants a lifted floor, but not flat"
+      "max": 1.5,
+      "basis": "ref 0.04-0.99"
     },
     "luma_p1": {
-      "min": 0.01,
-      "basis": "P: blacks lifted slightly (haze), never exactly 0"
+      "min": 0.025,
+      "max": 0.065,
+      "basis": "ref 0.030-0.055: blacks are lifted, never crushed"
     },
     "luma_p50": {
       "min": 0.17,
-      "max": 0.3,
-      "basis": "A: baseline median 0.24 felt right; rounds B-D at 0.12-0.14 felt too dark"
+      "max": 0.28,
+      "basis": "ref 0.20-0.24"
     },
     "luma_p99": {
-      "min": 0.85,
-      "max": 0.97,
-      "basis": "P: highlights reach near white but roll off"
+      "min": 0.65,
+      "max": 0.9,
+      "basis": "ref 0.71-0.83 (old 0.85+ target was too strict)"
     },
     "oklab_chroma_mean": {
-      "min": 0.04,
-      "max": 0.09,
-      "basis": "A: baseline 0.056, ethereal = restrained colour"
+      "min": 0.017,
+      "max": 0.03,
+      "basis": "ref 0.021-0.025; ours was 0.05-0.07 (2-3x too colourful)"
+    },
+    "oklab_chroma_p95": {
+      "max": 0.065,
+      "basis": "ref 0.037-0.054"
+    },
+    "top_luma": {
+      "min": 0.1,
+      "max": 0.2,
+      "basis": "ref 0.12-0.17: sky is mid-dark, not black"
+    },
+    "bottom_luma": {
+      "min": 0.17,
+      "max": 0.34,
+      "basis": "ref 0.21-0.30; ours 0.39-0.58 (ground ~2x too bright)"
+    },
+    "ground_to_sky_luma_ratio": {
+      "min": 0.9,
+      "max": 2.6,
+      "basis": "ref 1.3-2.5; ours 4-7"
+    },
+    "bottom_chroma": {
+      "max": 0.025,
+      "basis": "ref 0.017-0.021: ground is neutral stone; ours 0.055 periwinkle"
+    },
+    "top_chroma": {
+      "min": 0.02,
+      "max": 0.036,
+      "basis": "ref 0.024-0.030; ours 0.06"
+    },
+    "warm_pct_hue30_110": {
+      "min": 2.5,
+      "max": 25,
+      "basis": "ref 2.8-23% of coloured pixels are warm amber (lit lamps, strips); ours <1% except overview"
     },
     "split_tone_hue_gap_deg": {
-      "min": 30,
-      "basis": "R: grading guides: add warm/cool separation, a purely monochrome blue frame reads flat"
-    },
-    "sky_to_floor_luma_ratio": {
-      "max": 7.5,
-      "basis": "P: sky and lit ground must sit within ~3 stops so neither is sacrificed to exposure"
-    }
-  },
-  "regions": {
-    "sky": {
-      "luma": {
-        "min": 0.09,
-        "max": 0.2,
-        "basis": "A: baseline sky luma 0.09-0.13 'fit the world'; 0.05-0.07 did not"
-      }
-    },
-    "floor": {
-      "luma": {
-        "min": 0.5,
-        "max": 0.8,
-        "basis": "P: lit marble below the shoulder so veining survives"
-      }
+      "min": 100,
+      "basis": "ref 107-172: cool blue shadows (hue ~255) vs amber highlights (hue ~65-95)"
     }
   }
 }

@@ -83,6 +83,15 @@ def stats(rgb, rois=None):
         "mean_rgb": [round(float(v * 255)) for v in rgb.reshape(-1, 3).mean(0)],
     }
     H, Wd = y.shape
+    # band stats: top quarter ~ sky, bottom quarter ~ ground (framing-independent, unlike ROIs)
+    top, bot = slice(0, H // 4), slice(3 * H // 4, None)
+    d["top_luma"] = float(y[top].mean()); d["bottom_luma"] = float(y[bot].mean())
+    d["top_chroma"] = float(C[top].mean()); d["bottom_chroma"] = float(C[bot].mean())
+    d["ground_to_sky_luma_ratio"] = d["bottom_luma"] / max(d["top_luma"], 1e-4)
+    colourful = C > 0.02
+    d["warm_pct_hue30_110"] = float(100 * ((h > 30) & (h < 110) & colourful).mean())
+    d["cool_pct_hue215_290"] = float(100 * ((h > 215) & (h < 290) & colourful).mean())
+    d["oklab_chroma_p95_"] = d["oklab_chroma_p95"]
     d["regions"] = {}
     for n, (x0, y0, x1, y1) in (rois or {}).items():
         sl = (slice(int(y0 * H), int(y1 * H)), slice(int(x0 * Wd), int(x1 * Wd)))
@@ -185,7 +194,7 @@ def main():
         fig.colorbar(im, label="dE_OK (x100)"); fig.savefig(os.path.join(a.out, "dE_heatmap.png"), dpi=90, bbox_inches="tight"); plt.close(fig)
     json.dump(results, open(os.path.join(a.out, "metrics.json"), "w"), indent=1)
     keys = ["luma_p1", "luma_p50", "luma_p99", "clip_pct_any_ch_ge250", "crushed_pct_luma_lt_0.03", "oklab_chroma_mean",
-            "shadow_hue_deg", "highlight_hue_deg", "split_tone_hue_gap_deg", "sky_to_floor_luma_ratio"]
+            "top_luma", "bottom_luma", "ground_to_sky_luma_ratio", "bottom_chroma", "warm_pct_hue30_110", "split_tone_hue_gap_deg"]
     print("%-34s" % "metric" + "".join("%-26s" % n[-24:] for n in results if not n.startswith("_")))
     for k in keys:
         print("%-34s" % k + "".join("%-26s" % ("%.3f" % r[k] if k in r else "-") for n, r in results.items() if not n.startswith("_")))
