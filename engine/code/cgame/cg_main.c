@@ -328,7 +328,8 @@ static cvarTable_t cvarTable[] = {
 	{ &au_level, "au_level", "0", 0 },
 	{ &cg_dofBulletTime, "cg_dofBulletTime", "1", CVAR_ARCHIVE },
 	{ &cg_dofBase, "cg_dofBase", "0", CVAR_ARCHIVE },
-	{ &cg_dofMax, "cg_dofMax", "14", CVAR_ARCHIVE },
+	// Keep the slow-motion focus pull without washing out nearby materials.
+	{ &cg_dofMax, "cg_dofMax", "6", CVAR_ARCHIVE },
 	{ &cg_dofFocusTrace, "cg_dofFocusTrace", "1", CVAR_ARCHIVE },
 	{ &cg_viewsize, "cg_viewsize", "100", CVAR_ARCHIVE },
 	{ &cg_shadows, "cg_shadows", "1", CVAR_ARCHIVE  },
@@ -1371,6 +1372,24 @@ CG_StartMusic
 
 ======================
 */
+static qboolean CG_FindMusicTrack(const char *requested, char *out, int outSize) {
+	char formats[128], base[MAX_QPATH], *cursor, *ext;
+	fileHandle_t file;
+	trap_Cvar_VariableStringBuffer("s_supportedCodecs", formats, sizeof(formats));
+	COM_StripExtension(requested, base, sizeof(base));
+	cursor = formats;
+	while (*(ext = COM_Parse(&cursor))) {
+		Com_sprintf(out, outSize, "%s.%s", base, ext);
+		file = 0;
+		if (trap_FS_FOpenFile(out, &file, FS_READ) > 0) {
+			trap_FS_FCloseFile(file);
+			return qtrue;
+		}
+		if (file) trap_FS_FCloseFile(file);
+	}
+	return qfalse;
+}
+
 void CG_StartMusic( void ) {
 	char	*s;
 	char	parm1[MAX_QPATH], parm2[MAX_QPATH];
@@ -1379,7 +1398,7 @@ void CG_StartMusic( void ) {
 
 	// Randomized drum & bass. The generated maps point CS_MUSIC at tracker
 	// modules (.xm) that aren't shipped, so honoring it just gives silence.
-	// Instead pick a random DnB mp3 from baseoa/music/ on every level load,
+	// Prefer installed, decodable DnB tracks from baseoa/music/ on each load,
 	// seeded off trap_Milliseconds (real uptime at load) so it varies run to
 	// run, and loop it. `set cg_musicShuffle 0` restores the map's CS_MUSIC.
 	static const char *dnb[] = {
@@ -1407,24 +1426,39 @@ void CG_StartMusic( void ) {
 	// (s_musicPlaylistLoop) the whole queue instead of one looped track. This
 	// runs after CG_Init's own music start, so it cleanly takes over without
 	// the single-track flicker a cfg-issued `playlist` would cause.
+	trap_Cvar_VariableStringBuffer("s_initsound", shuf, sizeof(shuf));
+	if (!strcmp(shuf, "0")) return;
 	trap_Cvar_VariableStringBuffer( "cg_musicPlaylist", plist, sizeof( plist ) );
 	if ( plist[0] ) {
-		CG_Printf( "^5music:^7 playlist %s\n", plist );
-		trap_SendConsoleCommand( va( "playlist %s\n", plist ) );
-		return;
+		fileHandle_t playlistFile = 0;
+		int length = trap_FS_FOpenFile(plist, &playlistFile, FS_READ);
+		if (playlistFile) trap_FS_FCloseFile(playlistFile);
+		if (length > 0) {
+			CG_Printf( "^5music:^7 playlist %s\n", plist );
+			trap_SendConsoleCommand( va( "playlist \"%s\"\n", plist ) );
+			return;
+		}
+		CG_Printf("^5music:^7 %s unavailable; selecting installed music\n", plist);
 	}
 
 	trap_Cvar_VariableStringBuffer( "cg_musicShuffle", shuf, sizeof( shuf ) );
 
 	if ( shuf[0] != '0' ) {
-		int	n = ARRAY_LEN( dnb );
-		int	idx = ( trap_Milliseconds() >> 3 ) % n;
-
-		if ( idx < 0 ) {
-			idx = -idx;
+		char available[ARRAY_LEN(dnb)][MAX_QPATH];
+		int i, count = 0;
+		for (i = 0; i < ARRAY_LEN(dnb); i++) {
+			if (CG_FindMusicTrack(dnb[i], available[count], MAX_QPATH)) count++;
 		}
-		CG_Printf( "^5music:^7 %s\n", dnb[idx] );
-		trap_S_StartBackgroundTrack( dnb[idx], dnb[idx] );	// loop the track
+		if (count) {
+			unsigned int idx = ((unsigned int)trap_Milliseconds() >> 3) % count;
+			CG_Printf("^5music:^7 %s\n", available[idx]);
+			trap_S_StartBackgroundTrack(available[idx], available[idx]);
+		} else {
+			// Free asset installs may contain none of the optional curated
+			// tracks. Let the engine queue only formats it can actually decode.
+			CG_Printf("^5music:^7 using installed soundtrack\n");
+			trap_SendConsoleCommand("playlist music/\n");
+		}
 		return;
 	}
 
@@ -2119,6 +2153,7 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 	cgs.media.charsetPropB		= trap_R_RegisterShaderNoMip( "menu/art/font2_prop.tga" );
 
 	CG_RegisterCvars();
+	CG_KillcamInit();
 
 	CG_InitConsoleCommands();
 

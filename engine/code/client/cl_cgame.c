@@ -268,7 +268,9 @@ qboolean CL_GetServerCommand( int serverCommandNumber ) {
 		// reliable commands then the client never got those first reliable commands
 		if ( clc.demoplaying )
 			return qfalse;
-		Com_Error( ERR_DROP, "CL_GetServerCommand: a reliable command was cycled out" );
+		Com_Error( ERR_DROP, "CL_GetServerCommand: reliable command %i was cycled out (latest %i, last executed %i, view %i, snapshot %i, timescale %.3f)",
+			serverCommandNumber, clc.serverCommandSequence, clc.lastExecutedServerCommand,
+			cl.serverTime, cl.snap.serverTime, com_timescale->value );
 		return qfalse;
 	}
 

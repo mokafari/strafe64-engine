@@ -64,7 +64,7 @@ typedef struct {
 
 typedef struct {
 	const char	*name;
-	const char	*def;		// the engine's compiled default -- the restore target
+	const char	*def;		// fallback if the cvar is not registered yet
 } kcLookCvar_t;
 
 static struct {
@@ -95,14 +95,10 @@ static struct {
 	int			obitAttacker, obitMod, obitTime;
 } kc;
 
-// The look is applied over these cvars, and teardown restores the COMPILED
-// DEFAULTS outright -- deliberately NOT a snapshot. These are CVAR_ARCHIVE
-// cvars and the engine writes q3config.cfg the moment one changes, so a crash
-// or hard kill mid-killcam bakes the look into the config on disk. A snapshot
-// taken at the next death would then capture the polluted values and faithfully
-// re-"restore" the filter forever ("killcam filter is on the whole time").
-// Restoring defaults self-heals that within one killcam. Values must match the
-// renderer/game registration defaults (tr_init.c / g_main.c).
+// Preserve the player's settings, including presets and a disabled time-bind.
+// The archived journal lets the next cgame init recover after an interrupted
+// killcam, instead of treating a temporary cinematic grade as the new baseline.
+#define KC_RESTORE_CVAR "cg_killcamRestore"
 static const kcLookCvar_t kc_lookCvars[] = {
 	{ "r_gradeSaturation",	"1.08"	},
 	{ "r_gradeTemp",		"0.04"	},
@@ -126,13 +122,42 @@ static const kcLookCvar_t kc_lookCvars[] = {
 
 static void CG_KillcamRestoreCvars( void ) {
 	int i;
-	for ( i = 0; i < (int)ARRAY_LEN( kc_lookCvars ); i++ ) {
-		trap_Cvar_Set( kc_lookCvars[i].name, kc_lookCvars[i].def );
+	char saved[MAX_INFO_STRING];
+	trap_Cvar_VariableStringBuffer(KC_RESTORE_CVAR, saved, sizeof(saved));
+	if (!saved[0]) return;
+	if (!Info_Validate(saved)) {
+		trap_Cvar_Set(KC_RESTORE_CVAR, "");
+		return;
 	}
+	for ( i = 0; i < (int)ARRAY_LEN( kc_lookCvars ); i++ ) {
+		const char *value = Info_ValueForKey(saved, kc_lookCvars[i].name);
+		if (value[0]) trap_Cvar_Set(kc_lookCvars[i].name, value);
+	}
+	// A death-to-spectator transition has no movement controller to replace
+	// the pre-death slow-motion value. Release that derived clock value too.
+	if (cg.snap && cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR
+		&& atoi(Info_ValueForKey(saved, "g_timeBind"))) {
+		trap_Cvar_Set("timescale", "1");
+	}
+	trap_Cvar_Set(KC_RESTORE_CVAR, "");
+}
+
+void CG_KillcamInit(void) {
+	trap_Cvar_Register(NULL, KC_RESTORE_CVAR, "", CVAR_ARCHIVE);
+	CG_KillcamRestoreCvars();
+	Com_Memset(&kc, 0, sizeof(kc));
 }
 
 static void CG_KillcamApplyLook( void ) {
 	qboolean matrix = ( cg_killcamStyle.integer == 1 );
+	char saved[MAX_INFO_STRING], value[64];
+	int i;
+	saved[0] = '\0';
+	for (i = 0; i < ARRAY_LEN(kc_lookCvars); i++) {
+		trap_Cvar_VariableStringBuffer(kc_lookCvars[i].name, value, sizeof(value));
+		Info_SetValueForKey(saved, kc_lookCvars[i].name, value[0] ? value : kc_lookCvars[i].def);
+	}
+	trap_Cvar_Set(KC_RESTORE_CVAR, saved);
 
 	trap_Cvar_Set( "r_gradeSaturation", "0.86" );
 	trap_Cvar_Set( "r_gradeTemp", "-0.12" );
@@ -509,7 +534,7 @@ void CG_KillcamPlayerDied( void ) {
 
 void CG_KillcamStop( void ) {
 	if ( kc.lookApplied ) {
-		CG_KillcamRestoreCvars();	// compiled defaults, incl. timescale + g_timeBind
+		CG_KillcamRestoreCvars();	// original settings, incl. timescale + g_timeBind
 		kc.lookApplied = qfalse;
 	}
 	kc.active = qfalse;
@@ -1070,8 +1095,11 @@ void CG_DrawKillcam( void ) {
 		// respawn prompt, centered just above the bottom bar, once holding
 		if ( CG_KillcamHolding() ) {
 			float pr = 0.5f + 0.5f * sin( trap_Milliseconds() * 0.006f );
-			Vector4Set( tc, cyanDim[0], cyanDim[1], cyanDim[2], ( 0.35f + 0.4f * pr ) * alpha );
-			CG_DrawMatrixString( 320 - CG_MatrixStringWidth( "FIRE TO RUN AGAIN", 1.4f ) / 2, 414,
+			float promptWidth = CG_MatrixStringWidth("FIRE TO RUN AGAIN", 1.4f);
+			Vector4Set(col, 0.01f, 0.02f, 0.03f, 0.78f * alpha);
+			CG_FillRect(320 - promptWidth * 0.5f - 10, 409, promptWidth + 20, 20, col);
+			Vector4Set( tc, cyan[0], cyan[1], cyan[2], ( 0.72f + 0.28f * pr ) * alpha );
+			CG_DrawMatrixString( 320 - promptWidth * 0.5f, 414,
 				"FIRE TO RUN AGAIN", 1.4f, tc );
 		}
 	}

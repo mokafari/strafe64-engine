@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.25)
+project(renderer_font_regression C)
+find_package(Freetype REQUIRED)
+add_executable(font_regression font_regression.c ../../engine/code/qcommon/q_shared.c)
+target_compile_definitions(font_regression PRIVATE BUILD_FREETYPE _CRT_SECURE_NO_WARNINGS)
+file(GLOB SDL_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/../../engine/code/thirdparty/SDL2-*/include")
+target_include_directories(font_regression PRIVATE ${SDL_HEADERS})
+target_link_libraries(font_regression PRIVATE Freetype::Freetype)

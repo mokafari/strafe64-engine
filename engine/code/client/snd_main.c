@@ -138,13 +138,22 @@ static int S_PlaylistAddDir( const char *dir )
 	int   added = 0;
 	int   e;
 	char  path[MAX_QPATH];
+	char  directory[MAX_QPATH];
+	int   len;
+
+	Q_strncpyz(directory, dir, sizeof(directory));
+	len = strlen(directory);
+	while (len > 0 && (directory[len - 1] == '/' || directory[len - 1] == '\\'))
+		directory[--len] = '\0';
 
 	for( e = 0; e < ARRAY_LEN( s_musicExtensions ); e++ ) {
 		int    numFiles, i;
-		char **files = FS_ListFiles( dir, s_musicExtensions[e], &numFiles );
+		char **files;
+		if (!S_CodecSupportsExtension(s_musicExtensions[e] + 1)) continue;
+		files = FS_ListFiles( directory, s_musicExtensions[e], &numFiles );
 
 		for( i = 0; i < numFiles; i++ ) {
-			Com_sprintf( path, sizeof( path ), "%s/%s", dir, files[i] );
+			Com_sprintf( path, sizeof( path ), "%s%s%s", directory, len ? "/" : "", files[i] );
 			if( S_PlaylistAddTrack( path ) )
 				added++;
 		}
@@ -308,6 +317,8 @@ static void S_Playlist_f( void )
 		const char *ext = COM_GetExtension( arg1 );
 		if( !Q_stricmp( ext, "m3u" ) || !Q_stricmp( ext, "m3u8" ) )
 			added = S_PlaylistAddM3U( arg1 );
+		else if (S_CodecSupportsExtension(ext))
+			added = S_PlaylistAddTrack(arg1) ? 1 : 0;
 		else
 			added = S_PlaylistAddDir( arg1 );
 	} else {

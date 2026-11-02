@@ -210,6 +210,24 @@ _GREEBLE_FINE  = (8, 8, 16, 16, 16, 24, 24, 32)
 _GREEBLE_BEAM  = (24, 32, 32, 48)
 
 
+def _spawn_safe_decoration(course, brushes):
+    """Keep decorative cladding out of player spawn volumes, including under
+    platforms. Being below a platform's top does not make its underside safe.
+    Preserve the base geometry and RNG sequence; only discard new decoration.
+    """
+    boxes = []
+    for ent in course.entities:
+        if ent.get("classname") not in ("info_player_deathmatch", "info_player_start",
+                                         "info_player_team1", "info_player_team2"):
+            continue
+        origin = tuple(float(v) for v in ent["origin"].split())
+        boxes.append((tuple(origin[i] + PLAYER_MINS[i] - 8 for i in range(3)),
+                      tuple(origin[i] + PLAYER_MAXS[i] + 8 for i in range(3))))
+    return [brush for brush in brushes if not any(
+        all(lo[i] < brush.maxs[i] and hi[i] > brush.mins[i] for i in range(3))
+        for lo, hi in boxes)]
+
+
 def greeble_course(course, seed=0, density=1.0, cap=6000):
     """Erode large concrete masses into DENSE clustered cubes, lun3dm5-style.
 
@@ -332,6 +350,7 @@ def greeble_course(course, seed=0, density=1.0, cap=6000):
                     cube([px - c / 2, py - c / 2, bottom - h],
                          [px + c / 2, py + c / 2, bottom + 2])
 
+    added = _spawn_safe_decoration(course, added)
     course.solids.extend(added)
     return len(added)
 
@@ -451,6 +470,7 @@ def greeble_brutal(course, seed=0, density=1.0, cap=4000):
                 blk([x0, y0, mn[2] - d], [x1, y1, mn[2]])
             partition(mn[0] + 16, mx[0] - 16, mn[1] + 16, mx[1] - 16, under_leaf)
 
+    added = _spawn_safe_decoration(course, added)
     course.solids.extend(added)
     return len(added)
 

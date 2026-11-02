@@ -70,6 +70,7 @@ struct snd_codec_s
 void S_CodecInit( void );
 void S_CodecShutdown( void );
 void S_CodecRegister(snd_codec_t *codec);
+qboolean S_CodecSupportsExtension(const char *extension);
 void *S_CodecLoad(const char *filename, snd_info_t *info);
 snd_stream_t *S_CodecOpenStream(const char *filename);
 void S_CodecCloseStream(snd_stream_t *stream);

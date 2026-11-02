@@ -1130,7 +1130,10 @@ void SV_Frame( int msec ) {
 		SV_SetConfigstring( CS_SERVERINFO, Cvar_InfoString( CVAR_SERVERINFO ) );
 		cvar_modifiedFlags &= ~CVAR_SERVERINFO;
 	}
-	if ( cvar_modifiedFlags & CVAR_SYSTEMINFO ) {
+	// Bullet-time ramps can change timescale every rendered frame. Coalesce
+	// systeminfo updates until a simulation tick instead of filling the
+	// reliable-command ring faster than snapshots can consume those updates.
+	if ( (cvar_modifiedFlags & CVAR_SYSTEMINFO) && sv.timeResidual >= frameMsec ) {
 		SV_SetConfigstring( CS_SYSTEMINFO, Cvar_InfoString_Big( CVAR_SYSTEMINFO ) );
 		cvar_modifiedFlags &= ~CVAR_SYSTEMINFO;
 	}

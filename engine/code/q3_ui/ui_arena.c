@@ -90,6 +90,7 @@ static arenamenu_t	s_arena;
 // lockstep — same order, map_names NULL-terminated for the control).
 static const char *map_keys[] = {
 	"strafe64dm_1337",
+	"strafe64_showcase",
 	"strafe64kb_8224",
 	"strafe64kb_court_8240",
 	"strafe64kb_9000",
@@ -98,6 +99,7 @@ static const char *map_keys[] = {
 };
 static const char *map_names[] = {
 	"VELODROME",
+	"SHOWCASE",
 	"KILLBOX 8224",
 	"COURT",
 	"KILLBOX 9000",
@@ -106,6 +108,27 @@ static const char *map_names[] = {
 	NULL
 };
 #define NUM_ARENA_MAPS		( ARRAY_LEN( map_keys ) )
+static const char *installed_map_keys[NUM_ARENA_MAPS];
+static const char *installed_map_names[NUM_ARENA_MAPS + 1];
+static int installed_map_count;
+
+static void ArenaMenu_FindMaps( void ) {
+	int i;
+	fileHandle_t file;
+	installed_map_count = 0;
+	for ( i = 0; i <= (int)NUM_ARENA_MAPS; i++ ) installed_map_names[i] = NULL;
+	for ( i = 0; i < (int)NUM_ARENA_MAPS; i++ ) {
+		trap_FS_FOpenFile( va( "maps/%s.bsp", map_keys[i] ), &file, FS_READ );
+		if ( !file ) continue;
+		trap_FS_FCloseFile( file );
+		trap_FS_FOpenFile( va( "maps/%s.aas", map_keys[i] ), &file, FS_READ );
+		if ( !file ) continue;
+		trap_FS_FCloseFile( file );
+		installed_map_keys[installed_map_count] = map_keys[i];
+		installed_map_names[installed_map_count++] = map_names[i];
+	}
+	if ( !installed_map_count ) installed_map_names[0] = "NO INSTALLED ARENAS";
+}
 
 static const char *weapon_names[] = {
 	"SWORD  (katana)",
@@ -170,14 +193,14 @@ static void ArenaMenu_SetMenuItems( void ) {
 	// match the saved map name back to the spinner, default to the first
 	s_arena.map.curvalue = 0;
 	trap_Cvar_VariableStringBuffer( "ui_arenaMap", curmap, sizeof( curmap ) );
-	for ( i = 0; i < (int)NUM_ARENA_MAPS; i++ ) {
-		if ( !Q_stricmp( curmap, map_keys[i] ) ) {
+	for ( i = 0; i < installed_map_count; i++ ) {
+		if ( !Q_stricmp( curmap, installed_map_keys[i] ) ) {
 			s_arena.map.curvalue = i;
 			break;
 		}
 	}
 
-	bots = (int)trap_Cvar_VariableValue( "bot_minplayers" );
+	bots = (int)trap_Cvar_VariableValue( "ui_arenaOpponents" );
 	if ( bots < 0 ) {
 		bots = 0;
 	} else if ( bots > MAX_ARENA_BOTS ) {
@@ -223,10 +246,14 @@ static void ArenaMenu_StartFight( void ) {
 	int			vectorgun = s_arena.weapon.curvalue;
 	int			bots      = s_arena.opponents.curvalue;
 	int			skill     = s_arena.skill.curvalue + 1;
-	const char	*mapname  = map_keys[ s_arena.map.curvalue ];
+	const char	*mapname;
+	static const char *callsigns[MAX_ARENA_BOTS] = { "ASH", "ECHO", "ROOK", "VEX", "HEX", "KITE", "NOVA" };
 	int			i;
 	int			delay;
 	char		cmd[128];
+
+	if ( s_arena.map.curvalue < 0 || s_arena.map.curvalue >= installed_map_count ) return;
+	mapname = installed_map_keys[s_arena.map.curvalue];
 
 	// --- weapon ruleset (latched; applied on the map load queued below) ---
 	trap_Cvar_SetValue( "g_lattice", 0 );
@@ -239,7 +266,10 @@ static void ArenaMenu_StartFight( void ) {
 	trap_Cvar_SetValue( "g_botSwordOnly", vectorgun ? 0 : 1 );
 	trap_Cvar_SetValue( "g_spSkill", skill );
 	trap_Cvar_Set( "bot_enable", "1" );
-	trap_Cvar_SetValue( "bot_minplayers", bots );
+	// Explicit addbot commands own this roster; auto-fill would alter it.
+	trap_Cvar_SetValue( "bot_minplayers", 0 );
+	trap_Cvar_SetValue( "ui_arenaOpponents", bots );
+	trap_Cvar_SetValue( "sv_maxclients", MAX_ARENA_BOTS + 1 );
 
 	// remember the chosen map so the menu reopens on it
 	trap_Cvar_Set( "ui_arenaMap", mapname );
@@ -253,6 +283,8 @@ static void ArenaMenu_StartFight( void ) {
 
 	// shared effect stack + audio-reactive trails + bullet-time tuning
 	trap_Cmd_ExecuteText( EXEC_APPEND, "exec arena\n" );
+	Com_sprintf( cmd, sizeof( cmd ), "seta g_timeBind %i\n", s_arena.bullettime.curvalue );
+	trap_Cmd_ExecuteText( EXEC_APPEND, cmd );
 
 	// --- visual overrides: these run AFTER exec arena, so the menu wins ---
 	// audio-reactive speed-trails (and the music-driven warp that rides them)
@@ -292,7 +324,7 @@ static void ArenaMenu_StartFight( void ) {
 		for ( i = 0; i < bots; i++ ) {
 			delay = 400 + i * 700;
 			Com_sprintf( cmd, sizeof( cmd ),
-				"addbot Assassin %i free %i\n", skill, delay );
+				"addbot Assassin %i free %i %s\n", skill, delay, callsigns[i] );
 			trap_Cmd_ExecuteText( EXEC_APPEND, cmd );
 		}
 	}
@@ -331,7 +363,7 @@ section rules on top, then the controls.
 */
 static void ArenaMenu_Draw( void ) {
 	UI_DrawProportionalString( 320, 64, "ARENA", UI_CENTER, arena_amber );
-	UI_DrawString( 320, 104, "CONFIGURE  THE  DUEL  / /  SPEED  IS  THE  TRIGGER",
+	UI_DrawString( 320, 104, "CONFIGURE THE DUEL // SPEED IS THE TRIGGER",
 		UI_CENTER|UI_SMALLFONT, arena_green );
 
 	UI_FillRect( 180, 138, 280, 1, arena_grid );
@@ -342,7 +374,7 @@ static void ArenaMenu_Draw( void ) {
 
 	Menu_Draw( &s_arena.menu );
 
-	UI_DrawString( 320, 464, "SUPERHOT // bullet-time duel // NERV",
+	UI_DrawString( 320, 462, "SUPERHOT // bullet-time duel // NERV",
 		UI_CENTER|UI_SMALLFONT, arena_dim );
 }
 
@@ -377,6 +409,9 @@ static void ArenaMenu_Init( void ) {
 	int		y;
 
 	memset( &s_arena, 0, sizeof( arenamenu_t ) );
+	trap_Cvar_Register( NULL, "ui_arenaMap", "strafe64dm_1337", CVAR_ARCHIVE );
+	trap_Cvar_Register( NULL, "ui_arenaOpponents", "4", CVAR_ARCHIVE );
+	ArenaMenu_FindMaps();
 
 	s_arena.menu.draw       = ArenaMenu_Draw;
 	s_arena.menu.fullscreen = qtrue;
@@ -386,7 +421,7 @@ static void ArenaMenu_Init( void ) {
 	y = 162;
 	ArenaMenu_AddSpin( &s_arena.weapon,     ID_WEAPON,     y, "WEAPON:",      weapon_names );
 	y += 24;
-	ArenaMenu_AddSpin( &s_arena.map,        ID_MAP,        y, "MAP:",         map_names );
+	ArenaMenu_AddSpin( &s_arena.map,        ID_MAP,        y, "MAP:",         installed_map_names );
 	y += 24;
 	ArenaMenu_AddSpin( &s_arena.bullettime, ID_BULLETTIME, y, "BULLET-TIME:", onoff_names );
 	y += 24;
@@ -405,9 +440,10 @@ static void ArenaMenu_Init( void ) {
 	ArenaMenu_AddSpin( &s_arena.speedfx,    ID_SPEEDFX,    y, "SPEED FX:",     onoff_names );
 
 	// ---- FIGHT (the hero) + BACK -------------------------------------
-	y += 36;
+	y += 28;
 	s_arena.fight.generic.type		= MTYPE_PTEXT;
 	s_arena.fight.generic.flags		= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
+	if ( !installed_map_count ) s_arena.fight.generic.flags |= QMF_GRAYED | QMF_INACTIVE;
 	s_arena.fight.generic.x			= 320;
 	s_arena.fight.generic.y			= y;
 	s_arena.fight.generic.id		= ID_FIGHT;
@@ -416,7 +452,7 @@ static void ArenaMenu_Init( void ) {
 	s_arena.fight.color				= arena_amber;
 	s_arena.fight.style				= UI_CENTER|UI_DROPSHADOW;
 
-	y += 30;
+	y += 28;
 	s_arena.back.generic.type		= MTYPE_PTEXT;
 	s_arena.back.generic.flags		= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
 	s_arena.back.generic.x			= 320;

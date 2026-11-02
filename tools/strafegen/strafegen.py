@@ -26,6 +26,7 @@ Drop the .bsp into baseq3/maps/ (or the .pk3 into baseq3/) and run:
 
 import argparse
 import os
+import sys
 
 # Modular strafegen: this file is the FACADE + CLI. The generator was split into
 # focused strafegen_* modules; we re-export their public API so external importers
@@ -464,4 +465,9 @@ def main():
 
 
 if __name__ == "__main__":
+    # Windows launchers often capture output using a legacy code page. Fancy
+    # help/log characters must never abort generation (or even --help).
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     main()

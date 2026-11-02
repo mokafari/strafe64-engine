@@ -448,7 +448,7 @@ typedef struct {
 	int			latticeAdvance[MAX_CLIENTS];	// sub-heat winners advancing to the next round
 	int			latticeAdvanceNum;
 	int			latticeSubSize;			// pilots activated in the current sub-heat
-	int			latticeSeedTime;		// level.time deadline to wait for the field to connect before seeding
+	int			latticeSeedTime;		// real-ms deadline to wait for the field before seeding
 	int			latticeNextHeatTime;	// level.time to activate the next sub-heat (0 = none) — the inter-heat beat
 #ifdef MISSIONPACK
 	int			portalSequence;
@@ -675,6 +675,7 @@ void QDECL G_Error( const char *fmt, ... ) Q_NO_RETURN Q_PRINTF_FUNC(1, 2);
 char *ClientConnect( int clientNum, qboolean firstTime, qboolean isBot );
 void ClientUserinfoChanged( int clientNum );
 void ClientDisconnect( int clientNum );
+void G_ReleaseTimeBind( int clientNum );
 void ClientBegin( int clientNum );
 void ClientCommand( int clientNum );
 

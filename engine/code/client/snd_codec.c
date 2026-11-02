@@ -81,6 +81,12 @@ static void *S_CodecGetSound(const char *filename, snd_info_t *info)
 				return rtn;
 			}
 		}
+		else {
+			// An unavailable codec still needs same-basename fallback: asking
+			// for track.mp3 must try track.ogg, not track.mp3.ogg.
+			orgNameFailed = qtrue;
+			COM_StripExtension( filename, localName, MAX_QPATH );
+		}
 	}
 
 	// Try and find a suitable match using all
@@ -122,6 +128,8 @@ S_CodecInit
 */
 void S_CodecInit(void)
 {
+	snd_codec_t *codec;
+	char formats[MAX_STRING_CHARS];
 	codecs = NULL;
 
 #ifdef USE_CODEC_OPUS
@@ -146,6 +154,21 @@ void S_CodecInit(void)
 
 // Register wav codec last so that it is always tried first when a file extension was not found
 	S_CodecRegister(&wav_codec);
+	formats[0] = '\0';
+	for (codec = codecs; codec; codec = codec->next) {
+		if (formats[0]) Q_strcat(formats, sizeof(formats), " ");
+		Q_strcat(formats, sizeof(formats), codec->ext);
+	}
+	Cvar_Get("s_supportedCodecs", "", CVAR_ROM);
+	Cvar_Set("s_supportedCodecs", formats);
+}
+
+qboolean S_CodecSupportsExtension(const char *extension)
+{
+	snd_codec_t *codec;
+	for (codec = codecs; codec; codec = codec->next)
+		if (!Q_stricmp(extension, codec->ext)) return qtrue;
+	return qfalse;
 }
 
 /*
@@ -156,6 +179,7 @@ S_CodecShutdown
 void S_CodecShutdown(void)
 {
 	codecs = NULL;
+	Cvar_Set("s_supportedCodecs", "");
 }
 
 /*

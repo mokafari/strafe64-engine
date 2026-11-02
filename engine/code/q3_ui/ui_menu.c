@@ -128,7 +128,7 @@ static void Strafe64_Title( void ) {
 	UI_DrawProportionalString( 320, 70, "STRAFE 64",
 		UI_CENTER, menu_amber );
 
-	UI_DrawString( 320, 112, "MAGI-01  / /  VOID PROTOCOL  / /  SPEED IS LIFE",
+	UI_DrawString( 320, 112, "MAGI-01  //  VOID PROTOCOL  //  SPEED IS LIFE",
 		UI_CENTER|UI_SMALLFONT, s64_green );
 
 	// EVANGELION-style status block under the wordmark
@@ -229,6 +229,8 @@ void Main_MenuEvent (void* ptr, int event) {
 	// each sets the latched mode cvars (applied on the map load that
 	// follows) then drops straight into a strafegen course
 	case ID_S64_DAILY:
+		trap_Cvar_SetValue( "bot_minplayers", 0 );
+		trap_Cvar_SetValue( "g_gametype", 0 );
 		trap_Cvar_SetValue( "g_lattice", 0 );
 		trap_Cvar_SetValue( "g_vectorgun", 0 );
 		trap_Cvar_SetValue( "g_voidRise", 1 );
@@ -236,6 +238,8 @@ void Main_MenuEvent (void* ptr, int event) {
 		break;
 
 	case ID_S64_TRIAL:
+		trap_Cvar_SetValue( "bot_minplayers", 0 );
+		trap_Cvar_SetValue( "g_gametype", 0 );
 		trap_Cvar_SetValue( "g_lattice", 0 );
 		trap_Cvar_SetValue( "g_vectorgun", 0 );
 		trap_Cvar_SetValue( "g_voidRise", 1 );
@@ -264,11 +268,21 @@ void Main_MenuEvent (void* ptr, int event) {
 		trap_Cvar_SetValue( "g_latticeBracket", 1 );
 		trap_Cvar_SetValue( "g_gametype", 0 );			// FFA
 		trap_Cvar_Set( "bot_enable", "1" );
-		trap_Cvar_Set( "bot_minplayers", "5" );			// seat a real bracket
-		trap_Cmd_ExecuteText( EXEC_APPEND, "map " S64_MAP_LATTICE "\n" );
+		// Seat the whole field before bracket seeding. Minimum-player fill
+		// adds one bot each ten seconds, so it used to seed a two-pilot match.
+		trap_Cvar_Set( "bot_minplayers", "0" );
+		trap_Cvar_Set( "sv_maxclients", "8" );
+		trap_Cvar_Set( "g_botSwordOnly", "0" );
+		trap_Cmd_ExecuteText( EXEC_APPEND, "map " S64_MAP_LATTICE "\nwait 80\n"
+			"addbot Assassin 3 free 400 ASH\n"
+			"addbot Assassin 3 free 1100 ECHO\n"
+			"addbot Assassin 3 free 1800 ROOK\n"
+			"addbot Assassin 3 free 2500 VEX\n" );
 		break;
 
 	case ID_S64_PRACTICE:
+		trap_Cvar_SetValue( "bot_minplayers", 0 );
+		trap_Cvar_SetValue( "g_gametype", 0 );
 		// the course, the timer, the ghost — but the floor won't kill you
 		trap_Cvar_SetValue( "g_lattice", 0 );
 		trap_Cvar_SetValue( "g_vectorgun", 0 );

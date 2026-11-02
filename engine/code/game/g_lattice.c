@@ -378,13 +378,20 @@ static qboolean G_LatticeBracketCheck( void ) {
 	if ( level.latticeRound == 0 ) {
 		int n = 0;
 		if ( level.latticeSeedTime == 0 ) {
-			level.latticeSeedTime = level.time + 5000;	// connect grace (full field)
+			level.latticeSeedTime = trap_Milliseconds() + 5000;	// real-time connect grace
 		}
-		if ( level.time < level.latticeSeedTime ) {
+		if ( trap_Milliseconds() < level.latticeSeedTime ) {
 			return qfalse;		// still gathering the field
 		}
+		// Explicitly queued bots already belong to the selected field. Wait
+		// for their delayed ClientBegin instead of dropping the last arrivals.
+		for ( i = 0; i < level.maxclients; i++ ) {
+			if ( (g_entities[i].r.svFlags & SVF_BOT)
+				&& level.clients[i].pers.connected == CON_CONNECTING ) return qfalse;
+		}
 		for ( i = 0 ; i < level.maxclients ; i++ ) {
-			if ( level.clients[i].pers.connected == CON_CONNECTED ) {
+			if ( level.clients[i].pers.connected == CON_CONNECTED
+				&& level.clients[i].sess.sessionTeam != TEAM_SPECTATOR ) {
 				level.latticePending[n++] = i;
 			}
 		}

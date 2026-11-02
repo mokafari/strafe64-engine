@@ -1508,7 +1508,9 @@ static qboolean ParseShader( char **text )
 			continue;
 		}
 		// sun parms
-		else if ( !Q_stricmp( token, "q3map_sun" ) || !Q_stricmp( token, "q3map_sunExt" ) ) {
+		// GL2 skies share the same first six sun parameters. Ignore the extra
+		// shadow settings below rather than rejecting the entire sky shader.
+		else if ( !Q_stricmp( token, "q3map_sun" ) || !Q_stricmp( token, "q3map_sunExt" ) || !Q_stricmp( token, "q3gl2_sun" ) ) {
 			float	a, b;
 
 			token = COM_ParseExt( text, qfalse );
@@ -1536,6 +1538,11 @@ static qboolean ParseShader( char **text )
 			tr.sunDirection[1] = sin( a ) * cos( b );
 			tr.sunDirection[2] = sin( b );
 
+			SkipRestOfLine( text );
+			continue;
+		}
+		else if ( !Q_stricmp( token, "q3gl2_tonemap" ) ) {
+			// Tone mapping is only available in GL2; retain the rest of the shader.
 			SkipRestOfLine( text );
 			continue;
 		}

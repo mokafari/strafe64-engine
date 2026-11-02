@@ -33,7 +33,7 @@ static vec4_t sb_cyan   = { 0.32f, 0.86f, 1.00f, 1.00f };
 static vec4_t sb_green  = { 0.40f, 1.00f, 0.50f, 1.00f };
 static vec4_t sb_red    = { 1.00f, 0.12f, 0.16f, 1.00f };
 static vec4_t sb_blue   = { 0.35f, 0.55f, 1.00f, 1.00f };
-static vec4_t sb_dim    = { 0.55f, 0.42f, 0.20f, 1.00f };
+static vec4_t sb_dim    = { 0.72f, 0.62f, 0.40f, 1.00f };
 static vec4_t sb_white  = { 0.92f, 0.94f, 0.96f, 1.00f };
 static vec4_t sb_plate  = { 0.01f, 0.02f, 0.03f, 0.72f };
 static vec4_t sb_rowme  = { 1.00f, 0.60f, 0.06f, 0.14f };
@@ -41,8 +41,8 @@ static vec4_t sb_rowme  = { 1.00f, 0.60f, 0.06f, 0.14f };
 #define SB_X		70
 #define SB_W		500
 #define SB_ROW_H	18
-#define SB_CELL		1.15f
-#define SB_HEAD_CELL 0.95f
+#define SB_CELL		1.6f
+#define SB_HEAD_CELL 1.25f
 
 /*
 =================
@@ -100,6 +100,7 @@ static void CG_SBClientRow( const score_t *score, int place, float x, float y,
 	char			buf[64];
 	char			name[26];
 	float			*pc;
+	qboolean		compact = w < 400;
 
 	if ( score->client < 0 || score->client >= cgs.maxclients ) {
 		return;
@@ -123,10 +124,15 @@ static void CG_SBClientRow( const score_t *score, int place, float x, float y,
 
 	// name (colour codes are skipped by the font) + AI tag
 	Q_strncpyz( name, ci->name, sizeof( name ) );
+	Q_CleanStr( name );
+	// Keep enlarged names and their AI tag clear of the numeric columns,
+	// including the wider LED fallback used without FreeType.
+	while (name[0] && CG_MatrixStringWidth(name, SB_CELL) > w - (compact ? 155 : 285))
+		name[strlen(name) - 1] = '\0';
 	CG_SBText( x + 46, y, name, SB_CELL, sb_white, fade );
 	if ( ci->botSkill > 0 && ci->botSkill <= 5 ) {
 		CG_SBText( x + 46 + CG_MatrixStringWidth( name, SB_CELL ) + 8, y,
-				   "(AI)", 0.9f, sb_dim, fade );
+				   "(AI)", 1.15f, sb_dim, fade );
 	}
 
 	// score ("*" = perfect, shown at intermission like the stock medal)
@@ -135,7 +141,10 @@ static void CG_SBClientRow( const score_t *score, int place, float x, float y,
 	} else {
 		Com_sprintf( buf, sizeof( buf ), "%i", score->score );
 	}
-	CG_SBTextRight( x + w - 150, y, buf, SB_CELL, sb_amber, fade );
+	CG_SBTextRight( x + w - (compact ? 8 : 150), y, buf, SB_CELL, sb_amber, fade );
+	// Half-width team panels have room for names and scores; squeezing the
+	// full FFA statistics into them made names overlap the numeric columns.
+	if (compact) return;
 
 	// ping: green/amber/red bands; bots have none
 	if ( ci->botSkill > 0 ) {

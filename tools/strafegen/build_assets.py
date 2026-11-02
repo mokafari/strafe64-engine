@@ -22,6 +22,7 @@ Python 3 + Pillow + NumPy -- no macOS tools involved:
 import os
 import shutil
 import sys
+from pathlib import Path
 
 from PIL import Image
 
@@ -58,9 +59,30 @@ def crete_eth(src_png, out_tga):
     t.point(lambda v: min(255, int(v * k))).save(out_tga)
 
 
+def assets_current():
+    """Require every derived texture, newer than all its sources and builders."""
+    from build_materials import SOURCES
+    outputs = [Path(OUT) / "m" / (name + suffix)
+               for name in SOURCES for suffix in (".jpg", "_nh.png")]
+    outputs += [Path(OUT) / f"{sky}_{side}.tga"
+                for sky in ("realsky", *SKIES)
+                for side in ("rt", "lf", "ft", "bk", "up", "dn")]
+    outputs += [Path(OUT) / name for name in ("crete.tga", "crete_eth.tga")]
+    sources = list(Path(SRC).rglob("*.png"))
+    sources += [Path(HERE) / name for name in
+                ("build_assets.py", "build_materials.py", "ethsky_from_pano.py")]
+    newest = max(p.stat().st_mtime_ns for p in sources)
+    return all(p.is_file() and p.stat().st_size > 0 and
+               p.stat().st_mtime_ns >= newest for p in outputs)
+
+
 def main():
     import build_materials
     import ethsky_from_pano
+
+    if "--if-needed" in sys.argv and assets_current():
+        print("photo assets are current ->", OUT)
+        return
 
     os.makedirs(os.path.join(OUT, "m"), exist_ok=True)
     print("materials ->", os.path.join(OUT, "m"))

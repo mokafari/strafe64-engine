@@ -346,7 +346,10 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 	void *faceData;
 	int i, len;
 	char name[1024];
-	char fontTag[MAX_QPATH];
+	char cacheName[MAX_QPATH];
+	unsigned int fontHash = 2166136261u;
+	if (!font) return;
+	Com_Memset(font, 0, sizeof(*font));
 
 	if (!fontName) {
 		ri.Printf(PRINT_ALL, "RE_RegisterFont: called with empty name\n");
@@ -356,42 +359,47 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 	if (pointSize <= 0) {
 		pointSize = 12;
 	}
+	if (pointSize > 256) {
+		ri.Printf(PRINT_WARNING, "RE_RegisterFont: point size exceeds atlas limit (%i)\n", pointSize);
+		return;
+	}
 
-	// Derive a filesystem-safe tag from the font name so the atlas cache is keyed
-	// per-font, not just per-size. The stock key "fonts/fontImage_<size>.dat"
-	// collides for two different fonts at the same point size — the second
-	// RegisterFont matches the first's cached entry and returns the WRONG font.
+	// Hash the full font path and size. Atlas names must fit shaderName[32] in
+	// glyphInfo_t: descriptive fontImage_<name>_<page>_<size> names truncated
+	// even for strafe64.ttf, so saved fonts reloaded as solid/missing glyphs.
 	{
-		const char *base = COM_SkipPath((char *)fontName);
-		int t = 0, c;
-		while ((c = base[t] & 0xff) != 0 && c != '.' && t < (int)sizeof(fontTag) - 1) {
-			fontTag[t] = ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-			              (c >= '0' && c <= '9')) ? (char)c : '_';
-			t++;
+		const unsigned char *p = (const unsigned char *)fontName;
+		while (*p) {
+			unsigned int c = *p++;
+			if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+			if (c == '\\') c = '/';
+			fontHash = (fontHash ^ c) * 16777619u;
 		}
-		fontTag[t] = '\0';
-		if (t == 0) {
-			Q_strncpyz(fontTag, "font", sizeof(fontTag));
-		}
+		fontHash = (fontHash ^ (unsigned int)pointSize) * 16777619u;
 	}
 
 	R_IssuePendingRenderCommands();
 
+	// Version the key so old caches with truncated atlas paths regenerate.
+	Com_sprintf(cacheName, sizeof(cacheName), "fonts/font2_%08x.dat", fontHash);
+	for (i = 0; i < registeredFontCount; i++) {
+		if (Q_stricmp(cacheName, registeredFont[i].name) == 0) {
+			Com_Memcpy(font, &registeredFont[i], sizeof(fontInfo_t));
+			return;
+		}
+	}
 	if (registeredFontCount >= MAX_FONTS) {
 		ri.Printf(PRINT_WARNING, "RE_RegisterFont: Too many fonts registered already.\n");
 		return;
 	}
 
-	Com_sprintf(name, sizeof(name), "fonts/fontImage_%s_%i.dat", fontTag, pointSize);
-	for (i = 0; i < registeredFontCount; i++) {
-		if (Q_stricmp(name, registeredFont[i].name) == 0) {
-			Com_Memcpy(font, &registeredFont[i], sizeof(fontInfo_t));
-			return;
-		}
-	}
-
+	Q_strncpyz(name, cacheName, sizeof(name));
 	len = ri.FS_ReadFile(name, NULL);
-	if (len != sizeof(fontInfo_t)) {
+	if (len != sizeof(fontInfo_t)
+#ifdef BUILD_FREETYPE
+		&& ri.FS_ReadFile(fontName, NULL) <= 0
+#endif
+	) {
 		// legacy fallback: pregenerated font packs (e.g. Team Arena pk3s) ship
 		// size-only fontImage_<size>.dat with no source .ttf to regenerate from
 		Com_sprintf(name, sizeof(name), "fonts/fontImage_%i.dat", pointSize);
@@ -421,7 +429,7 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 		Com_Memcpy(font->name, &fdFile[fdOffset], MAX_QPATH);
 
 //		Com_Memcpy(font, faceData, sizeof(fontInfo_t));
-		Q_strncpyz(font->name, name, sizeof(font->name));
+		Q_strncpyz(font->name, cacheName, sizeof(font->name));
 		for (i = GLYPH_START; i <= GLYPH_END; i++) {
 			font->glyphs[i].glyph = RE_RegisterShaderNoMip(font->glyphs[i].shaderName);
 		}
@@ -447,12 +455,15 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 	// allocate on the stack first in case we fail
 	if (FT_New_Memory_Face( ftLibrary, faceData, len, 0, &face )) {
 		ri.Printf(PRINT_WARNING, "RE_RegisterFont: FreeType, unable to allocate new face.\n");
+		ri.FS_FreeFile(faceData);
 		return;
 	}
 
 
 	if (FT_Set_Char_Size( face, pointSize << 6, pointSize << 6, dpi, dpi)) {
 		ri.Printf(PRINT_WARNING, "RE_RegisterFont: FreeType, unable to set face char size.\n");
+		FT_Done_Face(face);
+		ri.FS_FreeFile(faceData);
 		return;
 	}
 
@@ -464,6 +475,8 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 	out = ri.Malloc(256*256);
 	if (out == NULL) {
 		ri.Printf(PRINT_WARNING, "RE_RegisterFont: ri.Malloc failure during output image creation.\n");
+		FT_Done_Face(face);
+		ri.FS_FreeFile(faceData);
 		return;
 	}
 	Com_Memset(out, 0, 256*256);
@@ -471,7 +484,17 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 	maxHeight = 0;
 
 	for (i = GLYPH_START; i <= GLYPH_END; i++) {
-		RE_ConstructGlyphInfo(out, &xOut, &yOut, &maxHeight, face, (unsigned char)i, qtrue);
+		glyph = RE_ConstructGlyphInfo(out, &xOut, &yOut, &maxHeight, face, (unsigned char)i, qtrue);
+		// An oversized glyph can never fit the atlas. Without this preflight
+		// the packing loop either writes past a row or repeatedly uploads an
+		// empty page without advancing i.
+		if (glyph->pitch + 1 >= 255 || maxHeight + 1 >= 255) {
+			ri.Printf(PRINT_WARNING, "RE_RegisterFont: glyphs too large for atlas (%s, %i pt)\n", fontName, pointSize);
+			ri.Free(out);
+			FT_Done_Face(face);
+			ri.FS_FreeFile(faceData);
+			return;
+		}
 	}
 
 	xOut = 0;
@@ -517,7 +540,7 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 				imageBuff[left++] = ((float)out[k] * max);
 			}
 
-			Com_sprintf (name, sizeof(name), "fonts/fontImage_%s_%i_%i.tga", fontTag, imageNumber++, pointSize);
+			Com_sprintf (name, sizeof(name), "fonts/f%08x_%02x.tga", fontHash, imageNumber++);
 			if (r_saveFontData->integer) { 
 				WriteTGA(name, imageBuff, 256, 256);
 			}
@@ -550,14 +573,16 @@ void RE_RegisterFont(const char *fontName, int pointSize, fontInfo_t *font) {
 
 	registeredFont[registeredFontCount].glyphScale = glyphScale;
 	font->glyphScale = glyphScale;
+	Q_strncpyz(font->name, cacheName, sizeof(font->name));
 	Com_Memcpy(&registeredFont[registeredFontCount++], font, sizeof(fontInfo_t));
 
 	if (r_saveFontData->integer) {
-		ri.FS_WriteFile(va("fonts/fontImage_%s_%i.dat", fontTag, pointSize), font, sizeof(fontInfo_t));
+		ri.FS_WriteFile(cacheName, font, sizeof(fontInfo_t));
 	}
 
 	ri.Free(out);
 
+	FT_Done_Face(face);
 	ri.FS_FreeFile(faceData);
 #endif
 }

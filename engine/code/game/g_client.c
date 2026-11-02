@@ -1368,6 +1368,7 @@ void ClientDisconnect( int clientNum ) {
 
 	// cleanup if we are kicking a bot that
 	// hasn't spawned yet
+	G_ReleaseTimeBind( clientNum );
 	G_RemoveQueuedBotBegin( clientNum );
 
 	ent = g_entities + clientNum;

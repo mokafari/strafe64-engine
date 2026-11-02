@@ -3266,14 +3266,25 @@ static void CG_DrawCombo( void ) {
 
 	// live chain multiplier — cyan nominal, heating amber→orange→red as it climbs
 	if ( cg.comboMult >= 1.05f ) {
+		vec4_t chainColor;
+		float idle;
 		if      ( cg.comboMult < 1.6f ) color = nerv_cyan;
 		else if ( cg.comboMult < 2.5f ) color = nerv_amber;
 		else if ( cg.comboMult < 4.0f ) color = nerv_orange;
 		else                            color = nerv_red;
+		// Keep the chain readable while it decays, without an idle red alarm.
+		idle = (cg.time - cg.comboEventTime - 1000) / 1500.0f;
+		if (idle < 0.0f) idle = 0.0f;
+		if (idle > 1.0f) idle = 1.0f;
+		Vector4Copy(color, chainColor);
+		chainColor[0] += (nerv_cyan[0] - chainColor[0]) * idle;
+		chainColor[1] += (nerv_cyan[1] - chainColor[1]) * idle;
+		chainColor[2] += (nerv_cyan[2] - chainColor[2]) * idle;
+		chainColor[3] *= 1.0f - 0.55f * idle;
 
 		Com_sprintf( str, sizeof( str ), "X%.1f", cg.comboMult );
 		w = CG_MatrixStringWidth( str, 2.2f );
-		CG_DrawMatrixString( 616 - w, y, str, 2.2f, color );
+		CG_DrawMatrixString( 616 - w, y, str, 2.2f, chainColor );
 		y += 22.0f;
 	}
 
@@ -3653,6 +3664,8 @@ void CG_DrawMissionReport( void ) {
 	vec4_t		accent;
 	vec4_t		plate = { 0.02f, 0.03f, 0.04f, 0.78f };
 	char		line[64];
+
+	if (cg.showScores) return; // the requested scoreboard owns the screen
 
 	peak   = cg.peakSpeed;
 	style  = cg.styleBest;

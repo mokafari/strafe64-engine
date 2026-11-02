@@ -502,7 +502,7 @@ void G_CheckBotSpawn( void ) {
 		if( !botSpawnQueue[n].spawnTime ) {
 			continue;
 		}
-		if ( botSpawnQueue[n].spawnTime > level.time ) {
+		if ( botSpawnQueue[n].spawnTime > trap_Milliseconds() ) {
 			continue;
 		}
 		ClientBegin( botSpawnQueue[n].clientNum );
@@ -526,7 +526,9 @@ static void AddBotToSpawnQueue( int clientNum, int delay ) {
 
 	for( n = 0; n < BOT_SPAWN_QUEUE_DEPTH; n++ ) {
 		if( !botSpawnQueue[n].spawnTime ) {
-			botSpawnQueue[n].spawnTime = level.time + delay;
+			// Joining the match is a real-time delay, not a gameplay timer:
+			// standing still in bullet time must not turn 2 seconds into 40.
+			botSpawnQueue[n].spawnTime = trap_Milliseconds() + delay;
 			botSpawnQueue[n].clientNum = clientNum;
 			return;
 		}

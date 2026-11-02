@@ -7,6 +7,7 @@
 #   scripts\run.ps1 -Bots 4 -Map q3dm6
 #   scripts\run.ps1 -Dedicated     dedicated server (aggressor)
 #   scripts\run.ps1 -Psx           STRAFE 64 PSX low-fi preset (combine with above)
+#   scripts\run.ps1 -StageOnly     rebuild/stage assets without starting the game
 #
 # vm_game/vm_cgame/vm_ui 0 load the modded native DLLs from baseoa\ (requires
 # sv_pure 0): qagame + cgame carry the movement/race mod, ui.dll is the STRAFE 64
@@ -17,6 +18,7 @@ param(
     [string]$Map = 'aggressor',
     [switch]$Dedicated,
     [switch]$Psx,
+    [switch]$StageOnly,
     [string]$OA = $env:OA
 )
 $ErrorActionPreference = 'Stop'
@@ -40,13 +42,30 @@ foreach ($c in 'strafe64','arena','sword_arena','arena_vg','autoexec') {
     $src = Join-Path $sg "$c.cfg"; if (Test-Path $src) { Copy-Item $src (Join-Path $baseoa "$c.cfg") -Force }
 }
 # Deploy the shared strafe64 shader+texture pak (speed-trail glow, skybox, console
-# art, textures/strafe64/*). Without it the strafe64/* shaders resolve to missing
-# textures and the trails render black. Generated offline by strafegen (python +
-# Pillow); best-effort regen, then reuse whatever's there if python is missing.
+# art, textures/strafe64/*). Build photo assets first: emitting the shared pak
+# alone silently omits skies and materials when skytex/ has not been built.
 $sharedPk3 = Join-Path $sg 'generated\zzz_strafe64_shader.pk3'
-$py = (Get-Command python -ErrorAction SilentlyContinue).Source
-if ($py) { Push-Location $sg; & $py 'strafegen.py' '--emit-shared' 'generated' 2>&1 | Out-Null; Pop-Location }
-if (Test-Path $sharedPk3) { Copy-Item $sharedPk3 (Join-Path $baseoa 'zzz_strafe64_shader.pk3') -Force }
+$py = $null
+$pyArgs = @()
+foreach ($candidate in 'python', 'py', 'python3') {
+    $command = Get-Command $candidate -ErrorAction SilentlyContinue
+    if (-not $command) { continue }
+    $probeArgs = @()
+    if ($candidate -eq 'py') { $probeArgs = @('-3') }
+    try {
+        & $command.Source @probeArgs -c 'import sys, PIL, numpy; assert sys.version_info >= (3, 10)' 2>$null
+    } catch { continue }
+    if ($LASTEXITCODE -eq 0) { $py = $command.Source; $pyArgs = $probeArgs; break }
+}
+if (-not $py) { throw 'Asset generation requires Python 3.10+, Pillow and NumPy. Install with: py -3 -m pip install pillow numpy' }
+Push-Location $sg
+try {
+    & $py @pyArgs 'build_assets.py' '--if-needed'
+    if ($LASTEXITCODE -ne 0) { throw 'Photo asset build failed; assets were not deployed.' }
+    & $py @pyArgs 'strafegen.py' '--emit-shared' 'generated'
+    if ($LASTEXITCODE -ne 0) { throw 'Shared texture pack build failed; assets were not deployed.' }
+} finally { Pop-Location }
+Copy-Item $sharedPk3 (Join-Path $baseoa 'zzz_strafe64_shader.pk3') -Force
 # Share Tech Mono HUD font pak (fonts/strafe64.ttf); needs a FreeType-enabled
 # engine build to render, else the cgame uses its LED fallback font.
 $fontPk3 = Join-Path $sg 'generated\zzz_strafe64_font.pk3'
@@ -60,11 +79,15 @@ foreach ($extra in 'zzz_strafe64_combat.pk3','zzz_strafe64_hud.pk3') {
     $p = Join-Path $genDir $extra; if (Test-Path $p) { Copy-Item $p (Join-Path $baseoa $extra) -Force }
 }
 if (Test-Path $genDir) {
-    Get-ChildItem $genDir -Filter 'strafe64*.pk3' -ErrorAction SilentlyContinue |
+    # Lattice/surf/daily maps have other prefixes but are still playable packs.
+    Get-ChildItem $genDir -Filter '*.pk3' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notlike 'zzz_*' } |
         ForEach-Object { Copy-Item $_.FullName (Join-Path $baseoa $_.Name) -Force }
 }
 
 $common = @('+set','com_basegame','baseoa','+set','fs_basepath',$OA,'+set','sv_pure','0','+set','vm_game','0')
+
+if ($StageOnly) { Write-Host "Staged Windows assets -> $baseoa"; return }
 
 if ($Dedicated) {
     $ded = @('+set','dedicated','1','+map',$Map)
@@ -78,6 +101,7 @@ if ($Psx) { Copy-Item (Join-Path $sg 'psx.cfg') (Join-Path $baseoa 'psx.cfg') -F
 $fs = if ($Fullscreen) { '1' } else { '0' }
 $extra = @()
 if ($Bots -gt 0) { $extra = @('+set','bot_minplayers',"$Bots",'+set','g_spSkill','3','+map',$Map) }
+elseif ($PSBoundParameters.ContainsKey('Map')) { $extra = @('+map', $Map) }
 
 $client = @('+set','vm_cgame','0','+set','vm_ui','0','+set','r_fullscreen',$fs)
 & (Join-Path $rel 'ioquake3.exe') @common @client @psxArgs @extra

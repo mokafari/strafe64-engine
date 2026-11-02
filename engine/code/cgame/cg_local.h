@@ -1474,6 +1474,7 @@ void CG_RaceFrame( void );
 void CG_KillcamNoteObituary( int victim, int attacker, int mod );
 void CG_KillcamPlayerDied( void );
 void CG_KillcamStop( void );
+void CG_KillcamInit( void );
 void CG_KillcamUpdate( void );
 qboolean CG_KillcamActive( void );
 qboolean CG_KillcamHolding( void );

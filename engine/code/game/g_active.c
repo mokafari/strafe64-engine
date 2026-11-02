@@ -1059,6 +1059,7 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 	static qboolean	active = qfalse;	// did we take over the timescale cvar?
 	static int		lastReal = 0;		// trap_Milliseconds at the previous update
 	static int		savedPmoveFixed = 0;	// pmove_fixed to restore when slow-mo ends
+	static int		clockOwner = -1;
 	int				now, realMsec;
 	float			hspeed, speedFrac, inputMag, intent, target, t, rate;
 	float			tmin, tmax, ref, curve;
@@ -1068,15 +1069,16 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 		return;
 	}
 
-	if ( !g_timeBind.integer ) {
+	if ( !g_timeBind.integer || !ucmd ) {
 		// hand the clock back exactly once when disabled
-		if ( active ) {
+		if ( active && clockOwner == ent->s.number ) {
 			trap_Cvar_Set( "timescale", "1" );
 			trap_Cvar_Set( "pmove_fixed", va( "%i", savedPmoveFixed ) );
 			active = qfalse;
 			cur = -1.0f;
+			lastReal = 0;
+			clockOwner = -1;
 		}
-		lastReal = 0;
 		return;
 	}
 
@@ -1195,6 +1197,15 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 
 	trap_Cvar_Set( "timescale", va( "%.3f", cur ) );
 	active = qtrue;
+	clockOwner = ent->s.number;
+}
+
+// Spectators, intermissions, and disconnected pilots no longer drive time.
+// Only the pilot who last owned the clock may release it; another spectator
+// must not override a still-playing human's movement-controlled time.
+void G_ReleaseTimeBind( int clientNum ) {
+	if ( clientNum >= 0 && clientNum < level.maxclients )
+		G_UpdateTimeBind( &g_entities[clientNum], NULL, 0 );
 }
 
 /*
@@ -1263,12 +1274,14 @@ void ClientThink_real( gentity_t *ent ) {
 	// check for exiting intermission
 	//
 	if ( level.intermissiontime ) {
+		G_ReleaseTimeBind( ent->s.number );
 		ClientIntermissionThink( client );
 		return;
 	}
 
 	// spectators don't do much
 	if ( client->sess.sessionTeam == TEAM_SPECTATOR ) {
+		G_ReleaseTimeBind( ent->s.number );
 		if ( client->sess.spectatorState == SPECTATOR_SCOREBOARD ) {
 			return;
 		}
