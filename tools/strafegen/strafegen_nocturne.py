@@ -1,7 +1,23 @@
 """Nocturne: open marble filming plaza. Run this file to bake its distributable pk3."""
 from pathlib import Path
 from strafegen_marble import Marble
-from strafegen_geom import make_skybox, validate_spawns
+from strafegen_geom import make_skybox, make_box, validate_spawns
+import strafegen_materials as M
+
+# Planar mirror (Q3 portal surface with no camera = mirror). Needs a misc_portal_surface
+# within 64u of the plane. The dark constant stage is blended over the mirror view:
+# result = view * MIRROR_ALPHA + tint * (1 - MIRROR_ALPHA).
+MIRROR_SHADER = 'textures/strafe64/mirror_pool'
+MIRROR_ALPHA = 0.78
+EXTRA_SHADER = (
+    '\n// nocturne reflecting pool (planar mirror prototype)\n'
+    + MIRROR_SHADER + '\n{\n\tqer_editorimage textures/strafe64/d_wall.tga\n'
+    '\tsurfaceparm nolightmap\n\tportal\n\t{\n\t\tmap $whiteimage\n'
+    '\t\tblendFunc GL_ONE_MINUS_SRC_ALPHA GL_SRC_ALPHA\n'
+    '\t\tdepthWrite\n'
+    '\t\trgbGen const ( 0.035 0.06 0.10 )\n'
+    '\t\talphaGen const %g\n\t}\n}\n' % MIRROR_ALPHA)
+
 
 class Nocturne(Marble):
     def build(self):
@@ -11,7 +27,18 @@ class Nocturne(Marble):
         self.bake_scale = 1.1          # Marble default for night is 2.2
         P = 2400
         self.sections.append(('Nocturne open plaza', {'width': 4800, 'clear_center': 2400}))
-        self.box((-P,-P,-96),(P,P,0),'marble_tiles')
+        # Floor in four slabs around a shallow reflecting pool on the central axis.
+        PX, PY, PD = 560, 1000, 12      # pool half-width (x), half-length (y), depth
+        self.extra_shader = EXTRA_SHADER
+        self.box((-P,-P,-96),(-PX,P,0),'marble_tiles')
+        self.box((PX,-P,-96),(P,P,0),'marble_tiles')
+        self.box((-PX,-P,-96),(PX,-PY,0),'marble_tiles')
+        self.box((-PX,PY,-96),(PX,P,0),'marble_tiles')
+        pool = make_box((-PX,-PY,-96),(PX,PY,-PD),tex=M.tex('marble_black'),
+                        palette=(40,40,44),face_tex={'+z':MIRROR_SHADER})
+        pool.no_clad = True
+        self.solids.append(pool)
+        self.place('misc_portal_surface',0,0,6)   # open air, <64u from the plane: its leaf drives the mirror's PVS
         # Flush black inlays define the broad promenade without interrupting movement.
         for x in (-1800,1800):
             self.box((x-64,-P,0),(x+64,P,1),'marble_black')

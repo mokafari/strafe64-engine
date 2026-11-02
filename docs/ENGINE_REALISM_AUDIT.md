@@ -85,6 +85,20 @@ Ordered by value for effort. "Engine" = needs C/GLSL change in `renderergl2`.
 
 Caveats: the concept art is AI-generated, so it shows intent, not what real time can reach; the aniso check was visual and not controlled; performance numbers are from an M3 Pro and earlier sessions; items marked *unverified* need a code or experiment pass before committing to them.
 
+## 6. Prototype result: planar mirror pool (2026-11-02)
+
+Built a 1120 x 2000 shallow reflecting pool down the nocturne's central axis using the stock Q3 mirror mechanism, no engine changes (`tools/strafegen/strafegen_nocturne.py`, shot: `docs/screenshots/reflection/mirror-pool-v1.jpg`).
+
+**It works** and reflects the portal frame, its cyan lintel, the pillars and the stars. Recipe, learned the hard way:
+1. A `misc_portal_surface` entity with no target, **in open air** (not inside a brush) and **within 64 u of the plane**. Its position also supplies the mirror view's PVS leaf.
+2. A shader with the `portal` keyword **and `depthWrite` on its blend stage.** Without `depthWrite` the pool is a "hole": the portal surface leaves the depth buffer cleared, so the main view's own sky box (the cloud sea) is drawn over the mirror afterwards (`docs/screenshots/reflection/mirror-pool-hole-bug.jpg`). My first attempt had this bug, and a bad guess about PVS and clip planes cost an hour. The renderer's mirror maths (plane, clip, mirrored camera) was correct all along; I verified it with debug prints (removed).
+3. The tint stage is `blendFunc GL_ONE_MINUS_SRC_ALPHA GL_SRC_ALPHA` with a constant alpha (0.78 here), so result = mirror * 0.78 + dark tint * 0.22.
+4. `strafegen_bake.py` now accepts `course.extra_shader` for map-specific shader text.
+
+**Cost: not measured.** The mirror pass generates 147 draw surfaces here (plus the main view's), so it roughly doubles the geometry for the visible area, as sources suggested. Needs a GPU-timer run (`r_gpuTimers`, `tools/gpubench`) before shipping it.
+
+**Limits to know:** one mirror plane per view (no recursion), mirrors at one height per entity, no roughness blur or fresnel yet (flat blend), no ripples. Fine for still water; wet-stone or rough surfaces need SSR or a blur pass.
+
 ## Sources
 - [Rend 2, a more modern renderer (ModDB dev diary)](https://www.moddb.com/news/dev-diary-rend2)
 - [OpenJK rend2 PR #1179](https://github.com/JACoders/OpenJK/pull/1179/files)

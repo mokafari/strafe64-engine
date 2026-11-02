@@ -353,13 +353,14 @@ def build_baked_pk3(name, course, out_dir, bounce=3):
                      extra_world={"_ambient": amb, "_color": col})
         # COMPILE shader = the shared script: it carries the *_lm lightmapped
         # materials and the *_bk skies (q3map_sun kept, runtime q3gl2_sun gone).
-        shader = shaders.build_shader(True)
+        shader = shaders.build_shader(True) + getattr(course, "extra_shader", "")
         # SHIP: the map pk3 carries ONLY the baked variants, under a unique file
         # name. A scripts/strafe64.shader here always lost to the shared pak's
         # and the baked surfaces rendered with the vertex-lit shaders (the
         # "white blowout"); the variants also live in the shared pak, so this
         # copy just makes the pk3 work standalone.
-        ship_shader = baked_variants(gfx.augment(shaders.SHADER_SCRIPT))
+        ship_shader = baked_variants(gfx.augment(shaders.SHADER_SCRIPT)) \
+            + getattr(course, "extra_shader", "")
         tex = dict(sg.build_detail_textures())
         tex.update(gfx.gfx_textures())
         bake_pk3 = os.path.join(work, "zzz_bake_assets.pk3")
