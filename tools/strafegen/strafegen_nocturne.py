@@ -12,6 +12,7 @@ MIRROR_SHADER = 'textures/strafe64/mirror_pool'
 MIRROR_ALPHA = 0.78      # (kept for reference; water uses alphaGen portal range below)
 WATER_RANGE = 1500       # distance (u) at which the pool becomes a full mirror; closer = darker, deeper water
 GLINT_TEX = 'textures/strafe64/m/nrx_water_glint.png'
+WATER_NORMAL_TEX = 'textures/strafe64/m/nrx_water_n.png'
 
 
 def _water_glint_png():
@@ -46,10 +47,39 @@ def _water_glint_png():
     return out.getvalue()
 
 
+def _water_normal_png():
+    """Tileable ripple slopes for the engine water pass (r_water): rg = slope * 0.5 + 0.5, b = 255.
+    Same random-phase plane-wave sum as the glints, integer wave vectors so it tiles."""
+    import io
+    import numpy as np
+    from PIL import Image
+    N = 512
+    rng = np.random.RandomState(11)
+    y, x = np.mgrid[0:N, 0:N].astype(np.float32) / N
+    ht = np.zeros((N, N), np.float32)
+    for _ in range(90):
+        kx, ky = rng.randint(-20, 21, 2)
+        kk = float(np.hypot(kx, ky))
+        if kk < 1.5:
+            continue
+        ht += (kk ** -2.3) * np.sin(2 * np.pi * (kx * x + ky * y) + rng.uniform(0, 2 * np.pi))
+    dx = (np.roll(ht, -1, 1) - np.roll(ht, 1, 1)) * 0.5
+    dy = (np.roll(ht, -1, 0) - np.roll(ht, 1, 0)) * 0.5
+    sd = max(float(np.hypot(dx, dy).std()), 1e-9)
+    rg = np.clip(np.stack([dx, dy], -1) / (3.0 * sd), -1, 1) * 0.5 + 0.5
+    img = np.dstack([rg, np.ones((N, N, 1))]) * 255
+    out = io.BytesIO(); Image.fromarray(img.astype(np.uint8), 'RGB').save(out, 'PNG')
+    return out.getvalue()
+
+
 EXTRA_SHADER = (
     '\n// nocturne reflecting pool: planar mirror + dark water body + moving moon glints\n'
     + MIRROR_SHADER + '\n{\n\tqer_editorimage textures/strafe64/d_wall.tga\n'
-    '\tsurfaceparm nolightmap\n\tportal\n\t{\n\t\tmap $whiteimage\n'
+    '\tsurfaceparm nolightmap\n\tportal\n'
+    # engine water pass (r_water 1): distort tint(rgb) moonDir(xyz) glintCol(rgb) specPower; the stages below are the r_water 0 fallback
+    '\twater 0.075  0.010 0.022 0.040  0.0 0.98 0.19  4.0 4.4 5.4  650\n'
+    '\twaterNormal ' + WATER_NORMAL_TEX + '\n'
+    '\t{\n\t\tmap $whiteimage\n'
     '\t\tblendFunc GL_ONE_MINUS_SRC_ALPHA GL_SRC_ALPHA\n'
     '\t\tdepthWrite\n'
     '\t\trgbGen const ( 0.02 0.045 0.08 )\n'
@@ -114,7 +144,7 @@ class Nocturne(Marble):
         if not os.path.exists(RES_PK3):
             raise SystemExit('texture pack not found: %s (set NOCTURNE_RESERVOIR_PK3)' % RES_PK3)
         self.extra_pk3 = [RES_PK3]
-        self.extra_files = {GLINT_TEX: _water_glint_png()}
+        self.extra_files = {GLINT_TEX: _water_glint_png(), WATER_NORMAL_TEX: _water_normal_png()}
         # Lighting balance (see docs/COLOUR_SCIENCE.md): the plaza was baked ~1 stop too
         # hot for its unlit moon sky, so no exposure could serve both. Bake lighter, and
         # keep the warm pools as accents rather than floodlights.

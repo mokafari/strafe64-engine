@@ -1656,6 +1656,64 @@ static void RB_RenderShadowmap( shaderCommands_t *input )
 
 
 /*
+** RB_DrawWater
+**
+** STRAFE 64 water. A shader with the "water" keyword is a portal/mirror surface: by the time it is
+** drawn the framebuffer holds the mirrored view of the whole screen (portal surfaces sort before
+** opaque ones). Snapshot that, then draw the surface with the water program, which looks the
+** reflection up with animated distortion. Returns qfalse to fall back to the plain mirror stages.
+*/
+static qboolean RB_DrawWater( shaderCommands_t *input )
+{
+	shaderProgram_t *sp = &tr.waterShader;
+	shader_t *sh = input->shader;
+	FBO_t *cur = glState.currentFBO;
+	vec4_t v;
+
+	if ( !r_water->integer || !sh->isWater || !sh->waterNormal || !tr.waterCopyFbo || !tr.waterCopyImage )
+		return qfalse;
+
+	// only the main colour view: not inside the mirror pass itself, depth fill or shadow passes
+	if ( !cur || backEnd.depthFill || backEnd.viewParms.isPortal
+		|| ( backEnd.viewParms.flags & ( VPF_SHADOWMAP | VPF_DEPTHSHADOW ) ) )
+		return qfalse;
+
+	// snapshot the mirror view (the blit resolves multisampling), then go back to drawing
+	FBO_FastBlit( cur, NULL, tr.waterCopyFbo, NULL, GL_COLOR_BUFFER_BIT, GL_NEAREST );
+	FBO_Bind( cur );
+	qglViewport( backEnd.viewParms.viewportX, backEnd.viewParms.viewportY,
+		backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight );
+	qglScissor( backEnd.viewParms.viewportX, backEnd.viewParms.viewportY,
+		backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight );
+
+	GLSL_BindProgram( sp );
+
+	GLSL_SetUniformMat4( sp, UNIFORM_MODELVIEWPROJECTIONMATRIX, glState.modelviewProjection );
+	GLSL_SetUniformVec3( sp, UNIFORM_VIEWORIGIN, backEnd.viewParms.or.origin );
+	GLSL_SetUniformFloat( sp, UNIFORM_TIME, tess.shaderTime );
+
+	VectorSet4( v, (float)cur->width, (float)cur->height, 0.0f, 0.0f );
+	GLSL_SetUniformVec4( sp, UNIFORM_VIEWINFO, v );
+
+	VectorSet4( v, sh->waterTint[0], sh->waterTint[1], sh->waterTint[2], sh->waterDistort * r_waterDistort->value );
+	GLSL_SetUniformVec4( sp, UNIFORM_BASECOLOR, v );
+
+	VectorSet4( v, sh->waterLightCol[0], sh->waterLightCol[1], sh->waterLightCol[2], sh->waterSpecPower );
+	GLSL_SetUniformVec4( sp, UNIFORM_VERTCOLOR, v );
+
+	VectorSet4( v, sh->waterLightDir[0], sh->waterLightDir[1], sh->waterLightDir[2], 0.0f );
+	GLSL_SetUniformVec4( sp, UNIFORM_LIGHTORIGIN, v );
+
+	GL_State( GLS_DEFAULT );
+	GL_BindToTMU( tr.waterCopyImage, TB_COLORMAP );
+	GL_BindToTMU( sh->waterNormal, TB_NORMALMAP );
+
+	R_DrawElements( input->numIndexes, input->firstIndex );
+	return qtrue;
+}
+
+
+/*
 ** RB_StageIteratorGeneric
 */
 void RB_StageIteratorGeneric( void )
@@ -1770,7 +1828,8 @@ void RB_StageIteratorGeneric( void )
 	//
 	// call shader function
 	//
-	RB_IterateStagesGeneric( input );
+	if ( !RB_DrawWater( input ) )
+		RB_IterateStagesGeneric( input );
 
 	//
 	// pshadows!

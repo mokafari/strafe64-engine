@@ -318,6 +318,13 @@ void FBO_Init(void)
 		R_CheckFBO(tr.screenScratchFbo);
 	}
 
+	if (tr.waterCopyImage)
+	{
+		tr.waterCopyFbo = FBO_Create("_waterCopy", tr.waterCopyImage->width, tr.waterCopyImage->height);
+		FBO_AttachImage(tr.waterCopyFbo, tr.waterCopyImage, GL_COLOR_ATTACHMENT0, 0);
+		R_CheckFBO(tr.waterCopyFbo);
+	}
+
 	if (tr.sunRaysImage)
 	{
 		tr.sunRaysFbo = FBO_Create("_sunRays", tr.renderDepthImage->width, tr.renderDepthImage->height);

@@ -32,6 +32,8 @@ extern const char *fallbackShader_colorgrade_vp;
 extern const char *fallbackShader_colorgrade_fp;
 extern const char *fallbackShader_bloom_vp;
 extern const char *fallbackShader_bloom_fp;
+extern const char *fallbackShader_water_vp;
+extern const char *fallbackShader_water_fp;
 extern const char *fallbackShader_bodycam_vp;
 extern const char *fallbackShader_bodycam_fp;
 extern const char *fallbackShader_calclevels4x_vp;
@@ -1587,6 +1589,22 @@ void GLSL_InitGPUShaders(void)
 
 	numEtcShaders++;
 
+	// STRAFE 64 water: distorted mirror reflection (see RB_DrawWater)
+	attribs = ATTR_POSITION | ATTR_TEXCOORD;
+	extradefines[0] = '\0';
+
+	if (!GLSL_InitGPUShader(&tr.waterShader, "water", attribs, qtrue, extradefines, qtrue, fallbackShader_water_vp, fallbackShader_water_fp))
+	{
+		ri.Error(ERR_FATAL, "Could not load water shader!");
+	}
+
+	GLSL_InitUniforms(&tr.waterShader);
+	GLSL_SetUniformInt(&tr.waterShader, UNIFORM_TEXTUREMAP, TB_COLORMAP);
+	GLSL_SetUniformInt(&tr.waterShader, UNIFORM_NORMALMAP, TB_NORMALMAP);
+	GLSL_FinishGPUShader(&tr.waterShader);
+
+	numEtcShaders++;
+
 	// STRAFE 64 bodycam finish pass: warp + crunch + chroma + scanline + grain
 	attribs = ATTR_POSITION | ATTR_TEXCOORD;
 	extradefines[0] = '\0';
@@ -1673,6 +1691,7 @@ void GLSL_ShutdownGPUShaders(void)
 	GLSL_DeleteGPUShader(&tr.depthOfFieldShader);
 	GLSL_DeleteGPUShader(&tr.colorGradeShader);
 	GLSL_DeleteGPUShader(&tr.bloomShader);
+	GLSL_DeleteGPUShader(&tr.waterShader);
 	GLSL_DeleteGPUShader(&tr.bodycamShader);
 }
 

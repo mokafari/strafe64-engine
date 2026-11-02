@@ -113,6 +113,17 @@ First-pass numbers against the concept-art targets: shadow/highlight hue gap 172
 
 **Process notes.** The internal disk had about 300 MB free; bakes with the 88 MB pack run with `TMPDIR=/Volumes/LaCie/STRAFE64/tmp`. `/var/folders/.../T` holds 273 git-style `tmp.*` stores (15 GB) that I did not create and did not delete. The very first screenshot returned by `engine_camera` after a teleport often shows a stale/odd viewpoint; use the follow-up `engine_screenshot`.
 
+## 8. Water v2 built (2026-11-02)
+
+Engine changes (renderergl2): new `water` / `waterNormal` shader keywords on a `portal` shader; `RB_DrawWater` (tr_shade.c) snapshots the mirror view into an HDR copy (`tr.waterCopyImage`, one full-screen blit per water draw) and draws the surface with `glsl/water_{vp,fp}.glsl`: ripple slopes from two counter-moving octaves of a tileable normal map (amplitude falls with distance, ~1/dist in screen space, mostly vertical), distorted reflection lookup, stylised fresnel against a dark deep-water colour, and a moon specular lobe from the same normals. Cvars: `r_water` (0 = fall back to the plain mirror stages), `r_waterDistort` (multiplier). Shot syntax: `water <distort> <tintRGB> <moonDirXYZ> <glintRGB HDR> <specPower>`. Shots: `docs/screenshots/reservoir/water-v2*.jpg`.
+
+Bugs found on the way (each cost time, worth knowing):
+- **`u_ModelMatrix` is not populated for world surfaces** (`backEnd.or.transformMatrix` is zero there), so any new world-space program must use `attr_Position` directly. This made the whole pool sample ONE ripple and look like "a picture moving in the reflection".
+- Wave spectrum matters: with equal slope energy at all frequencies the mipmapped normal map averages to flat at distance. Use a steep spectrum (height ~ k^-2.3).
+- Tooling: debug-visualise intermediate values in the fragment shader early (a cvar toggle that writes `slope` or world position as colour found the matrix bug in two builds).
+
+Not done: cost not measured (`r_gpuTimers`); no refraction/depth tint of the pool floor, no foam/shore, no player or projectile ripples; MSAA behaviour of the snapshot blit (resolves via blit) only checked at the default 4x; single water plane per view (inherits the mirror's limits).
+
 ## Sources
 - [Rend 2, a more modern renderer (ModDB dev diary)](https://www.moddb.com/news/dev-diary-rend2)
 - [OpenJK rend2 PR #1179](https://github.com/JACoders/OpenJK/pull/1179/files)
