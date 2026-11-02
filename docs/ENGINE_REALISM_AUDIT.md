@@ -99,6 +99,20 @@ Built a 1120 x 2000 shallow reflecting pool down the nocturne's central axis usi
 
 **Limits to know:** one mirror plane per view (no recursion), mirrors at one height per entity, no roughness blur or fresnel yet (flat blend), no ripples. Fine for still water; wet-stone or rough surfaces need SSR or a blur pass.
 
+## 7. Reservoir textures + water v1 (2026-11-02)
+
+**Textures.** The Nocturne-Reservoir pack (`/Volumes/LaCie/STRAFE64/Nocturne-Reservoir/`, 12 x 2048 PBR sets) is integrated into the nocturne via map-specific `nrx_*` shaders (`strafegen_nocturne.py`): pavers floor, ashlar terraces/stairs, limestone columns, obelisk marble portals, basalt inlays, pool coping, amber lamp strips (emissive + baked `q3map_surfacelight`). Shaders are lightmapped with the pack's `_nh` normal maps; tile sizes are set in the generator (`tcMod scale = 64 / tile`, names under `textures/strafe64/m/` get 64u-per-repeat UVs). The bake mounts the pack through `course.extra_pk3`; the map ships no textures. Runtime: `assets/openarena/baseoa/nocturne_reservoir.pk3` is a **symlink** to the LaCie copy (the internal disk is nearly full); if the drive is unmounted the map falls back to missing textures.
+First-pass numbers against the concept-art targets: shadow/highlight hue gap 172-178 deg (target >= 100), ground/sky luma ratio 1.5-3.4 (target 0.9-2.6), warm pixels 2-4 % (target >= 2.5). Chroma was still about 2x: lowering `r_gradeSaturation` to about 0.6 (+ split 0.5, lift 0.045, exposure 0.2) gives the neutral, restrained look in `docs/screenshots/reservoir/graded-low-saturation.jpg`.
+
+**Water v1 (no engine change).**
+- Body: the mirror stage now uses `alphaGen portal 1500`, so the pool is dark deep water up close and a full mirror at grazing/long range (cheap fresnel-like behaviour); `depthWrite` stays (see section 6).
+- Motion: two counter-scrolling, differently scaled/rotated additive layers of a moon-glint texture (`nrx_water_glint.png`, generated at bake time from random-phase tileable waves; the pack's own water height map is periodic and showed as a dot grid). Verified moving: mean frame-to-frame difference 8.6 over the pool vs about 1.3 over static sky/floor.
+- Limits: the glints move but the *reflection itself does not distort*, there is no fresnel by angle (distance proxy only), no refraction/depth tint, no shoreline foam, no interaction (player or projectile ripples).
+
+**Water v2 (needs engine work, scoped, not started).** In the mirror pass the reflected scene is already in the colour buffer when the water surface is drawn. A small new stage type for portal surfaces would: copy the colour buffer to a scratch texture, then draw the water with a dedicated GLSL program that (1) offsets the lookup by an animated normal map (distorted reflection), (2) blends by true fresnel from view angle, (3) adds a moon specular lobe from the same normals, (4) tints by fake depth. About 100 lines C (copy + program + shader keyword) and 60 lines GLSL, plus `r_water*` cvars. Gotchas to expect: copying the HDR FBO each frame costs bandwidth on this GPU; MSAA resolve; the pass must run after the mirror view and before sky. Ripples from gameplay (footsteps, bolts) would need cgame to feed impact positions to the shader as uniforms.
+
+**Process notes.** The internal disk had about 300 MB free; bakes with the 88 MB pack run with `TMPDIR=/Volumes/LaCie/STRAFE64/tmp`. `/var/folders/.../T` holds 273 git-style `tmp.*` stores (15 GB) that I did not create and did not delete. The very first screenshot returned by `engine_camera` after a teleport often shows a stale/odd viewpoint; use the follow-up `engine_screenshot`.
+
 ## Sources
 - [Rend 2, a more modern renderer (ModDB dev diary)](https://www.moddb.com/news/dev-diary-rend2)
 - [OpenJK rend2 PR #1179](https://github.com/JACoders/OpenJK/pull/1179/files)

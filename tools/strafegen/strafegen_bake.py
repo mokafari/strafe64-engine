@@ -397,6 +397,8 @@ def build_baked_pk3(name, course, out_dir, bounce=3):
                 z.write(aas, "maps/%s.aas" % name)
             z.writestr("scripts/%s.arena" % name, arena)
             z.writestr("scripts/%s_baked.shader" % name, ship_shader)
+            for arc, data in getattr(course, "extra_files", {}).items():   # map-specific textures
+                z.writestr(arc, data)
             # no textures: they ship ONCE in the shared zzz_strafe64_shader.pk3
             # (which baked maps need anyway for their *_lm/*_bk variants).
             # Bundling them made every map pk3 ~80 MB with the 2048 material set.

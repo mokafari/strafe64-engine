@@ -9,15 +9,58 @@ import strafegen_materials as M
 # within 64u of the plane. The dark constant stage is blended over the mirror view:
 # result = view * MIRROR_ALPHA + tint * (1 - MIRROR_ALPHA).
 MIRROR_SHADER = 'textures/strafe64/mirror_pool'
-MIRROR_ALPHA = 0.78
+MIRROR_ALPHA = 0.78      # (kept for reference; water uses alphaGen portal range below)
+WATER_RANGE = 1500       # distance (u) at which the pool becomes a full mirror; closer = darker, deeper water
+GLINT_TEX = 'textures/strafe64/m/nrx_water_glint.png'
+
+
+def _water_glint_png():
+    """Tileable moon-glint texture: a sum of random-phase plane waves (integer wave vectors so it
+    tiles) gives a natural, non-periodic ripple height; glints are where a facet's slope turns
+    toward the moon half-vector. Two scrolling layers of it make the moving sparkle.
+    (The pack's water height map is procedural and periodic: it showed as a dot grid.)"""
+    import io
+    import numpy as np
+    from PIL import Image
+    N = 512
+    rng = np.random.RandomState(7)
+    y, x = np.mgrid[0:N, 0:N].astype(np.float32) / N
+    ht = np.zeros((N, N), np.float32)
+    for _ in range(90):
+        kx, ky = rng.randint(-40, 41, 2)
+        kk = float(np.hypot(kx, ky))
+        if kk < 3:
+            continue
+        ht += (kk ** -1.15) * np.sin(2 * np.pi * (kx * x + ky * y) + rng.uniform(0, 2 * np.pi))
+    dx = (np.roll(ht, -1, 1) - np.roll(ht, 1, 1)) * 0.5 * N / (2 * np.pi)
+    dy = (np.roll(ht, -1, 0) - np.roll(ht, 1, 0)) * 0.5 * N / (2 * np.pi)
+    k = 0.9 / max(np.hypot(dx, dy).std(), 1e-6) * 0.35
+    n = np.stack([-dx * k, -dy * k, np.ones_like(ht)], -1)
+    n /= np.linalg.norm(n, axis=-1, keepdims=True)
+    h = np.array([0.0, 0.40, 0.92]); h /= np.linalg.norm(h)        # moon half-vector, mostly up
+    g = np.clip((n * h).sum(-1), 0, 1)
+    lo = np.percentile(g, 82)
+    g = np.clip((g - lo) / max(g.max() - lo, 1e-3), 0, 1) ** 1.4
+    g = (g * 255).astype(np.uint8)
+    out = io.BytesIO(); Image.fromarray(g, 'L').save(out, 'PNG')
+    return out.getvalue()
+
+
 EXTRA_SHADER = (
-    '\n// nocturne reflecting pool (planar mirror prototype)\n'
+    '\n// nocturne reflecting pool: planar mirror + dark water body + moving moon glints\n'
     + MIRROR_SHADER + '\n{\n\tqer_editorimage textures/strafe64/d_wall.tga\n'
     '\tsurfaceparm nolightmap\n\tportal\n\t{\n\t\tmap $whiteimage\n'
     '\t\tblendFunc GL_ONE_MINUS_SRC_ALPHA GL_SRC_ALPHA\n'
     '\t\tdepthWrite\n'
-    '\t\trgbGen const ( 0.035 0.06 0.10 )\n'
-    '\t\talphaGen const %g\n\t}\n}\n' % MIRROR_ALPHA)
+    '\t\trgbGen const ( 0.02 0.045 0.08 )\n'
+    '\t\talphaGen portal @RANGE@\n\t}\n'
+    # two counter-scrolling glint layers (additive, moon-tinted)
+    '\t{\n\t\tmap ' + GLINT_TEX + '\n\t\tblendFunc GL_ONE GL_ONE\n'
+    '\t\trgbGen const ( 0.26 0.31 0.40 )\n'
+    '\t\ttcMod scale 0.173 0.173\n\t\ttcMod scroll 0.006 0.004\n\t}\n'
+    '\t{\n\t\tmap ' + GLINT_TEX + '\n\t\tblendFunc GL_ONE GL_ONE\n'
+    '\t\trgbGen const ( 0.18 0.23 0.32 )\n'
+    '\t\ttcMod scale 0.291 0.291\n\t\ttcMod rotate 3\n\t\ttcMod scroll -0.004 0.007\n\t}\n}\n').replace('@RANGE@', str(WATER_RANGE))
 
 
 # ---- Nocturne-Reservoir texture pack (neutral warm stone, see docs/COLOUR_SCIENCE.md) -----
@@ -71,6 +114,7 @@ class Nocturne(Marble):
         if not os.path.exists(RES_PK3):
             raise SystemExit('texture pack not found: %s (set NOCTURNE_RESERVOIR_PK3)' % RES_PK3)
         self.extra_pk3 = [RES_PK3]
+        self.extra_files = {GLINT_TEX: _water_glint_png()}
         # Lighting balance (see docs/COLOUR_SCIENCE.md): the plaza was baked ~1 stop too
         # hot for its unlit moon sky, so no exposure could serve both. Bake lighter, and
         # keep the warm pools as accents rather than floodlights.
