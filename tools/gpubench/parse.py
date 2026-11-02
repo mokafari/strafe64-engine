@@ -1,6 +1,7 @@
-import sys,re,statistics as st
+import sys,re,os,statistics as st
+MAP=os.environ.get('MAP','strafe64_1337')
 t=open(sys.argv[1]).read()
-if 'strafe64_1337' not in t: print(sys.argv[1],'NOT IN GAME'); sys.exit()
+if MAP not in t: print(sys.argv[1],'NOT IN GAME'); sys.exit()
 rows=[]
 for l in re.findall(r'gpu:.*',t):
     rows.append({k:float(v) for k,v in re.findall(r'([a-z]+) ([0-9.]+)',l)})

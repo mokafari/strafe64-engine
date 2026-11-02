@@ -134,6 +134,30 @@ Requirements: the linear depth texture must exist (`r_dof 1` default, or `r_ssao
 
 Limits: it is a screen-space effect, so shafts vanish when the moon is behind the camera (fades out over the last quarter), occluders must be on screen, and thin geometry can flicker. Direction is a cvar; it should become a per-map setting (worldspawn key or shader keyword) so each map sets its own moon. Cost not measured (48 depth taps at half res plus one additive blit).
 
+## 10. GPU cost measurements (2026-11-02)
+
+Method: `r_gpuTimers 10` (GL_TIME_ELAPSED per pass), nocturne, 2560x1440, 4x MSAA, the preset from `tools/gpubench/bench-nocturne.cfg` (SSAO, sun rays, bloom 0.4, grade, water, shafts 0.35), elevated view over the pool (`setviewpos 0 -1900 300 90 8`), median of ~50 samples per config, live cvar toggles in ONE session so no restarts (commands written to the engine's `s64api.pipe`, markers echoed into `engine_console.log`). Apple M3 Pro. Noise: base vs base2 differed by 0.3 ms.
+
+**Clean results (live toggles, base 20.3 ms, i.e. ~49 fps):**
+
+| Feature | Cost |
+|---|---|
+| Mirror pool (portal re-render of the scene) | **~5.0 ms** (scene 12.2 -> 6.7). The single biggest add-on. |
+| Water pass on top of the plain mirror (HDR snapshot blit + program) | ~1.0 ms |
+| Moon shafts | ~1.1 ms |
+| Bloom (0.4) | ~1.1 ms |
+| Grade/FXAA present pass | ~0.2-0.7 ms (present bucket 0.66; total moved +0.2 when off) |
+| Sun rays (interleaved A/B, latched, restart) | ~2.3 ms (19.95 -> 17.62) |
+| SSAO (interleaved A/B, restart) | ~0 within noise (off 20.84 vs on 20.08/19.81) at this sky-heavy view; earlier audit measured +1.4 ms in a busier scene |
+
+**Not trustworthy:** a standing-height batch (mirror -7.7 ms; ordering plausible, absolute values drifted 28 -> 36 ms between repeats of the same config) and any restart-based batch except the interleaved one above. Cause: the machine was under heavy load (swap 11.6/12 GB full, internal disk 100 % full, Chrome + compositor busy), which makes absolute timings wander. An MSAA 0 / 1080p / 720p comparison was therefore not obtained; do not quote the drifting numbers.
+
+**Budget reading.** 20 ms at 1440p/MSAA4 is below 60 fps on this machine. Of that, the mirror is a quarter. Options if needed, cheapest first: render the mirror view at reduced resolution or with a shorter far plane / simpler pass (the mirror pass currently runs the full world + sky), drop to 1080p, sun rays off (2.3 ms), keep water and shafts (about 1 ms each). Not measured: the grade cost vs the original shipped pass, per-pass cost of the new `colorgrade` shoulder/split code (it is inside the 0.66 ms present bucket).
+
+**Engine finding.** After ~20 `vid_restart`s in one session the engine died with `Z_Malloc: failed on allocation of 16777256 bytes from the main zone`. Likely a zone-memory leak per restart (texture/shader data), or the 2048 materials filling the default zone; not investigated and probably pre-existing, but it will bite anyone who flips latched cvars repeatedly. Check `com_zoneMegs` and whether memory grows per restart.
+
+**Tooling.** `tools/gpubench/run.sh` now takes `MAP`, `CFG`, `VIEW`; `bench-nocturne.cfg` + `matrix-nocturne.sh` added. The standalone harness could not be verified end to end here (its command pipe never reached the engine in this environment, and the LaCie drive cannot hold the FIFO), so the numbers above came from the MCP-driven session described above.
+
 ## Sources
 - [Rend 2, a more modern renderer (ModDB dev diary)](https://www.moddb.com/news/dev-diary-rend2)
 - [OpenJK rend2 PR #1179](https://github.com/JACoders/OpenJK/pull/1179/files)
