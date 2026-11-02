@@ -32,6 +32,8 @@ extern const char *fallbackShader_colorgrade_vp;
 extern const char *fallbackShader_colorgrade_fp;
 extern const char *fallbackShader_bloom_vp;
 extern const char *fallbackShader_bloom_fp;
+extern const char *fallbackShader_shafts_vp;
+extern const char *fallbackShader_shafts_fp;
 extern const char *fallbackShader_water_vp;
 extern const char *fallbackShader_water_fp;
 extern const char *fallbackShader_bodycam_vp;
@@ -1589,6 +1591,21 @@ void GLSL_InitGPUShaders(void)
 
 	numEtcShaders++;
 
+	// STRAFE 64 moon shafts (see RB_MoonShafts)
+	attribs = ATTR_POSITION | ATTR_TEXCOORD;
+	extradefines[0] = '\0';
+
+	if (!GLSL_InitGPUShader(&tr.shaftsShader, "shafts", attribs, qtrue, extradefines, qtrue, fallbackShader_shafts_vp, fallbackShader_shafts_fp))
+	{
+		ri.Error(ERR_FATAL, "Could not load shafts shader!");
+	}
+
+	GLSL_InitUniforms(&tr.shaftsShader);
+	GLSL_SetUniformInt(&tr.shaftsShader, UNIFORM_SCREENDEPTHMAP, TB_COLORMAP);
+	GLSL_FinishGPUShader(&tr.shaftsShader);
+
+	numEtcShaders++;
+
 	// STRAFE 64 water: distorted mirror reflection (see RB_DrawWater)
 	attribs = ATTR_POSITION | ATTR_TEXCOORD;
 	extradefines[0] = '\0';
@@ -1691,6 +1708,7 @@ void GLSL_ShutdownGPUShaders(void)
 	GLSL_DeleteGPUShader(&tr.depthOfFieldShader);
 	GLSL_DeleteGPUShader(&tr.colorGradeShader);
 	GLSL_DeleteGPUShader(&tr.bloomShader);
+	GLSL_DeleteGPUShader(&tr.shaftsShader);
 	GLSL_DeleteGPUShader(&tr.waterShader);
 	GLSL_DeleteGPUShader(&tr.bodycamShader);
 }

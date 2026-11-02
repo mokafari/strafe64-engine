@@ -124,6 +124,16 @@ Bugs found on the way (each cost time, worth knowing):
 
 Not done: cost not measured (`r_gpuTimers`); no refraction/depth tint of the pool floor, no foam/shore, no player or projectile ripples; MSAA behaviour of the snapshot blit (resolves via blit) only checked at the default 4x; single water plane per view (inherits the mirror's limits).
 
+## 9. Moon shafts (volumetric light, v1) (2026-11-02)
+
+`RB_MoonShafts` (tr_postprocess.c, `glsl/shafts_{vp,fp}.glsl`): screen-space light shafts toward a fixed world direction. Half-res (reuses `quarterFbo[0]`), 48 jittered samples marching from each pixel toward the moon's screen position through the depth buffer; open-sky samples count as light, geometry blocks it, so the portal frame and pillars cut shadow bands through a radial glow. Added over the tonemapped image after bloom/sun rays, before DoF. Works on baked maps (no sun shadow map needed), which is why it is screen-space and not a shadow-map raymarch.
+
+Cvars (all archived): `r_shafts` (intensity, **default 0 = off**; try 0.3-0.5), `r_shaftsDir` (world direction to the moon, default `0 0.978 0.208` = nocturne), `r_shaftsColor`, `r_shaftsDensity` (march length, 0.9), `r_shaftsDecay` (0.965). Shots: `docs/screenshots/reservoir/moon-shafts.jpg` vs `moon-shafts-off.jpg`.
+
+Requirements: the linear depth texture must exist (`r_dof 1` default, or `r_ssao`) and `r_depthPrepass 1` (default). With `r_depthPrepass 0` the depth copy is not made and the pass shows nothing (found the hard way: first tests with a stale depth looked like a no-op).
+
+Limits: it is a screen-space effect, so shafts vanish when the moon is behind the camera (fades out over the last quarter), occluders must be on screen, and thin geometry can flicker. Direction is a cvar; it should become a per-map setting (worldspawn key or shader keyword) so each map sets its own moon. Cost not measured (48 depth taps at half res plus one additive blit).
+
 ## Sources
 - [Rend 2, a more modern renderer (ModDB dev diary)](https://www.moddb.com/news/dev-diary-rend2)
 - [OpenJK rend2 PR #1179](https://github.com/JACoders/OpenJK/pull/1179/files)

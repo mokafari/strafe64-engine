@@ -1700,6 +1700,9 @@ const void *RB_PostProcess(const void *data)
 	if (r_drawSunRays->integer)
 		RB_SunRays(srcFbo, srcBox, srcFbo, srcBox);
 
+	if (r_shafts->value > 0.0f)
+		RB_MoonShafts(srcFbo, srcBox);
+
 	// STRAFE 64 cinematic DoF -- after bloom/sunrays so the glow defocuses too
 	R_GpuMark(GPUT_BLOOM);
 

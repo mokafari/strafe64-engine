@@ -1649,6 +1649,7 @@ typedef struct {
 	shaderProgram_t depthOfFieldShader;	// STRAFE 64 cinematic DoF
 	shaderProgram_t bloomShader;		// STRAFE 64 bloom bright-pass / blur / composite
 	shaderProgram_t colorGradeShader;	// STRAFE 64 FXAA + grade + vignette + grain
+	shaderProgram_t shaftsShader;		// STRAFE 64 moon shafts: screen-space light shafts
 	shaderProgram_t waterShader;		// STRAFE 64 water: distorted mirror reflection + fresnel + moon glints
 	shaderProgram_t bodycamShader;		// STRAFE 64 bodycam: warp/chroma/crunch/scanline/grain
 	shaderProgram_t testcubeShader;
@@ -1896,6 +1897,11 @@ extern  cvar_t  *r_rimExp;			// rim falloff (higher = thinner edge)
 extern  cvar_t  *r_rimColorR;		// rim color red
 extern  cvar_t  *r_rimColorG;		// rim color green
 extern  cvar_t  *r_rimColorB;		// rim color blue
+extern  cvar_t  *r_shafts;			// moon shafts intensity (0 = off)
+extern  cvar_t  *r_shaftsDir;			// "x y z" world direction towards the moon
+extern  cvar_t  *r_shaftsColor;		// "r g b" shaft colour
+extern  cvar_t  *r_shaftsDensity;		// march length (fraction of the way to the moon)
+extern  cvar_t  *r_shaftsDecay;		// per-sample falloff (1 = none)
 extern  cvar_t  *r_water;			// STRAFE 64 water pass on (1) / fall back to the plain mirror stages (0)
 extern  cvar_t  *r_waterSpeed;		// water animation speed multiplier
 extern  cvar_t  *r_waterDistort;	// multiplier on every water shader's reflection distortion

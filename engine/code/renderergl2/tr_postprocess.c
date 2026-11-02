@@ -746,6 +746,85 @@ void RB_ColorGrade(FBO_t *srcFbo, FBO_t *dstFbo)
 
 /*
 =============
+RB_MoonShafts
+
+STRAFE 64 screen-space light shafts toward a fixed world direction (the moon). Half-res march
+over the depth buffer into quarterFbo[0], then added over srcFbo (tonemapped, pre-grade). Needs
+tr.hdrDepthImage (allocated when r_dof, r_ssao or r_shadowBlur is on). No-ops when the moon is
+behind the camera.
+=============
+*/
+void RB_MoonShafts(FBO_t *srcFbo, ivec4_t srcBox)
+{
+	vec4_t quadVerts[4], viewInfo, color;
+	vec2_t texCoords[4];
+	vec3_t dir, col;
+	vec4_t pos, hpos;
+	mat4_t mvp, trans, model;
+	ivec4_t quarterBox;
+	float facing;
+	FBO_t *q = tr.quarterFbo[0];
+
+	if (!srcFbo || !q || !tr.hdrDepthImage)
+		return;
+
+	if (sscanf(r_shaftsDir->string, "%f %f %f", &dir[0], &dir[1], &dir[2]) != 3)
+		return;
+	if (sscanf(r_shaftsColor->string, "%f %f %f", &col[0], &col[1], &col[2]) != 3)
+		return;
+	VectorNormalize(dir);
+
+	// moon in front of the camera? smooth fade as it leaves the view cone
+	facing = DotProduct(dir, backEnd.viewParms.or.axis[0]);
+	if (facing < -0.25f)
+		return;
+
+	Mat4Translation(backEnd.viewParms.or.origin, trans);
+	Mat4Multiply(backEnd.viewParms.world.modelMatrix, trans, model);
+	Mat4Multiply(backEnd.viewParms.projectionMatrix, model, mvp);
+	VectorScale(dir, backEnd.viewParms.zFar / 1.75f, pos);
+	pos[3] = 1.0f;
+	Mat4Transform(mvp, pos, hpos);
+	if (hpos[3] < 0.001f)
+		return;
+	hpos[3] = 0.5f / hpos[3];
+
+	VectorSet4(viewInfo, 0.5f + hpos[0] * hpos[3], 0.5f + hpos[1] * hpos[3],
+	           r_shaftsDensity->value, r_shaftsDecay->value);
+	VectorSet4(color, col[0] * r_shafts->value, col[1] * r_shafts->value, col[2] * r_shafts->value,
+	           Com_Clamp(0.0f, 1.0f, (facing + 0.25f) * 2.0f));
+
+	VectorSet4(quadVerts[0], -1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[1],  1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[2],  1.0f, -1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[3], -1.0f, -1.0f, 0.0f, 1.0f);
+	texCoords[0][0] = 0.0f; texCoords[0][1] = 1.0f;
+	texCoords[1][0] = 1.0f; texCoords[1][1] = 1.0f;
+	texCoords[2][0] = 1.0f; texCoords[2][1] = 0.0f;
+	texCoords[3][0] = 0.0f; texCoords[3][1] = 0.0f;
+
+	// 1) march into the half-res buffer
+	FBO_Bind(q);
+	qglViewport(0, 0, q->width, q->height);
+	qglScissor (0, 0, q->width, q->height);
+	GL_State(GLS_DEPTHTEST_DISABLE);
+	Mat4Identity(mvp);
+
+	GLSL_BindProgram(&tr.shaftsShader);
+	GLSL_SetUniformMat4(&tr.shaftsShader, UNIFORM_MODELVIEWPROJECTIONMATRIX, mvp);
+	GL_BindToTMU(tr.hdrDepthImage, TB_COLORMAP);
+	GLSL_SetUniformVec4(&tr.shaftsShader, UNIFORM_VIEWINFO, viewInfo);
+	GLSL_SetUniformVec4(&tr.shaftsShader, UNIFORM_COLOR, color);
+	RB_InstantQuad2(quadVerts, texCoords);
+
+	// 2) add it over the scene (bilinear upsample)
+	quarterBox[0] = 0; quarterBox[1] = 0; quarterBox[2] = q->width; quarterBox[3] = q->height;
+	FBO_Blit(q, quarterBox, NULL, srcFbo, srcBox, NULL, NULL, GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE);
+}
+
+
+/*
+=============
 RB_Bodycam
 
 STRAFE 64 bodycam finish pass. The cheap-vest-cam look layered onto the

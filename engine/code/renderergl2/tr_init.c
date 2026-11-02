@@ -193,6 +193,11 @@ cvar_t  *r_bodycamScanline;
 cvar_t  *r_bodycamGrain;
 cvar_t  *r_bodycamVignette;
 cvar_t  *r_bodycamClip;
+cvar_t  *r_shafts;
+cvar_t  *r_shaftsDir;
+cvar_t  *r_shaftsColor;
+cvar_t  *r_shaftsDensity;
+cvar_t  *r_shaftsDecay;
 cvar_t  *r_water;
 cvar_t  *r_waterSpeed;
 cvar_t  *r_waterDistort;
@@ -1461,6 +1466,12 @@ void R_Register( void )
 	r_bodycamGrain = ri.Cvar_Get( "r_bodycamGrain", "0.07", CVAR_ARCHIVE );
 	r_bodycamVignette = ri.Cvar_Get( "r_bodycamVignette", "0.4", CVAR_ARCHIVE );
 	r_bodycamClip = ri.Cvar_Get( "r_bodycamClip", "0.06", CVAR_ARCHIVE );
+	// moon shafts: default 0 (off); the nocturne moon sits at about yaw 90 / 12 deg elevation
+	r_shafts = ri.Cvar_Get( "r_shafts", "0", CVAR_ARCHIVE );
+	r_shaftsDir = ri.Cvar_Get( "r_shaftsDir", "0 0.978 0.208", CVAR_ARCHIVE );
+	r_shaftsColor = ri.Cvar_Get( "r_shaftsColor", "0.70 0.80 1.0", CVAR_ARCHIVE );
+	r_shaftsDensity = ri.Cvar_Get( "r_shaftsDensity", "0.9", CVAR_ARCHIVE );
+	r_shaftsDecay = ri.Cvar_Get( "r_shaftsDecay", "0.965", CVAR_ARCHIVE );
 	r_water = ri.Cvar_Get( "r_water", "1", CVAR_ARCHIVE );
 	r_waterDistort = ri.Cvar_Get( "r_waterDistort", "1.0", CVAR_ARCHIVE );
 	r_waterSpeed = ri.Cvar_Get( "r_waterSpeed", "2.0", CVAR_ARCHIVE );
