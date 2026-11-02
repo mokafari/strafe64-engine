@@ -380,6 +380,10 @@ void RE_BeginScene(const refdef_t *fd)
 		tr.refdef.toneMinAvgMaxLinear[2] = pow(2, tr.toneMinAvgMaxLevel[2]);
 	}
 
+	{
+		tr.refdef.toneMinAvgMaxLinear[2] *= pow(2, r_gradeWhitePoint->value);
+	}
+
 	// Makro - copy exta info if present
 	if (fd->rdflags & RDF_EXTRA) {
 		const refdefex_t* extra = (const refdefex_t*) (fd+1);

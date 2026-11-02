@@ -1,0 +1,187 @@
+{
+ "shaderE_nocturne-1-portal": {
+  "luma_mean": 0.3084155672673081,
+  "luma_p1": 0.01852235294117647,
+  "luma_p5": 0.03083764705882353,
+  "luma_p50": 0.22369098039215687,
+  "luma_p95": 0.6219129411764706,
+  "luma_p99": 0.6504964705882352,
+  "dynamic_range_stops_p99_p1": 7.955946060953475,
+  "clip_pct_any_ch_ge250": 0.1086033950617284,
+  "crushed_pct_luma_lt_0.03": 4.713734567901234,
+  "oklab_L_mean": 0.4172913039789052,
+  "oklab_chroma_mean": 0.06504317730270934,
+  "oklab_chroma_p95": 0.09010263442226951,
+  "shadow_hue_deg": 261.0772192902741,
+  "shadow_chroma": 0.05282659540905157,
+  "highlight_hue_deg": 146.39671591121976,
+  "highlight_chroma": 0.020305459192417153,
+  "split_tone_hue_gap_deg": 114.68050337905436,
+  "mean_rgb": [
+   63,
+   80,
+   116
+  ],
+  "regions": {
+   "sky": {
+    "hex": "#101b36",
+    "luma": 0.10316510607590497,
+    "oklab_L": 0.22720251845596998
+   },
+   "floor": {
+    "hex": "#748abe",
+    "luma": 0.5389530082193087,
+    "oklab_L": 0.637938318007506
+   }
+  },
+  "sky_to_floor_luma_ratio": 5.224179266803327
+ },
+ "shaderE_nocturne-2-axis": {
+  "luma_mean": 0.2617455779109174,
+  "luma_p1": 0.010679215686274508,
+  "luma_p5": 0.015985098039215686,
+  "luma_p50": 0.11845803921568626,
+  "luma_p95": 0.7670047058823528,
+  "luma_p99": 0.8923623529411764,
+  "dynamic_range_stops_p99_p1": 9.70339605675881,
+  "clip_pct_any_ch_ge250": 1.636766975308642,
+  "crushed_pct_luma_lt_0.03": 17.607060185185187,
+  "oklab_L_mean": 0.36822878479615273,
+  "oklab_chroma_mean": 0.058482262487277614,
+  "oklab_chroma_p95": 0.08588639969494613,
+  "shadow_hue_deg": 259.8790090570044,
+  "shadow_chroma": 0.05136420738163309,
+  "highlight_hue_deg": 259.9507296703036,
+  "highlight_chroma": 0.056992298921753004,
+  "split_tone_hue_gap_deg": 0.07172061329919188,
+  "mean_rgb": [
+   53,
+   68,
+   98
+  ],
+  "regions": {
+   "sky": {
+    "hex": "#06183b",
+    "luma": 0.08790173855316996,
+    "oklab_L": 0.21780101531587345
+   },
+   "floor": {
+    "hex": "#6f759d",
+    "luma": 0.46522322672016503,
+    "oklab_L": 0.5730006601022494
+   }
+  },
+  "sky_to_floor_luma_ratio": 5.292537262374634
+ },
+ "shaderE_nocturne-3-terrace": {
+  "luma_mean": 0.2999628454611474,
+  "luma_p1": 0.02332470588235294,
+  "luma_p5": 0.04129176470588235,
+  "luma_p50": 0.18233568627450977,
+  "luma_p95": 0.6911011764705882,
+  "luma_p99": 0.720518431372549,
+  "dynamic_range_stops_p99_p1": 7.970430513087667,
+  "clip_pct_any_ch_ge250": 0.0939429012345679,
+  "crushed_pct_luma_lt_0.03": 2.3040123456790123,
+  "oklab_L_mean": 0.4113835224932036,
+  "oklab_chroma_mean": 0.06931177105310188,
+  "oklab_chroma_p95": 0.09316759617158982,
+  "shadow_hue_deg": 261.6496058614199,
+  "shadow_chroma": 0.063147333165072,
+  "highlight_hue_deg": 265.54468525829424,
+  "highlight_chroma": 0.08393394126457251,
+  "split_tone_hue_gap_deg": 3.895079396874337,
+  "mean_rgb": [
+   59,
+   78,
+   116
+  ],
+  "regions": {
+   "sky": {
+    "hex": "#081534",
+    "luma": 0.08025637272659615,
+    "oklab_L": 0.20581863178904317
+   },
+   "floor": {
+    "hex": "#8ca4dc",
+    "luma": 0.6393148798076608,
+    "oklab_L": 0.7218243224939892
+   }
+  },
+  "sky_to_floor_luma_ratio": 7.965907978243306
+ },
+ "shaderE_nocturne-4-colonnade": {
+  "luma_mean": 0.29756345014826924,
+  "luma_p1": 0.01488392156862745,
+  "luma_p5": 0.02248627450980392,
+  "luma_p50": 0.17084313725490197,
+  "luma_p95": 0.7370007843137255,
+  "luma_p99": 0.911982117647059,
+  "dynamic_range_stops_p99_p1": 9.340083734138867,
+  "clip_pct_any_ch_ge250": 1.0534336419753088,
+  "crushed_pct_luma_lt_0.03": 9.679591049382715,
+  "oklab_L_mean": 0.403225248809654,
+  "oklab_chroma_mean": 0.05998353910804038,
+  "oklab_chroma_p95": 0.0821618347438027,
+  "shadow_hue_deg": 261.1119967671091,
+  "shadow_chroma": 0.05562001867901085,
+  "highlight_hue_deg": 259.549521776325,
+  "highlight_chroma": 0.0643225150988635,
+  "split_tone_hue_gap_deg": 1.5624749907840965,
+  "mean_rgb": [
+   60,
+   77,
+   109
+  ],
+  "regions": {
+   "sky": {
+    "hex": "#030c27",
+    "luma": 0.04707394270387243,
+    "oklab_L": 0.16507339702881807
+   },
+   "floor": {
+    "hex": "#99b2de",
+    "luma": 0.6901908584041926,
+    "oklab_L": 0.7607167514890336
+   }
+  },
+  "sky_to_floor_luma_ratio": 14.661845147451725
+ },
+ "shaderE_nocturne-5-overview": {
+  "luma_mean": 0.3345455953976034,
+  "luma_p1": 0.01488392156862745,
+  "luma_p5": 0.02524862745098039,
+  "luma_p50": 0.2836517647058824,
+  "luma_p95": 0.6932621960784312,
+  "luma_p99": 0.8193317647058824,
+  "dynamic_range_stops_p99_p1": 8.991392199022306,
+  "clip_pct_any_ch_ge250": 0.09934413580246913,
+  "crushed_pct_luma_lt_0.03": 6.228780864197531,
+  "oklab_L_mean": 0.4404520253066864,
+  "oklab_chroma_mean": 0.05599775918861239,
+  "oklab_chroma_p95": 0.09151248370830864,
+  "shadow_hue_deg": 259.45708235635647,
+  "shadow_chroma": 0.047237562429140734,
+  "highlight_hue_deg": 100.97129316434945,
+  "highlight_chroma": 0.00840361623434587,
+  "split_tone_hue_gap_deg": 158.48578919200702,
+  "mean_rgb": [
+   73,
+   86,
+   115
+  ],
+  "regions": {
+   "sky": {
+    "hex": "#0a1b36",
+    "luma": 0.1002244072356752,
+    "oklab_L": 0.2253703837649701
+   },
+   "floor": {
+    "hex": "#6f84b2",
+    "luma": 0.5143319466889789,
+    "oklab_L": 0.6158144076328446
+   }
+  },
+  "sky_to_floor_luma_ratio": 5.131803328899118
+ }
+}

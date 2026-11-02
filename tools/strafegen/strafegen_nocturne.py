@@ -5,6 +5,10 @@ from strafegen_geom import make_skybox, validate_spawns
 
 class Nocturne(Marble):
     def build(self):
+        # Lighting balance (see docs/COLOUR_SCIENCE.md): the plaza was baked ~1 stop too
+        # hot for its unlit moon sky, so no exposure could serve both. Bake lighter, and
+        # keep the warm pools as accents rather than floodlights.
+        self.bake_scale = 1.1          # Marble default for night is 2.2
         P = 2400
         self.sections.append(('Nocturne open plaza', {'width': 4800, 'clear_center': 2400}))
         self.box((-P,-P,-96),(P,P,0),'marble_tiles')
@@ -34,7 +38,7 @@ class Nocturne(Marble):
                 self.box((x-80,y-80,0),(x+80,y+80,h),'marble_black')
                 self.box((x-84,y-84,0),(x+84,y+84,32),'marble_white')
                 self.neon((x-5,y-83,48),(x+5,y-80,h-32))
-                self.place('light',x,y-150,100,light=420,_color='0.55 0.67 1')
+                self.place('light',x,y-150,100,light=300,_color='0.55 0.67 1')
             self.box((-800,y-80,h),(800,y+80,h+96),'marble_white')
             self.neon((-640,y-40,h-4),(640,y+40,h))
         # Sparse perimeter colonnade and warm pools against the cool moonlight.
@@ -44,7 +48,7 @@ class Nocturne(Marble):
                 self.box((x-64,y-64,z),(x+64,y+64,z+480),'marble_white')
                 self.box((x-80,y-80,z+480),(x+80,y+80,z+512),'marble_black')
                 self.neon((x-50,y-67,z+24),(x+50,y-64,z+28))
-                self.place('light',x,y-160,z+160,light=500,_color='1 0.78 0.55')
+                self.place('light',x,y-160,z+160,light=280,_color='1 0.78 0.55')
         for i,(x,y) in enumerate(((-1000,-1000),(1000,-1000),(-1000,1000),(1000,1000),(0,-2100),(0,2100))):
             self.place('info_player_deathmatch',x,y,40,angle=90 if y<0 else 270)
         self.place('info_player_intermission',-1800,-2100,850,angles='15 45 0')

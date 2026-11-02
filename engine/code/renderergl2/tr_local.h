@@ -1870,6 +1870,12 @@ extern  cvar_t  *r_gradeLiveSat;	// game-driven saturation multiplier (time-grad
 extern  cvar_t  *r_gradeLiveTemp;	// game-driven white-balance offset (time-grade)
 extern  cvar_t  *r_vignette;		// edge darkening strength
 extern  cvar_t  *r_filmGrain;		// animated film grain strength
+extern  cvar_t  *r_gradeExposure;	// exposure bias in stops, applied at tonemap (0 = unchanged)
+extern  cvar_t  *r_gradeShoulder;	// 0..1 soft highlight rolloff in the grade pass
+extern  cvar_t  *r_gradeSplit;		// 0..1 split-toning: cool shadows, warm highlights
+extern  cvar_t  *r_gradeMeterFloor;	// auto-exposure metering: log2 luminance floor (-10 = off); dark pixels stop pulling exposure up
+extern  cvar_t  *r_gradeWhitePoint;	// tonemap white point in stops above the level default (0 = unchanged); more = highlight headroom
+extern  cvar_t  *r_gradeLift;		// 0..~0.1 black lift (hazy floor)
 
 extern  cvar_t  *r_legacySpecular;	// STRAFE 64: scale on legacy alphaGen lightingSpecular gloss passes (0 = remove the blown-out additive shine on models)
 extern  cvar_t  *r_rimLight;		// STRAFE 64: character fresnel rim master toggle (0 = off)

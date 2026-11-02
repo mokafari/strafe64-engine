@@ -172,6 +172,12 @@ cvar_t  *r_gradeLiveSat;
 cvar_t  *r_gradeLiveTemp;
 cvar_t  *r_vignette;
 cvar_t  *r_filmGrain;
+cvar_t  *r_gradeExposure;
+cvar_t  *r_gradeShoulder;
+cvar_t  *r_gradeSplit;
+cvar_t  *r_gradeMeterFloor;
+cvar_t  *r_gradeWhitePoint;
+cvar_t  *r_gradeLift;
 cvar_t  *r_legacySpecular;
 cvar_t  *r_rimLight;
 cvar_t  *r_rimScale;
@@ -1400,6 +1406,21 @@ void R_Register( void )
 	r_gradeLiveTemp = ri.Cvar_Get( "r_gradeLiveTemp", "0", CVAR_TEMP );
 	r_vignette = ri.Cvar_Get( "r_vignette", "0.18", CVAR_ARCHIVE );
 	r_filmGrain = ri.Cvar_Get( "r_filmGrain", "0.03", CVAR_ARCHIVE );
+	// all default 0 = the pass looks exactly as before. Exposure is in stops and acts
+	// at the tonemap (before the 0..1 clamp), the only place clipped highlights can
+	// still be recovered; the other three shape the graded LDR image.
+	r_gradeExposure = ri.Cvar_Get( "r_gradeExposure", "0", CVAR_ARCHIVE );
+	r_gradeShoulder = ri.Cvar_Get( "r_gradeShoulder", "0", CVAR_ARCHIVE );
+	r_gradeSplit = ri.Cvar_Get( "r_gradeSplit", "0", CVAR_ARCHIVE );
+	r_gradeLift = ri.Cvar_Get( "r_gradeLift", "0", CVAR_ARCHIVE );
+	// tonemap white point (stops). The stock curve maps scene value 1.0 to white, so a
+	// moon or neon brighter than the exposure target clips to flat cream; raising this lets
+	// the shoulder compress them instead (compensate with r_gradeExposure, it darkens too).
+	r_gradeWhitePoint = ri.Cvar_Get( "r_gradeWhitePoint", "0", CVAR_ARCHIVE );
+	// auto-exposure meters the average log luminance of the whole frame, so a frame full of
+	// dark sky and pillars makes it brighten the lit floor until it clips. Raising this floor
+	// (e.g. -5) clamps dark pixels to that level before averaging so they pull less.
+	r_gradeMeterFloor = ri.Cvar_Get( "r_gradeMeterFloor", "-10", CVAR_ARCHIVE );
 
 	// STRAFE 64: character look. rend2 doesn't evaluate the old idTech3
 	// `alphaGen lightingSpecular` gloss pass, so OA player shaders re-add their

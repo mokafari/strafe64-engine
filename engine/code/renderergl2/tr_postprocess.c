@@ -34,13 +34,17 @@ void RB_ToneMap(FBO_t *hdrFbo, ivec4_t hdrBox, FBO_t *ldrFbo, ivec4_t ldrBox, in
 		{
 			// determine average log luminance
 			FBO_t *srcFbo, *dstFbo, *tmp;
+			vec4_t meter;
 			int size = 256;
 
 			lastFrameCount = tr.frameCount;
 
 			VectorSet4(dstBox, 0, 0, size, size);
 
-			FBO_Blit(hdrFbo, hdrBox, NULL, tr.textureScratchFbo[0], dstBox, &tr.calclevels4xShader[0], NULL, 0);
+			// x = metering luminance floor in stops (see r_gradeMeterFloor)
+			VectorSet4(meter, Com_Clamp(-10.0f, 10.0f, r_gradeMeterFloor->value), 0.0f, 0.0f, 1.0f);
+
+			FBO_Blit(hdrFbo, hdrBox, NULL, tr.textureScratchFbo[0], dstBox, &tr.calclevels4xShader[0], meter, 0);
 
 			srcFbo = tr.textureScratchFbo[0];
 			dstFbo = tr.textureScratchFbo[1];
@@ -82,7 +86,7 @@ void RB_ToneMap(FBO_t *hdrFbo, ivec4_t hdrBox, FBO_t *ldrFbo, ivec4_t ldrBox, in
 	// tonemap
 	color[0] =
 	color[1] =
-	color[2] = pow(2, r_cameraExposure->value - autoExposure); //exp2(r_cameraExposure->value);
+	color[2] = pow(2, r_cameraExposure->value - autoExposure + r_gradeExposure->value); //exp2(r_cameraExposure->value);
 	color[3] = 1.0f;
 
 	if (autoExposure)
@@ -687,7 +691,7 @@ void RB_ColorGrade(FBO_t *srcFbo, FBO_t *dstFbo)
 	height = (float)srcFbo->height;
 
 	// x,y unused; zw = rcpFrame for FXAA neighbour taps (source texel size)
-	VectorSet4(viewInfo, 0.0f, 0.0f, 1.0f / width, 1.0f / height);
+	VectorSet4(viewInfo, r_gradeShoulder->value, r_gradeSplit->value, 1.0f / width, 1.0f / height);
 	VectorSet4(grade,
 	           r_gradeContrast->value,
 	           r_gradeSaturation->value * r_gradeLiveSat->value,
@@ -697,7 +701,7 @@ void RB_ColorGrade(FBO_t *srcFbo, FBO_t *dstFbo)
 	           r_filmGrain->value,
 	           r_fxaa->integer ? 1.0f : 0.0f,
 	           (float)(tr.frameCount % 1024) * 0.137f,   // animate the grain
-	           0.0f);
+	           r_gradeLift->value);
 
 	VectorSet4(quadVerts[0], -1.0f,  1.0f, 0.0f, 1.0f);
 	VectorSet4(quadVerts[1],  1.0f,  1.0f, 0.0f, 1.0f);

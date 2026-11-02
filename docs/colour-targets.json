@@ -1,0 +1,57 @@
+{
+  "_about": "Numeric targets for the nocturne 'hyper-real ethereal night' look. Checked by tools/colour/metrics.py report --targets. 'basis' says where each number comes from: R = backed by the research in docs/COLOUR_SCIENCE.md, A = user-approved reference (the original baseline look the user said felt right), P = proposal derived from reasoning, to be confirmed against reference stills.",
+  "global": {
+    "clip_pct_any_ch_ge250": {
+      "max": 1.0,
+      "basis": "R: filmic shoulder / tonemapper docs: clipped highlights lose detail"
+    },
+    "crushed_pct_luma_lt_0.03": {
+      "min": 2.0,
+      "max": 8.0,
+      "basis": "P: ethereal wants a lifted floor, but not flat"
+    },
+    "luma_p1": {
+      "min": 0.01,
+      "basis": "P: blacks lifted slightly (haze), never exactly 0"
+    },
+    "luma_p50": {
+      "min": 0.17,
+      "max": 0.3,
+      "basis": "A: baseline median 0.24 felt right; rounds B-D at 0.12-0.14 felt too dark"
+    },
+    "luma_p99": {
+      "min": 0.85,
+      "max": 0.97,
+      "basis": "P: highlights reach near white but roll off"
+    },
+    "oklab_chroma_mean": {
+      "min": 0.04,
+      "max": 0.09,
+      "basis": "A: baseline 0.056, ethereal = restrained colour"
+    },
+    "split_tone_hue_gap_deg": {
+      "min": 30,
+      "basis": "R: grading guides: add warm/cool separation, a purely monochrome blue frame reads flat"
+    },
+    "sky_to_floor_luma_ratio": {
+      "max": 7.5,
+      "basis": "P: sky and lit ground must sit within ~3 stops so neither is sacrificed to exposure"
+    }
+  },
+  "regions": {
+    "sky": {
+      "luma": {
+        "min": 0.09,
+        "max": 0.2,
+        "basis": "A: baseline sky luma 0.09-0.13 'fit the world'; 0.05-0.07 did not"
+      }
+    },
+    "floor": {
+      "luma": {
+        "min": 0.5,
+        "max": 0.8,
+        "basis": "P: lit marble below the shoulder so veining survives"
+      }
+    }
+  }
+}
