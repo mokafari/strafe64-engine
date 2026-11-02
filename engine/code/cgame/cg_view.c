@@ -1190,7 +1190,8 @@ static int CG_CalcViewValues( void ) {
 			VectorSubtract( raw, smoothOrigin, delta );
 			dist = VectorLength( delta );
 
-			if ( !seeded || dist > 120.0f ) {
+			if ( !seeded || dist > 120.0f || cg.thisFrameTeleport || cg.nextFrameTeleport
+				|| nowReal < smoothRealMs || nowReal - smoothRealMs > 250 ) {
 				VectorCopy( raw, smoothOrigin );	// seed / snap on teleport or respawn
 				seeded = qtrue;
 			} else {
@@ -1198,7 +1199,7 @@ static int CG_CalcViewValues( void ) {
 				if ( dtReal < 0.0f ) {
 					dtReal = 0.0f;
 				}
-				k = dtReal / tc;			// real-time exponential follow
+				k = 1.0f - expf( -dtReal / tc ); // frame-rate independent follow
 				if ( k > 1.0f ) {
 					k = 1.0f;
 				}
@@ -1232,6 +1233,11 @@ static int CG_CalcViewValues( void ) {
 	}
 
 	if ( cg.renderingThirdPerson ) {
+		// Both the local body and the chase camera must follow the same
+		// presentation anchor, including prediction-error decay. Physics stays
+		// on predictedPlayerState; only the rendered entity uses this origin.
+		VectorCopy( cg.refdef.vieworg, cg.localRenderOrigin );
+		cg.localRenderOriginValid = qtrue;
 		// back away from character
 		CG_OffsetThirdPersonView();
 	} else {
@@ -1924,10 +1930,17 @@ static void CG_UpdateTimeGrade( void ) {
 	}
 }
 
-void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback ) {
+void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback, int fraction ) {
 	int		inwater;
 
 	cg.time = serverTime;
+	if (stereoView != STEREO_RIGHT) {
+		double t = serverTime + Com_Clamp(0, 999999, fraction) * 0.000001;
+		cg.animDelta = (t >= cg.oldAnimTime && t - cg.oldAnimTime < 200)
+			? (t - cg.oldAnimTime) * 0.001 : 0;
+		cg.animTime = cg.oldAnimTime = t;
+		cg.frametime = cg.time >= cg.oldTime ? cg.time - cg.oldTime : 0;
+	}
 	cg.demoPlayback = demoPlayback;
 
 	// update cvars
@@ -1976,6 +1989,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	CG_UpdateTimeGrade();
 
 	// build cg.refdef
+	cg.localRenderOriginValid = qfalse;
 	inwater = CG_CalcViewValues();
 
 	// first person blend blobs, done after AnglesToAxis

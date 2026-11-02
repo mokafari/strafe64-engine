@@ -64,6 +64,7 @@ def main():
     ap.add_argument('--tpose', help='file.glb:ClipName holding the target T-pose')
     ap.add_argument('--bind', help='skinned Mixamo .glb, bind pose for skinless clips')
     ap.add_argument('--header', help='write the cgame clip table here')
+    ap.add_argument('--robot-finish', action='store_true', help='replace robot scarf tail with game cloth')
     ap.add_argument('--refit', help='Mixamo-rigged .glb whose mesh replaces the --mesh one, fitted to its skeleton')
     o = ap.parse_args()
     g = Glb(o.mesh); j = g.j
@@ -90,6 +91,9 @@ def main():
         import refit as rf
         ibm = g.acc(skin['inverseBindMatrices']).reshape(-1, 4, 4).transpose(0, 2, 1)
         P, N, U, JI, W, tris = rf.refit(Glb(o.refit), names, ibm)
+        if o.robot_finish:
+            from robot_finish import finish_geometry
+            P, N, U, JI, W, tris = finish_geometry(Glb(o.refit), P, N, U, JI, W, tris, names, ibm, sc)
         JI = JI.astype(np.uint8)
     # the renderer takes under SHADER_MAX_VERTEXES (4000) per surface: split
     # greedily, duplicating the vertices shared across a chunk boundary

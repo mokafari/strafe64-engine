@@ -60,7 +60,13 @@ typedef struct {
 typedef struct {
 	qboolean	active;
 	int			startTime;
-	int			lastTime;		// last sim time, to derive a stable dt
+	double          lastTime; // fractional presentation clock
+	double          accumulator;
+	qboolean        historyValid;
+	float           quietSeconds;
+	vec3_t          renderPrev[RS_COUNT];
+	quat_t          rotationPrev[RB_COUNT];
+	float           spinPrev;
 	vec3_t		pos[RS_COUNT];
 	vec3_t		prev[RS_COUNT];
 	float		rest[RP_COUNT];	// seed height above the feet, for re-seed sanity checks
@@ -117,7 +123,8 @@ static const float ragSeedZ[RP_COUNT] = { 2.0f, 24.0f, 40.0f, 52.0f };
 #define RAG_HALFBOX		3.0f		// collision box half-extent per particle
 #define RAG_SKEL_MAXMS	7000		// a jointed body that still twitches stops here
 #define RAG_GRAVITY		800.0f		// matches g_gravity feel
-#define RAG_SETTLE_VEL2	1.0f		// squared speed below which a particle is "stopped"
+#define RAG_FIXED_DT     0.008f
+#define RAG_SETTLE_VEL2	0.0225f		// squared speed below which a particle is "stopped"
 #define RAG_MAXSTEP		20.0f		// max units a particle may move per step (anti-explode)
 #define RAG_AIRHANG_MS	1500		// quiet + unsupported this long -> a wedged/hung
 									// piece is snapped down onto the floor below it
@@ -460,7 +467,10 @@ static void CG_RagdollSeed( cgRagdoll_t *rag, centity_t *cent, int cut ) {
 	rag->skel = qfalse;
 	rag->settled = qfalse;
 	rag->startTime = cg.time;
-	rag->lastTime = cg.time;
+	rag->lastTime = cg.animTime;
+	rag->accumulator = 0;
+	rag->historyValid = qfalse;
+	rag->quietSeconds = 0;
 	rag->yaw = cent->lerpAngles[YAW];
 	rag->cut = cut;
 	rag->airQuietTime = 0;
@@ -1067,7 +1077,7 @@ One Verlet integration + constraint relaxation + collision pass. Uses a clamped
 dt so frame hitches can't explode the sim.
 ===============
 */
-static void CG_RagdollStep( cgRagdoll_t *rag ) {
+static void CG_RagdollSubstep( cgRagdoll_t *rag ) {
 	int		i, k, n, count = rag->skel ? RS_COUNT : RP_COUNT;
 	float	dt, damp;
 	vec3_t	temp, delta;
@@ -1076,14 +1086,7 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 	float	carry, friction, stepScale;
 	qboolean	grounded;
 
-	dt = ( cg.time - rag->lastTime ) * 0.001f;
-	rag->lastTime = cg.time;
-	if ( dt <= 0 ) {
-		return;
-	}
-	if ( dt > 0.05f ) {
-		dt = 0.05f;			// clamp hitches to 50ms
-	}
+	dt = RAG_FIXED_DT;
 
 	damp = cg_ragdollDamp.value;
 	if ( damp < 0 ) damp = 0;
@@ -1192,15 +1195,68 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 		rag->airQuietTime = 0;
 	}
 
-	if ( grounded && maxVel2 < RAG_SETTLE_VEL2 && cg.time - rag->startTime > 400 ) {
+	// Sleep only after sustained low-energy support, never at a toss apex.
+	if ( grounded && maxVel2 < RAG_SETTLE_VEL2 ) {
+		rag->quietSeconds += dt;
+	} else {
+		rag->quietSeconds = 0;
+	}
+	if ( rag->quietSeconds >= 0.25f && cg.time - rag->startTime > 400 ) {
 		rag->settled = qtrue;
 	}
 	if ( rag->skel ) {
 		CG_RagdollSkelTurn( rag );
-		if ( cg.time - rag->startTime > RAG_SKEL_MAXMS ) {
+		if ( grounded && cg.time - rag->startTime > RAG_SKEL_MAXMS ) {
 			rag->settled = qtrue;
 		}
 	}
+}
+
+
+// Fixed game-time physics is independent of rendering cadence/time-scale
+// changes. Preserve a previous state so slow motion still draws every frame.
+static void CG_RagdollStep( cgRagdoll_t *rag ) {
+	double elapsed = (cg.animTime - rag->lastTime) * 0.001;
+	rag->lastTime = cg.animTime;
+	if (!rag->historyValid || elapsed < 0) {
+		memcpy(rag->renderPrev, rag->pos, sizeof(rag->pos));
+		memcpy(rag->rotationPrev, rag->boneRot, sizeof(rag->boneRot));
+		rag->spinPrev = rag->spin;
+		rag->historyValid = qtrue;
+		if (elapsed < 0) rag->accumulator = 0;
+	}
+	if (elapsed <= 0) return;
+	// Bound catch-up work after a hitch; no giant unstable integration step.
+	rag->accumulator += elapsed > 0.064 ? 0.064 : elapsed;
+	while (rag->accumulator >= RAG_FIXED_DT && !rag->settled) {
+		memcpy(rag->renderPrev, rag->pos, sizeof(rag->pos));
+		memcpy(rag->rotationPrev, rag->boneRot, sizeof(rag->boneRot));
+		rag->spinPrev = rag->spin;
+		CG_RagdollSubstep(rag);
+		rag->accumulator -= RAG_FIXED_DT;
+	}
+}
+
+static void CG_RagdollRenderPose(const cgRagdoll_t *sim, cgRagdoll_t *out) {
+	int i, j;
+	float alpha = Com_Clamp(0, 1, sim->accumulator / RAG_FIXED_DT);
+	*out = *sim;
+	if (!sim->historyValid || sim->settled) return;
+	for (i = 0; i < RS_COUNT; i++) {
+		for (j = 0; j < 3; j++) {
+			out->pos[i][j] = sim->renderPrev[i][j] + alpha * (sim->pos[i][j] - sim->renderPrev[i][j]);
+			// Keep the simulated velocity for detached-piece orientation.
+			out->prev[i][j] += out->pos[i][j] - sim->pos[i][j];
+		}
+	}
+	for (i = 0; i < RB_COUNT; i++) {
+		float dot = 0, sign;
+		for (j = 0; j < 4; j++) dot += sim->rotationPrev[i][j] * sim->boneRot[i][j];
+		sign = dot < 0 ? -1 : 1;
+		for (j = 0; j < 4; j++) out->boneRot[i][j] = (1-alpha)*sim->rotationPrev[i][j] + alpha*sign*sim->boneRot[i][j];
+		if (sim->skel) RagQuatNormalize(out->boneRot[i]);
+	}
+	out->spin = sim->spinPrev + alpha * (sim->spin - sim->spinPrev);
 }
 
 /*
@@ -1390,7 +1446,7 @@ animated player. Returns qfalse to fall through to normal rendering.
 ===============
 */
 qboolean CG_RagdollAdd( centity_t *cent, int renderfx, float shadowPlane ) {
-	cgRagdoll_t		*rag;
+	cgRagdoll_t		*rag, rendered;
 	clientInfo_t	*ci;
 	int				num;
 	int				cut;
@@ -1445,8 +1501,10 @@ qboolean CG_RagdollAdd( centity_t *cent, int renderfx, float shadowPlane ) {
 	if ( !rag->settled ) {
 		CG_RagdollStep( rag );
 	} else {
-		rag->lastTime = cg.time;	// keep dt sane if it wakes back up
+		rag->lastTime = cg.animTime;
 	}
+	CG_RagdollRenderPose(rag, &rendered);
+	rag = &rendered;
 
 	if ( rag->skel ) {
 		CG_RagdollAddSkeletal( rag, cent, renderfx, shadowPlane );

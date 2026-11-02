@@ -3243,7 +3243,9 @@ void *CL_RefMalloc( int size ) {
 }
 
 int CL_ScaledMilliseconds(void) {
-	return Sys_Milliseconds()*com_timescale->value;
+	// cls.realtime accumulates scaled frame deltas. Scaling absolute uptime
+	// instead jumps (even backwards) whenever the time scale changes.
+	return cls.realtime;
 }
 
 /*

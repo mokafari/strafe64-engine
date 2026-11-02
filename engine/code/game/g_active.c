@@ -1054,7 +1054,7 @@ static void G_ClientKick( gentity_t *ent, usercmd_t *ucmd ) {
 	G_AddPredictableEvent( ent, EV_KICK, parm );
 }
 
-static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
+static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd ) {
 	static float	cur = -1.0f;		// last applied timescale (one human assumed)
 	static qboolean	active = qfalse;	// did we take over the timescale cvar?
 	static int		lastReal = 0;		// trap_Milliseconds at the previous update
@@ -1112,7 +1112,8 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 	curve = g_timeBindCurve.value;
 	if ( ref < 1.0f )    ref = 1.0f;
 	if ( curve < 0.1f )  curve = 0.1f;
-	if ( tmin < 0.01f )  tmin = 0.01f;	// keep the log map well-defined
+	if ( tmin < 0.01f )  tmin = 0.01f;
+	if ( tmax < tmin ) tmax = tmin;	// keep the log map well-defined
 
 	// speed component: how fast we're actually moving on the floor plane
 	hspeed = sqrt( ent->client->ps.velocity[0] * ent->client->ps.velocity[0]
@@ -1122,10 +1123,14 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 
 	// input component: SUPERHOT keys on *wanting* to move, not just moving
 	inputMag = sqrt( (float)( ucmd->forwardmove * ucmd->forwardmove
-							+ ucmd->rightmove   * ucmd->rightmove ) ) / 127.0f;
+							+ ucmd->rightmove   * ucmd->rightmove ) )
+		/ ( ( ucmd->buttons & BUTTON_WALKING ) ? 64.0f : 127.0f );
 	if ( inputMag > 1.0f ) inputMag = 1.0f;
 
-	intent = ( speedFrac > inputMag ) ? speedFrac : inputMag;
+	// SUPERHOT follows deliberate input. Residual velocity after releasing
+	// a key must not keep time running; jump alone should also wake it.
+	intent = inputMag;
+	if ( ucmd->upmove > 0 ) intent = 1.0f;
 
 	// firing nudges time forward even when stationary (tunable, 0 = off)
 	if ( ( ucmd->buttons & BUTTON_ATTACK ) && g_timeBindFire.value > intent ) {
@@ -1185,9 +1190,8 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 	now = trap_Milliseconds();
 	realMsec = lastReal ? ( now - lastReal ) : 0;
 	lastReal = now;
-	if ( realMsec < 0 || realMsec > 250 ) {
-		realMsec = 0;		// first frame / hitch: don't lurch the clock
-	}
+	if ( realMsec < 0 ) realMsec = 0;
+	if ( realMsec > 250 ) realMsec = 250;
 	if ( cur < 0.0f ) {
 		cur = target;
 	} else {
@@ -1199,7 +1203,7 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 		// back into near-freeze. (Time only pumps up quick, never down, so no
 		// jitter.)
 		rate = ( target > cur ) ? g_timeBindRise.value : g_timeBindSmooth.value;
-		t = rate * ( realMsec * 0.001f );
+		t = 1.0f - exp( -rate * ( realMsec * 0.001f ) );
 		if ( t > 1.0f ) t = 1.0f;
 		if ( t < 0.0f ) t = 0.0f;
 		cur += ( target - cur ) * t;
@@ -1213,16 +1217,28 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 	// exact settle on target.
 	{
 		float			diff = cur - published;
+		float actual = trap_Cvar_VariableValue( "timescale" );
+		qboolean lostClock = published >= 0 && fabs( actual - published ) > 0.003f;
 		qboolean		settle = fabs( target - cur ) < 0.002f && published != target;
 
 		if ( diff < 0 ) {
 			diff = -diff;
 		}
-		if ( published < 0.0f || diff >= 0.1f
+		if ( published < 0.0f || (lostClock && now - lastPublish >= 50) || diff >= 0.1f
 				|| ( ( diff >= 0.02f || settle ) && now - lastPublish >= 50 ) ) {
 			published = settle ? target : cur;
 			lastPublish = now;
 			trap_Cvar_Set( "timescale", va( "%.3f", published ) );
+		}
+	}
+	// Opt-in real-time trace distinguishes missing input from clock ownership.
+	if ( trap_Cvar_VariableIntegerValue( "g_timeBindDebug" ) ) {
+		static int lastDebug;
+		if (now - lastDebug >= 100) {
+			lastDebug = now;
+			G_Printf("TIMEBIND real=%d input=%d,%d,%d buttons=%d target=%.3f eased=%.3f actual=%.3f\n",
+				now, ucmd->forwardmove, ucmd->rightmove, ucmd->upmove, ucmd->buttons,
+				target, cur, trap_Cvar_VariableValue("timescale"));
 		}
 	}
 	active = qtrue;
@@ -1254,6 +1270,12 @@ void ClientThink_real( gentity_t *ent ) {
 	}
 	// mark the time, so the connection sprite can be removed
 	ucmd = &ent->client->pers.cmd;
+
+	// Clock intent must see every fresh command, even while fixed-step
+	// movement is ahead of the integer game clock and skips this command.
+	if ( !level.intermissiontime && client->sess.sessionTeam != TEAM_SPECTATOR ) {
+		G_UpdateTimeBind( ent, ucmd );
+	}
 
 	// sanity check the command time to prevent speedup cheating
 	if ( ucmd->serverTime > level.time + 200 ) {
@@ -1486,9 +1508,6 @@ void ClientThink_real( gentity_t *ent ) {
 		ent->client->wasBlocking = qfalse;
 		ent->client->guardRaiseTime = 0;
 	}
-
-	// SUPERHOT-style time dilation: drive the world clock from movement intent
-	G_UpdateTimeBind( ent, ucmd, msec );
 
 	// SHIFT dash that revectors toward enemies (after pmove so it sets the
 	// resulting velocity; lands in the predicted playerState)

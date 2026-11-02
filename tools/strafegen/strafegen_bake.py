@@ -281,7 +281,13 @@ def bake_bsp(name, course, map_path, bake_pk3_path, dest_bsp, bounce=3):
         boa = os.path.join(tmp, "baseoa")
         maps = os.path.join(boa, "maps")
         os.makedirs(maps)
-        shutil.copy(bake_pk3_path, os.path.join(boa, os.path.basename(bake_pk3_path)))
+        # Both temporary trees normally share a volume; avoid duplicating the
+        # large immutable texture archive while baking.
+        asset_target = os.path.join(boa, os.path.basename(bake_pk3_path))
+        try:
+            os.link(bake_pk3_path, asset_target)
+        except OSError:
+            shutil.copy(bake_pk3_path, asset_target)
         bm = os.path.join(maps, name + ".map")
         shutil.copy(map_path, bm)
         common = ["-fs_basepath", tmp, "-fs_game", "baseoa"]

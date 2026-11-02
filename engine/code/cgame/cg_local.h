@@ -565,6 +565,10 @@ typedef struct {
 
 	int			time;			// this is the time value that the client
 								// is rendering at.
+	vec3_t          localRenderOrigin; // shared third-person body/camera anchor
+	qboolean        localRenderOriginValid;
+	double          animTime, oldAnimTime;
+	float           animDelta;
 	int			oldTime;		// time at last frame, used for missile trails and prediction checking
 
 	int			physicsTime;	// either cg.snap->time or cg.nextSnap->time
@@ -1511,7 +1515,7 @@ void CG_ZoomDown_f( void );
 void CG_ZoomUp_f( void );
 void CG_AddBufferedSound( sfxHandle_t sfx);
 
-void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback );
+void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback, int fraction );
 
 // race layer (cg_view.c)
 void CG_RaceFrame( void );

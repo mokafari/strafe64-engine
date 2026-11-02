@@ -55,7 +55,7 @@ Q_EXPORT intptr_t vmMain( int command, int arg0, int arg1, int arg2, int arg3, i
 	case CG_CONSOLE_COMMAND:
 		return CG_ConsoleCommand();
 	case CG_DRAW_ACTIVE_FRAME:
-		CG_DrawActiveFrame( arg0, arg1, arg2 );
+		CG_DrawActiveFrame( arg0, arg1, arg2, arg3 );
 		return 0;
 	case CG_CROSSHAIR_PLAYER:
 		return CG_CrosshairPlayer();
@@ -184,7 +184,7 @@ vmCvar_t	cg_playerGlowAudio;	// 0-2: each pilot reacts to a DIFFERENT music band
 vmCvar_t	cg_playerGlowHue;	// 0-1: blend the glow toward a DISTINCT per-clientNum rainbow hue (0=player's own colour, 1=full rainbow spread) so pilots aren't all the same colour
 vmCvar_t	cg_dashGlitch;		// 0-2: chromatic-ghost glitch trail intensity on air-dash
 vmCvar_t	cg_skelBody;			// the body on the skeleton: a mesh fitted to the mannequin's rig
-vmCvar_t	cg_skelScarf;			// the procedural scarf; the robot wears its own
+vmCvar_t	cg_skelScarf;			// movement-driven scarf tail; robot keeps its neck wrap
 vmCvar_t	cg_skelSwingArc;		// how far the directional arc bends the clip's swing (0 = clip only)
 vmCvar_t	cg_skelFootLock;		// 1: planted feet stay put while running
 vmCvar_t	cg_skelWallClip;		// 1: wall run plays the mocap clip; 0: procedural gait
@@ -324,7 +324,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_skelWallClip, "cg_skelWallClip", "0", CVAR_ARCHIVE },
 	{ &cg_skelFootLock, "cg_skelFootLock", "1", CVAR_ARCHIVE },
 	{ &cg_skelBody, "cg_skelBody", "models/s64/robot.iqm", CVAR_ARCHIVE },
-	{ &cg_skelScarf, "cg_skelScarf", "0", CVAR_ARCHIVE },
+	{ &cg_skelScarf, "cg_skelScarf", "1", CVAR_ARCHIVE },
 	{ &cg_skelSwingArc, "cg_skelSwingArc", "0.6", CVAR_ARCHIVE },
 	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },
 	{ &cg_ragdollDamp, "cg_ragdollDamp", "0.97", CVAR_ARCHIVE },

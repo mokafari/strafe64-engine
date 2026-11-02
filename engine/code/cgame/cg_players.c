@@ -3016,76 +3016,166 @@ void CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t move
 	}
 }
 
-// a scarf off the neck: a verlet chain that trails motion, drawn as a ribbon
+#include "cg_robotscarf.h"
+
+// Keep cloth outside a capsule following the animated torso. The radius includes
+// the ribbon's half-width, so its edges also clear the body.
+static void CG_ScarfCollide( vec3_t p, vec3_t velocity, const vec3_t a,
+        const vec3_t b, const vec3_t back, float radius ) {
+    vec3_t axis, delta, closest;
+    float length2, along, distance, inward;
+    VectorSubtract( b, a, axis );
+    VectorSubtract( p, a, delta );
+    length2 = DotProduct( axis, axis );
+    along = length2 > 0.001f ? Com_Clamp( 0, 1, DotProduct( delta, axis ) / length2 ) : 0;
+    VectorMA( a, along, axis, closest );
+    VectorSubtract( p, closest, delta );
+    distance = VectorNormalize( delta );
+    if ( distance >= radius ) return;
+    if ( distance < 0.001f ) VectorCopy( back, delta );
+    VectorMA( closest, radius, delta, p );
+    inward = DotProduct( velocity, delta );
+    if ( inward < 0 ) VectorMA( velocity, -inward, delta, velocity );
+}
+
 static void CG_SkelScarf( refEntity_t *ent, playerEntity_t *pe, int renderfx ) {
-	orientation_t	tag;
-	vec3_t			root, side, d, t, wind;
-	float			ripple;
-	polyVert_t		v[4];
-	float			dt = cg.frametime * 0.001f;
-	int				i, j;
+    vec3_t root, neck, pelvis, back, wind, flutter, d, target, socketSide;
+    orientation_t socketTag;
+    vec3_t sides[8], ridge[8];
+    float widths[8], ripple, dt = Com_Clamp( 0, 0.1f, cg.animDelta );
+    qboolean robot = !Q_stricmp( cg_skelBody.string, "models/s64/robot.iqm" );
+    qboolean collide;
+    qhandle_t shader;
+    int i, j, step, steps, pass, strip;
+    float h;
+    polyVert_t v[4];
 
-	if ( ( renderfx & RF_THIRD_PERSON ) || !trap_R_BoneTag( &tag, ent->hModel, ent->frame, ent->oldframe,
-			ent->backlerp, ent->bonePose, "neck_01" ) ) {
-		return;
-	}
-	VectorCopy( ent->origin, root );
-	for ( i = 0; i < 3; i++ ) {
-		VectorMA( root, tag.origin[i], ent->axis[i], root );
-	}
-	if ( cg.time - pe->skelScarfTime > 500 ) {
-		for ( i = 0; i < 8; i++ ) {
-			VectorCopy( root, pe->skelScarf[i] );
-			VectorClear( pe->skelScarfOld[i] );
-		}
-	}
-	pe->skelScarfTime = cg.time;
-	// each link is an underdamped spring on a calm line trailing from the neck: down
-	// at rest, back with speed. It keeps its own momentum, so it swings and settles
-	// while the line stops it flapping. skelScarfOld holds the link velocities
-	VectorCopy( pe->skelVelF, wind );
-	VectorScale( wind, -0.0035f, wind );
-	wind[2] -= 1.0f;
-	VectorNormalize( wind );
-	VectorCopy( root, pe->skelScarf[0] );
-	CrossProduct( wind, ent->axis[2], t );
-	ripple = VectorLength( pe->skelVelF ) * 0.0012f;
-	for ( i = 1; i < 8; i++ ) {
-		float	w = 34.0f - i * 3.0f, h = dt < 0.03f ? dt : 0.03f;
-		vec3_t	target;
-
-		VectorMA( pe->skelScarf[i - 1], 3.6f, wind, target );
-		VectorMA( target, ripple * i * sin( cg.time * 0.012f - i * 0.8f ), t, target );
-		VectorSubtract( target, pe->skelScarf[i], d );
-		VectorMA( pe->skelScarfOld[i], w * w * h, d, pe->skelScarfOld[i] );
-		VectorScale( pe->skelScarfOld[i], 1.0f / ( 1.0f + 2.0f * 0.45f * w * h ), pe->skelScarfOld[i] );
-		VectorMA( pe->skelScarf[i], h, pe->skelScarfOld[i], pe->skelScarf[i] );
-		// and it stays a scarf: link length is held
-		VectorSubtract( pe->skelScarf[i], pe->skelScarf[i - 1], d );
-		if ( VectorNormalize( d ) > 0.01f ) {
-			VectorMA( pe->skelScarf[i - 1], 3.6f, d, pe->skelScarf[i] );
-		}
-	}
-	memset( v, 0, sizeof( v ) );
-	for ( i = 0; i < 7; i++ ) {
-		float	w = 1.5f * ( 1.0f - i / 9.0f );
-
-		VectorSubtract( pe->skelScarf[i + 1], pe->skelScarf[i], d );
-		VectorSubtract( cg.refdef.vieworg, pe->skelScarf[i], t );
-		CrossProduct( d, t, side );
-		VectorNormalize( side );
-		VectorMA( pe->skelScarf[i], w, side, v[0].xyz );
-		VectorMA( pe->skelScarf[i], -w, side, v[1].xyz );
-		VectorMA( pe->skelScarf[i + 1], -w * 0.85f, side, v[2].xyz );
-		VectorMA( pe->skelScarf[i + 1], w * 0.85f, side, v[3].xyz );
-		for ( j = 0; j < 4; j++ ) {
-			v[j].modulate[0] = 200;
-			v[j].modulate[1] = 24;
-			v[j].modulate[2] = 40;
-			v[j].modulate[3] = 255;
-		}
-		trap_R_AddPolyToScene( cgs.media.whiteShader, 4, v );
-	}
+    if ( ( renderfx & RF_THIRD_PERSON ) || !CG_JointWorld( ent, "neck_01", neck ) ) return;
+    collide = robot && CG_JointWorld( ent, "pelvis", pelvis );
+    VectorScale( ent->axis[0], -1, back );
+    VectorCopy( neck, root );
+    if ( robot ) {
+        if ( !trap_R_BoneTag( &socketTag, ent->hModel, ent->frame, ent->oldframe,
+                ent->backlerp, ent->bonePose, "neck_01" ) ) return;
+        VectorCopy( socketTag.origin, target );
+        VectorClear( d );
+        VectorClear( wind );
+        for ( i = 0; i < 3; i++ ) {
+            VectorMA( target, robotScarfSocket[i], socketTag.axis[i], target );
+            VectorMA( d, robotScarfSide[i], socketTag.axis[i], d );
+            VectorMA( wind, robotScarfBack[i], socketTag.axis[i], wind );
+        }
+        VectorCopy( ent->origin, root );
+        VectorClear( socketSide );
+        VectorClear( back );
+        for ( i = 0; i < 3; i++ ) {
+            VectorMA( root, target[i], ent->axis[i], root );
+            VectorMA( socketSide, d[i], ent->axis[i], socketSide );
+            VectorMA( back, wind[i], ent->axis[i], back );
+        }
+        VectorNormalize( socketSide );
+        VectorNormalize( back );
+        // The short folded cuff uses the same fabric as the tail, avoiding
+        // the armour's normal map and bright character rim on this small join.
+        {
+            vec3_t joinWorld[16], local;
+            polyVert_t face[3];
+            int vertex, triangle, axis;
+            qhandle_t joinShader = trap_R_RegisterShader( "models/s64/robot_cloth_join" );
+            for ( vertex = 0; vertex < 16; vertex++ ) {
+                VectorCopy( socketTag.origin, local );
+                for ( axis = 0; axis < 3; axis++ )
+                    VectorMA( local, robotScarfJoinVerts[vertex][axis], socketTag.axis[axis], local );
+                VectorCopy( ent->origin, joinWorld[vertex] );
+                for ( axis = 0; axis < 3; axis++ )
+                    VectorMA( joinWorld[vertex], local[axis], ent->axis[axis], joinWorld[vertex] );
+            }
+            for ( triangle = 0; triangle < sizeof(robotScarfJoinTris)/sizeof(robotScarfJoinTris[0]); triangle++ ) {
+                memset( face, 0, sizeof(face) );
+                for ( vertex = 0; vertex < 3; vertex++ ) {
+                    int n = robotScarfJoinTris[triangle][vertex];
+                    VectorCopy( joinWorld[n], face[vertex].xyz );
+                    face[vertex].st[0] = ( n % 4 ) / 3.0f;
+                    face[vertex].st[1] = ( n / 4 ) / 3.0f;
+                    face[vertex].modulate[0] = 190;
+                    face[vertex].modulate[1] = 130;
+                    face[vertex].modulate[2] = 40;
+                    face[vertex].modulate[3] = 255;
+                }
+                trap_R_AddPolyToScene( joinShader, 3, face );
+            }
+        }
+    }
+    VectorSubtract( root, pe->skelScarf[0], d );
+    if ( !pe->skelScarfTime || cg.time < pe->skelScarfTime ||
+            cg.time - pe->skelScarfTime > 500 || VectorLength( d ) > 64 ) {
+        for ( i = 0; i < 8; i++ ) {
+            VectorMA( root, -3.6f * i, ent->axis[2], pe->skelScarf[i] );
+            VectorClear( pe->skelScarfOld[i] );
+        }
+    }
+    pe->skelScarfTime = cg.time;
+    VectorScale( pe->skelVelF, -0.0035f, wind );
+    wind[2] -= 1;
+    VectorMA( wind, 0.18f, back, wind );
+    VectorNormalize( wind );
+    VectorCopy( robot ? socketSide : ent->axis[1], flutter );
+    ripple = Com_Clamp( 0.04f, 0.55f, VectorLength( pe->skelVelF ) * 0.0012f );
+    steps = (int)ceil( dt * 120.0f );
+    if ( steps < 1 ) steps = 1;
+    h = dt / steps;
+    for ( step = 0; step < steps; step++ ) {
+        VectorCopy( root, pe->skelScarf[0] );
+        for ( i = 1; i < 8; i++ ) {
+            float w = 34.0f - i * 3.0f;
+            VectorMA( pe->skelScarf[i-1], 3.6f, wind, target );
+            VectorMA( target, ripple * i * sin( cg.time * 0.006f - i * 0.8f ), flutter, target );
+            VectorSubtract( target, pe->skelScarf[i], d );
+            VectorMA( pe->skelScarfOld[i], w*w*h, d, pe->skelScarfOld[i] );
+            VectorScale( pe->skelScarfOld[i], 1.0f/(1.0f+2.0f*0.6f*w*h), pe->skelScarfOld[i] );
+            VectorMA( pe->skelScarf[i], h, pe->skelScarfOld[i], pe->skelScarf[i] );
+        }
+        for ( pass = 0; pass < 4; pass++ ) {
+            for ( i = 1; i < 8; i++ ) {
+                VectorSubtract( pe->skelScarf[i], pe->skelScarf[i-1], d );
+                if ( VectorNormalize( d ) > 0.001f )
+                    VectorMA( pe->skelScarf[i-1], 3.6f, d, pe->skelScarf[i] );
+                if ( collide ) CG_ScarfCollide( pe->skelScarf[i], pe->skelScarfOld[i],
+                        pelvis, neck, back, 10.5f );
+            }
+        }
+    }
+    // Shared edges and a shallow central fold. Width follows the body rather
+    // than billboarding toward the camera, so orbiting cannot push cloth inside.
+    for ( i = 0; i < 8; i++ ) {
+        VectorSubtract( pe->skelScarf[i < 7 ? i+1 : i], pe->skelScarf[i > 0 ? i-1 : i], d );
+        if ( VectorNormalize( d ) < 0.001f ) VectorScale( ent->axis[2], -1, d );
+        VectorMA( ent->axis[1], -DotProduct( ent->axis[1], d ), d, sides[i] );
+        if ( VectorNormalize( sides[i] ) < 0.01f ) {
+            CrossProduct( d, back, sides[i] );
+            VectorNormalize( sides[i] );
+        }
+        if ( robot && i == 0 ) VectorCopy( socketSide, sides[i] );
+        widths[i] = ( robot ? 2.4f : 1.5f ) * ( 1.0f - i * 0.055f );
+        VectorMA( pe->skelScarf[i], ( i ? 0.35f : 0.0f ) * sin( i * 0.9f + cg.time * 0.002f ), back, ridge[i] );
+    }
+    shader = robot ? trap_R_RegisterShader( "models/s64/robot_cloth" ) : cgs.media.whiteShader;
+    for ( i = 0; i < 7; i++ ) for ( strip = 0; strip < 2; strip++ ) {
+        memset( v, 0, sizeof(v) );
+        for ( j = 0; j < 4; j++ ) {
+            int n = i + ( j >= 2 );
+            int edge = strip + ( j == 1 || j == 2 );
+            if ( edge == 1 ) VectorCopy( ridge[n], v[j].xyz );
+            else VectorMA( pe->skelScarf[n], edge == 0 ? widths[n] : -widths[n], sides[n], v[j].xyz );
+            v[j].st[0] = edge * 0.5f;
+            v[j].st[1] = n / 7.0f;
+            v[j].modulate[0] = robot ? (strip ? 174 : 200) : 200;
+            v[j].modulate[1] = robot ? (strip ? 116 : 140) : 24;
+            v[j].modulate[2] = robot ? 40 : 40;
+            v[j].modulate[3] = 255;
+        }
+        trap_R_AddPolyToScene( shader, 4, v );
+    }
 }
 
 // the flip clip runs on into a recovery the game doesn't want: stop at the tuck-out
@@ -3152,7 +3242,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		near = s->clientNum == cg.snap->ps.clientNum || VectorLength( d ) < 320.0f;
 	}
 	model = cgs.media.skelModel;
-	dt = cg.frametime * 0.001f;
+	dt = cg.animDelta;
 	VectorCopy( s->pos.trDelta, vel );
 	speed = sqrt( vel[0] * vel[0] + vel[1] * vel[1] );
 	// acceleration from a filtered velocity, per second: not per frame, and not
@@ -3165,7 +3255,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		VectorMA( before, vk, vel, pe->skelVelF );
 		VectorMA( pe->skelVelF, -vk, before, pe->skelVelF );
 		VectorSubtract( pe->skelVelF, before, accel );
-		VectorScale( accel, dt > 0.0005f ? 1.0f / dt : 0, accel );
+		VectorScale( accel, dt > 0.0000001f ? 1.0f / dt : 0, accel );
 	}
 	gait = sqrt( pe->skelVelF[0] * pe->skelVelF[0] + pe->skelVelF[1] * pe->skelVelF[1] );
 	cur = pe->skelClip;
@@ -3399,7 +3489,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		pe->skelRollT += Com_Clamp( -maxStep, maxStep, wantRoll - pe->skelRollT );
 		wantRoll = pe->skelRollT;
 	}
-	if ( dt > 0.0005f ) {
+	if ( dt > 0.0000001f ) {
 		float	want[2], h = dt < 0.03f ? dt : 0.03f;
 		int		a;
 
@@ -3478,7 +3568,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		}
 		spinAxis = pe->skelSpinAxis;
 		if ( pe->skelSpinMs ) {
-			ft = ( cg.time - pe->skelSpinStart ) / (float)pe->skelSpinMs;
+			ft = ( cg.animTime - pe->skelSpinStart ) / (float)pe->skelSpinMs;
 			spin = ft * ft * ft * ( ft * ( ft * 6 - 15 ) + 10 ) * 360.0f * pe->skelSpinDir;
 		}
 		angles[spinAxis] += spin;
@@ -3523,10 +3613,10 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 
 	// inertial transition: the offset from the old pose decays critically
 	{
-		float	it = ( cg.time - pe->skelStart ) * 0.001f * pe->skelInertK;
+		float	it = ( cg.animTime - pe->skelStart ) * 0.001f * pe->skelInertK;
 
 		// offset and its velocity on a critically damped spring (Bollo's inertialization)
-		float	sec = ( cg.time - pe->skelStart ) * 0.001f;
+		float	sec = ( cg.animTime - pe->skelStart ) * 0.001f;
 
 		ent.bonePose = trap_R_BoneInertia( model, ent.bonePose, s->clientNum,
 			it < 8.0f ? ( 1.0f + it ) * exp( -it ) : 0, it < 8.0f ? sec * exp( -it ) : 0 );
@@ -3553,7 +3643,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 		} else if ( s->weapon == WP_SWORD && cg.time >= cent->swordSwingTime
 				&& cg.time - cent->swordSwingTime < 480 ) {
 			sclip = SKEL_SWORD_REGULAR_A + ( cent->swordSwingStep % 3 );
-			sphase = ( cg.time - cent->swordSwingTime ) / 480.0f * ( skelClips[sclip].count - 1 );	// whole clip fits the swing
+			sphase = ( cg.animTime - cent->swordSwingTime ) / 480.0f * ( skelClips[sclip].count - 1 );	// whole clip fits the swing
 			want = 1;
 		} else if ( cg.time - pe->skelDashTime < 260 ) {
 			sclip = SKEL_NINJAJUMP_IDLE_LOOP;	// arms sweep back through the burst
@@ -3620,7 +3710,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 			&& cg.time >= cent->swordSwingTime && cg.time - cent->swordSwingTime < 420 ) {
 		static const float	qx[SQ_NUM_QUADS] = { 0, 0.7f, 1, 0.7f, 0, -0.7f, -1, -0.7f };
 		static const float	qy[SQ_NUM_QUADS] = { 1, 0.7f, 0, -0.7f, -1, -0.7f, 0, 0.7f };
-		float			f = ( cg.time - cent->swordSwingTime ) / 420.0f;
+		float			f = ( cg.animTime - cent->swordSwingTime ) / 420.0f;
 		float			g = sin( f * M_PI );
 		float			rx, ry;
 		int				a = cent->swordStartQuad & 7, b = cent->swordEndQuad & 7, i;
@@ -3664,7 +3754,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	// kick: the right leg snaps out along the facing and retracts
 	kicking = pe->kickTime && cg.time - pe->kickTime < 340;
 	if ( kicking ) {
-		float	kp = sin( ( cg.time - pe->kickTime ) / 340.0f * M_PI );
+		float	kp = sin( ( cg.animTime - pe->kickTime ) / 340.0f * M_PI );
 		vec3_t	hip, t;
 
 		if ( CG_JointWorld( &ent, "thigh_r", hip ) ) {
@@ -3860,6 +3950,11 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	pe->skelLastBack = ent.backlerp;
 	VectorCopy( ent.origin, pe->skelLastOrigin );
 	AxisCopy( ent.axis, pe->skelLastAxis );
+	if ( !Q_stricmp( cg_skelBody.string, "models/s64/robot.iqm" ) ) {
+		char pbr[8];
+		trap_Cvar_VariableStringBuffer( "r_pbr", pbr, sizeof( pbr ) );
+		ent.customShader = trap_R_RegisterShader( atoi( pbr ) ? "models/s64/robot_pbr" : "models/s64/robot" );
+	}
 	trap_R_AddRefEntityToScene( &ent );
 	if ( cg_skelScarf.integer ) {
 		CG_SkelScarf( &ent, pe, renderfx );

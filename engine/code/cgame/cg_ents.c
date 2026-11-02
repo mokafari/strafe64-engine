@@ -1133,8 +1133,13 @@ static void CG_CalcEntityLerpPositions( centity_t *cent ) {
 		}
 	}
 
-	// blur out the integer snapshot stair-step in deep slow-mo
-	CG_SmoothEntityMotion( cent );
+	// The chase camera already smoothed and error-corrected this origin.
+	// Smoothing the local body independently would introduce relative jitter.
+	if ( cent == &cg.predictedPlayerEntity && cg.localRenderOriginValid ) {
+		VectorCopy( cg.localRenderOrigin, cent->lerpOrigin );
+	} else {
+		CG_SmoothEntityMotion( cent );
+	}
 }
 
 /*
@@ -1371,7 +1376,7 @@ void CG_AddPacketEntities( void ) {
 		if ( delta == 0 ) {
 			cg.frameInterpolation = 0;
 		} else {
-			cg.frameInterpolation = (float)( cg.time - cg.snap->serverTime ) / delta;
+			cg.frameInterpolation = Com_Clamp( 0, 1, (cg.animTime - cg.snap->serverTime) / delta );
 		}
 	} else {
 		cg.frameInterpolation = 0;	// actually, it should never be used, because 

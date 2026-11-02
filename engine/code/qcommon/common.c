@@ -3186,14 +3186,21 @@ void Com_WriteConfig_f( void ) {
 Com_ModifyMsec
 ================
 */
+double com_frameFraction = 0.0;
+float com_effectiveTimeScale = 1.0f;
+
 int Com_ModifyMsec( int msec ) {
 	int		clampTime;
+	// The game/killcam owns easing. A second filter here makes simulation
+	// time disagree with the timescale used by server and client pmove.
+	com_effectiveTimeScale = com_timescale->value;
 
 	//
 	// modify time for debugging values
 	//
 	if ( com_fixedtime->integer ) {
 		msec = com_fixedtime->integer;
+		com_frameFraction = 0;
 	} else if ( com_timescale->value ) {
 		// The world clock is integer milliseconds, but at low timescale the
 		// scaled per-frame delta is a fraction of a millisecond. Truncating it
@@ -3203,20 +3210,20 @@ int Com_ModifyMsec( int msec ) {
 		// the integer steps distribute evenly (0/1 ms) instead of snapping to
 		// a hard 1 ms floor every frame. Lockstep is preserved: this is the one
 		// shared source feeding both SV_Frame and the client clock.
-		static float	tsRemainder = 0.0f;
-		float			scaled;
+		double			scaled;
 
-		scaled = msec * com_timescale->value + tsRemainder;
+		scaled = msec * com_effectiveTimeScale + com_frameFraction;
 		msec = (int)scaled;
-		tsRemainder = scaled - msec;
+		com_frameFraction = scaled - msec;
 	} else if (com_cameraMode->integer) {
 		msec *= com_timescale->value;
+		com_frameFraction = 0;
 	}
 
 	// don't let a non-scaled frame stall forever; scaled frames may legitimately
-	// be 0 ms (their time is carried in tsRemainder), so only floor when running
+	// be 0 ms (their time is carried in com_frameFraction), so only floor when running
 	// at or above real time.
-	if ( msec < 1 && com_timescale->value >= 1.0f ) {
+	if ( msec < 1 && com_effectiveTimeScale >= 1.0f ) {
 		msec = 1;
 	}
 
