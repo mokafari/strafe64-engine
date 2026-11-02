@@ -288,6 +288,12 @@ def bake_bsp(name, course, map_path, bake_pk3_path, dest_bsp, bounce=3):
             os.link(bake_pk3_path, asset_target)
         except OSError:
             shutil.copy(bake_pk3_path, asset_target)
+        for extra in getattr(course, "extra_pk3", []):     # e.g. a texture pack the map's shaders point at
+            dst = os.path.join(boa, os.path.basename(extra))
+            try:
+                os.link(extra, dst)
+            except OSError:
+                shutil.copy(extra, dst)
         bm = os.path.join(maps, name + ".map")
         shutil.copy(map_path, bm)
         common = ["-fs_basepath", tmp, "-fs_game", "baseoa"]
