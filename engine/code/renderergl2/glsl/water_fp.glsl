@@ -25,12 +25,18 @@ varying vec3 var_WorldPos;
 // two counter-moving octaves of ripples -> slope vector
 vec2 ripple(vec2 p)
 {
-	vec2 uv1 = p * 0.0052 + vec2(u_Time * 0.0016, u_Time * 0.0009);
+	float t = u_Time;
+	vec2 uv1 = p * 0.0052 + vec2(t * 0.011, t * 0.0065);
 	mat2 rot = mat2(0.8, -0.6, 0.6, 0.8);
-	vec2 uv2 = (rot * p) * 0.0131 + vec2(-u_Time * 0.0022, u_Time * 0.0013);
+	vec2 uv2 = (rot * p) * 0.0131 + vec2(-t * 0.016, t * 0.0095);
+	// a third, slower sample at a different scale, crossfaded in and out, so the ripple pattern
+	// morphs over time instead of only sliding
+	vec2 uv3 = p * 0.0087 + vec2(t * 0.004, -t * 0.007);
 	vec2 s1 = texture2D(u_NormalMap, uv1).rg * 2.0 - 1.0;
 	vec2 s2 = texture2D(u_NormalMap, uv2).rg * 2.0 - 1.0;
-	return s1 + 0.55 * s2;
+	vec2 s3 = texture2D(u_NormalMap, uv3).rg * 2.0 - 1.0;
+	float w3 = 0.5 + 0.5 * sin(t * 0.7);
+	return s1 + 0.55 * s2 + 0.8 * w3 * s3;
 }
 
 void main()

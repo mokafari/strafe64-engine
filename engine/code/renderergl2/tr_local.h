@@ -1897,6 +1897,7 @@ extern  cvar_t  *r_rimColorR;		// rim color red
 extern  cvar_t  *r_rimColorG;		// rim color green
 extern  cvar_t  *r_rimColorB;		// rim color blue
 extern  cvar_t  *r_water;			// STRAFE 64 water pass on (1) / fall back to the plain mirror stages (0)
+extern  cvar_t  *r_waterSpeed;		// water animation speed multiplier
 extern  cvar_t  *r_waterDistort;	// multiplier on every water shader's reflection distortion
 extern  cvar_t  *r_bodycam;			// STRAFE 64 bodycam finish-pass master toggle
 extern  cvar_t  *r_bodycamWarp;		// barrel distortion strength

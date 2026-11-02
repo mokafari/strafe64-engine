@@ -1690,7 +1690,7 @@ static qboolean RB_DrawWater( shaderCommands_t *input )
 
 	GLSL_SetUniformMat4( sp, UNIFORM_MODELVIEWPROJECTIONMATRIX, glState.modelviewProjection );
 	GLSL_SetUniformVec3( sp, UNIFORM_VIEWORIGIN, backEnd.viewParms.or.origin );
-	GLSL_SetUniformFloat( sp, UNIFORM_TIME, tess.shaderTime );
+	GLSL_SetUniformFloat( sp, UNIFORM_TIME, tess.shaderTime * r_waterSpeed->value );
 
 	VectorSet4( v, (float)cur->width, (float)cur->height, 0.0f, 0.0f );
 	GLSL_SetUniformVec4( sp, UNIFORM_VIEWINFO, v );

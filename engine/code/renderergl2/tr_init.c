@@ -194,6 +194,7 @@ cvar_t  *r_bodycamGrain;
 cvar_t  *r_bodycamVignette;
 cvar_t  *r_bodycamClip;
 cvar_t  *r_water;
+cvar_t  *r_waterSpeed;
 cvar_t  *r_waterDistort;
 cvar_t  *r_sunShadows;
 cvar_t  *r_shadowFilter;
@@ -1462,6 +1463,7 @@ void R_Register( void )
 	r_bodycamClip = ri.Cvar_Get( "r_bodycamClip", "0.06", CVAR_ARCHIVE );
 	r_water = ri.Cvar_Get( "r_water", "1", CVAR_ARCHIVE );
 	r_waterDistort = ri.Cvar_Get( "r_waterDistort", "1.0", CVAR_ARCHIVE );
+	r_waterSpeed = ri.Cvar_Get( "r_waterSpeed", "2.0", CVAR_ARCHIVE );
 
 	r_sunlightMode = ri.Cvar_Get( "r_sunlightMode", "1", CVAR_ARCHIVE | CVAR_LATCH );
 
