@@ -1,0 +1,371 @@
+tty console mode disabled
+STRAFE 64 1.36 macosx-arm64 Oct 27 2026
+----- FS_Startup -----
+We are looking in the current search path:
+/Users/gustav/strafe64-engine/generated/iqmtest/baseoa
+/Users/gustav/strafe64-engine/generated/iqmtest/baseoa/zzz_strafe64_shader.pk3 (73 files)
+/Users/gustav/strafe64-engine/generated/iqmtest/baseoa/strafe64_marble.pk3 (4 files)
+/Users/gustav/strafe64-engine/generated/iqmtest/baseoa/strafe64_granite.pk3 (4 files)
+/Users/gustav/strafe64-engine/generated/iqmtest/baseoa/strafe64_animlab.pk3 (4 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/zzz_strafe64_shader.pk3 (73 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/zzz_angelyss_cyber.pk3 (9 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/surf_7.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/surf_64.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/surf_2025.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/surf_1337.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_daily_20260613.pk3 (10 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_daily_20260611.pk3 (10 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_911.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_7_x3.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_7700.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_7.pk3 (24 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_6417.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_64.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_4242.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_4201.pk3 (16 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_314.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_2026.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_1337_x3.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_1337.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64tr_7_d2.pk3 (74 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64tr_7.pk3 (31 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_court_8240.pk3 (24 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_9000.pk3 (16 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8236.pk3 (18 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8232.pk3 (18 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8228.pk3 (18 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8226.pk3 (18 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8225.pk3 (18 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8224_d2.pk3 (16 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8224.pk3 (17 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_7001.pk3 (16 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64dm_7140.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64dm_7.pk3 (9 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64dm_1337.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64cb_7700.pk3 (16 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak6-patch088.pk3 (711 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak6-patch085.pk3 (559 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak6-misc.pk3 (229 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak5-TA.pk3 (139 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak4-textures.pk3 (1753 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak2-players.pk3 (669 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak2-players-mature.pk3 (231 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak1-maps.pk3 (100 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak0.pk3 (1042 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/lun3dm5.pk3 (69 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/lun3dm3.pk3 (98 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/lun3dm2.pk3 (82 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/lattice_arena_iter.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/lattice_arena_1337.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/domtest_green.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/domtest_dusk.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/domtest_baked.pk3 (8 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/dojo_ztrick.pk3 (10 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/dojo_speed.pk3 (10 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/dojo_flow.pk3 (10 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/dojo_arena.pk3 (10 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/de4th_run2.pk3 (77 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/acc_fuzzle.pk3 (60 files)
+engine/build/Release/ioquake3.app/Contents/MacOS/baseoa
+
+----------------------
+6619 files in pk3 files
+execing default.cfg
+execing q3config.cfg
+execing autoexec.cfg
+Unknown command "alias^7"
+Unknown command "alias^7"
+Unknown command "alias^7"
+^3STRAFE64 ^7| ^2F1^7 console ^7| air-strafe presets: ^2F2^7 default ^5F3^7 surf ^2F4^7 titanfall
+^7tune by hand: ^3pm_strafeAccelerate^7 (70-150), ^3pm_wishSpeedClamp^7 (keep 30), ^3g_gravity^7 (750-800)
+^7controls: ^2MOUSE2^7 block ^7| ^2CTRL^7 crouch/slide ^7| ^2R^7 restart ^7| capture: ^2F5^7 timebind ^2F6^7 record ^2F7^7 3rd-person ^2F8^7 demo ^2F9^7 video ^2F10^7 shot
+Hunk_Clear: reset the hunk ok
+----- Client Initialization -----
+Couldn't read q3history.
+Loading "libcurl.dylib"...Trying to load "libcurl.dylib"...
+OK
+----- Initializing Renderer ----
+Trying to load "renderer_opengl2.dylib" from "engine/build/Release/ioquake3.app/Contents/MacOS"...
+-------------------------------
+QKEY found.
+----- Client Initialization Complete -----
+----- R_Init -----
+SDL using driver "cocoa"
+Initializing OpenGL display
+Display aspect: 2.389
+...setting mode -1: 960 540
+Using 24 color bits, 32 depth, 8 stencil display.
+Available modes: '1280x536 1600x670 1720x720 1920x804 3440x1440 1344x562 2048x858 1280x540 2560x1080 960x540 1280x720 1600x900 1920x1080 840x525 960x600 1280x800 1440x900 1680x1050 1920x1200 800x600 1024x768 1152x864 1280x960 1344x1008 1600x1200 1280x1024 860x720 1720x1440'
+GL_RENDERER: Apple M3 Pro
+Initializing OpenGL extensions
+...GL_EXT_texture_compression_s3tc not found
+...GL_S3_s3tc not found
+...ignoring GL_EXT_texture_filter_anisotropic
+...using GL_SGIS_texture_edge_clamp
+...using GL_ARB_framebuffer_object
+...using GL_ARB_vertex_array_object
+...using GL_ARB_texture_float
+...using GL_ARB_depth_clamp
+...ignoring GL_ARB_seamless_cube_map
+...GL_NVX_gpu_memory_info not found
+...GL_ATI_meminfo not found
+...GL_ARB_texture_compression_rgtc not found
+...GL_ARB_texture_compression_bptc not found
+...GL_EXT_direct_state_access not found
+...using GLSL version 4.10
+------- FBO_Init -------
+------- GLSL_InitGPUShaders -------
+Using GPU vertex animation
+loaded 119 GLSL shaders (48 gen 42 light 29 etc) in  0.25 seconds
+------- R_InitVaos -------
+Initializing Shaders
+
+GL_VENDOR: Apple
+GL_RENDERER: Apple M3 Pro
+GL_VERSION: 4.1 Metal - 88
+GL_EXTENSIONS: GL_ARB_blend_func_extended GL_ARB_draw_buffers_blend GL_ARB_draw_indirect GL_ARB_ES2_compatibility GL_ARB_explicit_attrib_location GL_ARB_gpu_shader_fp64 GL_ARB_gpu_shader5 GL_ARB_instanced_arrays GL_ARB_internalformat_query GL_ARB_occlusion_query2 GL_ARB_sample_shading GL_ARB_sampler_objects GL_ARB_separate_shader_objects GL_ARB_shader_bit_encoding GL_ARB_shader_subroutine GL_ARB_shading_language_include GL_ARB_tessellation_shader GL_ARB_texture_buffer_object_rgb32 GL_ARB_texture_cube_map_array GL_ARB_texture_gather GL_ARB_texture_query_lod GL_ARB_texture_rgb10_a2ui GL_ARB_texture_storage GL_ARB_texture_swizzle GL_ARB_timer_query GL_ARB_transform_feedback2 GL_ARB_transform_feedback3 GL_ARB_vertex_attrib_64bit GL_ARB_vertex_type_2_10_10_10_rev GL_ARB_viewport_array GL_EXT_debug_label GL_EXT_debug_marker GL_EXT_framebuffer_multisample_blit_scaled GL_EXT_texture_compression_s3tc GL_EXT_texture_filter_anisotropic GL_EXT_texture_sRGB_decode GL_APPLE_client_storage GL_APPLE_container_object_shareable GL_APPLE_flush_render GL_APPLE_rgb_422 GL_APPLE_row_bytes GL_APPLE_texture_range GL_NV_texture_barrier 
+GL_MAX_TEXTURE_SIZE: 16384
+GL_MAX_TEXTURE_IMAGE_UNITS: 16
+
+PIXELFORMAT: color(24-bits) Z(32-bit) stencil(8-bits)
+MODE: -1, 960 x 540 windowed hz:N/A
+GAMMA: hardware w/ 1 overbright bits
+texturemode: GL_LINEAR_MIPMAP_LINEAR
+picmip: 0
+texture bits: 0
+compiled vertex arrays: disabled
+texenv add: enabled
+compressed textures: disabled
+----- finished R_Init -----
+------ Initializing Sound ------
+Trying to load "/System/Library/Frameworks/OpenAL.framework/OpenAL"...
+Allocated 64 sources.
+OpenAL default capture device is 'Virtual Desktop Mic'
+OpenAL capture device opened.
+OpenAL info:
+  Vendor:         Apple Computer Inc.
+  Version:        1.1
+  Renderer:       Software
+  AL Extensions:  AL_EXT_OFFSET AL_EXT_LINEAR_DISTANCE AL_EXT_EXPONENT_DISTANCE AL_EXT_float32 AL_EXT_STATIC_BUFFER AL_EXT_SOURCE_NOTIFICATIONS AL_EXT_SOURCE_SPATIALIZATION
+  ALC Extensions: ALC_EXT_CAPTURE ALC_ENUMERATION_EXT ALC_EXT_MAC_OSX ALC_EXT_ASA ALC_EXT_ASA_DISTORTION ALC_EXT_ASA_ROGER_BEEP
+  Device:         Audient iD14
+  Available Devices:
+Audient iD14
+  Input Device:   Virtual Desktop Mic
+  Available Input Devices:
+Virtual Desktop Mic
+Sound initialization successful.
+--------------------------------
+Try loading dll file /Users/gustav/strafe64-engine/generated/iqmtest/baseoa/ui.dylib
+Loading DLL file: /Users/gustav/strafe64-engine/generated/iqmtest/baseoa/ui.dylib
+Sys_LoadGameDll(/Users/gustav/strafe64-engine/generated/iqmtest/baseoa/ui.dylib) found vmMain function at 0x15dbb7c48
+106 arenas parsed
+33 bots parsed
+License: registered (tier 255).
+--- Common Initialization Complete ---
+IP: 127.0.0.1
+IP6: ::1
+IP6: fe80::1%lo0
+IP: 127.159.252.122
+IP6: fe80::603e:5fff:fe7d:9ba0%ap1
+IP6: fe80::1c33:bada:5245:38ca%en0
+IP: 192.168.1.101
+IP6: 2a00:801:57c:bdc8:1043:89f5:8ee4:fed2
+IP6: 2a00:801:57c:bdc8:2965:fb5d:f0ab:ebd5
+IP6: 2a00:801:57c:bdc8:914b:efeb:b1f8:bee2
+IP6: fe80::c59:27ff:fe9b:9b2d%awdl0
+IP6: fe80::c59:27ff:fe9b:9b2d%llw0
+IP6: fe80::2554:e04:6e11:f61a%utun0
+IP6: fe80::4aaf:cf1:ac86:76f%utun1
+IP6: fe80::794b:f0b5:ecb:c7a2%utun2
+IP6: fe80::ce81:b1c:bd2c:69e%utun3
+IP6: fe80::2201:784b:77f:3fa%utun6
+IP6: fe80::37f0:686:8ee0:a26f%utun7
+Opening IP6 socket: [::]:27960
+Opening IP socket: 0.0.0.0:27971
+------ Server Initialization ------
+Server: strafe64_marble
+RE_Shutdown( 0 )
+------- FBO_Shutdown -------
+------- R_ShutdownVaos -------
+------- GLSL_ShutdownGPUShaders -------
+Hunk_Clear: reset the hunk ok
+----- FS_Startup -----
+We are looking in the current search path:
+/Users/gustav/strafe64-engine/generated/iqmtest/baseoa
+/Users/gustav/strafe64-engine/generated/iqmtest/baseoa/zzz_strafe64_shader.pk3 (73 files)
+/Users/gustav/strafe64-engine/generated/iqmtest/baseoa/strafe64_marble.pk3 (4 files)
+/Users/gustav/strafe64-engine/generated/iqmtest/baseoa/strafe64_granite.pk3 (4 files)
+/Users/gustav/strafe64-engine/generated/iqmtest/baseoa/strafe64_animlab.pk3 (4 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/zzz_strafe64_shader.pk3 (73 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/zzz_angelyss_cyber.pk3 (9 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/surf_7.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/surf_64.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/surf_2025.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/surf_1337.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_daily_20260613.pk3 (10 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_daily_20260611.pk3 (10 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_911.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_7_x3.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_7700.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_7.pk3 (24 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_6417.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_64.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_4242.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_4201.pk3 (16 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_314.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_2026.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_1337_x3.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64_1337.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64tr_7_d2.pk3 (74 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64tr_7.pk3 (31 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_court_8240.pk3 (24 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_9000.pk3 (16 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8236.pk3 (18 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8232.pk3 (18 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8228.pk3 (18 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8226.pk3 (18 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8225.pk3 (18 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8224_d2.pk3 (16 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_8224.pk3 (17 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64kb_7001.pk3 (16 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64dm_7140.pk3 (15 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64dm_7.pk3 (9 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64dm_1337.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/strafe64cb_7700.pk3 (16 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak6-patch088.pk3 (711 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak6-patch085.pk3 (559 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak6-misc.pk3 (229 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak5-TA.pk3 (139 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak4-textures.pk3 (1753 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak2-players.pk3 (669 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak2-players-mature.pk3 (231 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak1-maps.pk3 (100 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/pak0.pk3 (1042 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/lun3dm5.pk3 (69 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/lun3dm3.pk3 (98 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/lun3dm2.pk3 (82 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/lattice_arena_iter.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/lattice_arena_1337.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/domtest_green.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/domtest_dusk.pk3 (3 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/domtest_baked.pk3 (8 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/dojo_ztrick.pk3 (10 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/dojo_speed.pk3 (10 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/dojo_flow.pk3 (10 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/dojo_arena.pk3 (10 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/de4th_run2.pk3 (77 files)
+/Users/gustav/strafe64-engine/assets/openarena/baseoa/acc_fuzzle.pk3 (60 files)
+engine/build/Release/ioquake3.app/Contents/MacOS/baseoa
+
+----------------------
+6619 files in pk3 files
+Try loading dll file /Users/gustav/strafe64-engine/generated/iqmtest/baseoa/qagame.dylib
+Loading DLL file: /Users/gustav/strafe64-engine/generated/iqmtest/baseoa/qagame.dylib
+Sys_LoadGameDll(/Users/gustav/strafe64-engine/generated/iqmtest/baseoa/qagame.dylib) found vmMain function at 0x1353bbda4
+------- Game Initialization -------
+gamename: baseq3
+gamedate: Nov  1 2026
+0 teams with 0 entities
+10 items registered
+-----------------------------------
+------- BotLib Initialization -------
+loaded weapons.c
+loaded items.c
+loaded syn.c
+loaded rnd.c
+loaded match.c
+------------ Map Loading ------------
+trying to load maps/strafe64_marble.aas
+loaded maps/strafe64_marble.aas
+found 8 level items
+-------------------------------------
+33 bots parsed
+106 arenas parsed
+AAS initialized.
+-----------------------------------
+RE_Shutdown( 0 )
+----- R_Init -----
+------- FBO_Init -------
+------- GLSL_InitGPUShaders -------
+Using GPU vertex animation
+loaded 119 GLSL shaders (48 gen 42 light 29 etc) in  0.24 seconds
+------- R_InitVaos -------
+Initializing Shaders
+
+GL_VENDOR: Apple
+GL_RENDERER: Apple M3 Pro
+GL_VERSION: 4.1 Metal - 88
+GL_EXTENSIONS: GL_ARB_blend_func_extended GL_ARB_draw_buffers_blend GL_ARB_draw_indirect GL_ARB_ES2_compatibility GL_ARB_explicit_attrib_location GL_ARB_gpu_shader_fp64 GL_ARB_gpu_shader5 GL_ARB_instanced_arrays GL_ARB_internalformat_query GL_ARB_occlusion_query2 GL_ARB_sample_shading GL_ARB_sampler_objects GL_ARB_separate_shader_objects GL_ARB_shader_bit_encoding GL_ARB_shader_subroutine GL_ARB_shading_language_include GL_ARB_tessellation_shader GL_ARB_texture_buffer_object_rgb32 GL_ARB_texture_cube_map_array GL_ARB_texture_gather GL_ARB_texture_query_lod GL_ARB_texture_rgb10_a2ui GL_ARB_texture_storage GL_ARB_texture_swizzle GL_ARB_timer_query GL_ARB_transform_feedback2 GL_ARB_transform_feedback3 GL_ARB_vertex_attrib_64bit GL_ARB_vertex_type_2_10_10_10_rev GL_ARB_viewport_array GL_EXT_debug_label GL_EXT_debug_marker GL_EXT_framebuffer_multisample_blit_scaled GL_EXT_texture_compression_s3tc GL_EXT_texture_filter_anisotropic GL_EXT_texture_sRGB_decode GL_APPLE_client_storage GL_APPLE_container_object_shareable GL_APPLE_flush_render GL_APPLE_rgb_422 GL_APPLE_row_bytes GL_APPLE_texture_range GL_NV_texture_barrier 
+GL_MAX_TEXTURE_SIZE: 16384
+GL_MAX_TEXTURE_IMAGE_UNITS: 16
+
+PIXELFORMAT: color(24-bits) Z(32-bit) stencil(8-bits)
+MODE: -1, 960 x 540 windowed hz:N/A
+GAMMA: hardware w/ 1 overbright bits
+texturemode: GL_LINEAR_MIPMAP_LINEAR
+picmip: 0
+texture bits: 0
+compiled vertex arrays: disabled
+texenv add: enabled
+compressed textures: disabled
+----- finished R_Init -----
+Try loading dll file /Users/gustav/strafe64-engine/generated/iqmtest/baseoa/ui.dylib
+Loading DLL file: /Users/gustav/strafe64-engine/generated/iqmtest/baseoa/ui.dylib
+Sys_LoadGameDll(/Users/gustav/strafe64-engine/generated/iqmtest/baseoa/ui.dylib) found vmMain function at 0x1661bbc48
+106 arenas parsed
+33 bots parsed
+Try loading dll file /Users/gustav/strafe64-engine/generated/iqmtest/baseoa/cgame.dylib
+Loading DLL file: /Users/gustav/strafe64-engine/generated/iqmtest/baseoa/cgame.dylib
+Sys_LoadGameDll(/Users/gustav/strafe64-engine/generated/iqmtest/baseoa/cgame.dylib) found vmMain function at 0x166301bc4
+stitched 0 LoD cracks
+...loaded 717 faces, 0 meshes, 0 trisurfs, 0 flares
+^5music:^7 music/liquid_calibre_lit.mp3
+CL_InitCGame:  1.58 seconds
+18 msec to draw all images
+Com_TouchMemory: 0 msec
+UnnamedPlayer^7 entered the game
+execing chk.cfg
+loaded skill 4 from bots/default_c.c
+loaded skill 4 from bots/sarge_c.c
+loaded bots/sarge_i.c
+loaded bots/sarge_w.c
+loaded sarge from bots/sarge_t.c
+loaded cached skill 4.000000 from bots/default_c.c
+loaded skill 4 from bots/major_c.c
+loaded bots/major_i.c
+loaded bots/major_w.c
+loaded Major from bots/major_t.c
+loaded cached skill 4.000000 from bots/default_c.c
+loaded skill 4 from bots/grunt_c.c
+loaded bots/grunt_i.c
+loaded bots/grunt_w.c
+loaded grunt from bots/grunt_t.c
+Sarge^7 connected
+Sarge^7 entered the game
+Major^7 connected
+Major^7 entered the game
+Grunt^7 connected
+Grunt^7 entered the game
+Server: g_quadfactor changed to 1
+UnnamedPlayer^7 killed himself.
+Wrote screenshots/sw_0.jpg
+Wrote screenshots/sw_1.jpg
+Wrote screenshots/sw_2.jpg
+Wrote screenshots/sw_3.jpg
+Wrote screenshots/sw_4.jpg
+Wrote screenshots/sw_5.jpg
+----- Server Shutdown (Server quit) -----
+==== ShutdownGame ====
+AAS shutdown.
+---------------------------
+----- Client Shutdown (Client quit) -----
+RE_Shutdown( 1 )
+------- FBO_Shutdown -------
+------- R_ShutdownVaos -------
+------- GLSL_ShutdownGPUShaders -------
+Hunk_Clear: reset the hunk ok
+OpenAL capture device closed.
+-----------------------

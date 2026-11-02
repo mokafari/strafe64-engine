@@ -23,3 +23,8 @@ web-demo/
 .DS_Store
 # stray `script` command terminal captures
 typescript
+# Per-client identity keys created by local game runs
+/generated/**/qkey
+# Local playtest video captures
+/generated/**/*.mp4
+/generated/**/*.mov

@@ -1,0 +1,6 @@
+{
+  "finding": "Extra engine easing introduced earlier disagreed with movement compensation; renderer scaled absolute uptime causing discontinuities on scale changes.",
+  "fix": "Remove second easing layer. Engine simulation and pmove use same timescale. Renderer reads accumulated client game time.",
+  "validation": "Build passed. Actual clock functions tested with rising/falling ramps, renderer continuity, six rates. Time-bind and ragdoll regressions passed. Live forward 1.000, release 0.050.",
+  "prediction": "Eliminates clock disagreement and renderer time jumps during slow-motion transitions; subjective feel still requires play feedback."
+}

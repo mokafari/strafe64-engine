@@ -1,0 +1,7 @@
+{
+  "observed_before": "Held movement 127 with target/eased 1.000 and actual 0.050 on repeated live samples.",
+  "cause": "Loopback SYSTEMINFO applies delayed timescale values to shared server/client cvar, feeding stale state back into authoritative clock.",
+  "fix": "Ignore timescale echo only for active local server + loopback client; preserve remote updates. Controller detects lost actual value and recovers within publish budget.",
+  "observed_after": "Repeated live held-input samples show target/eased/actual 1.000. Build, echo guard, timebind and fractional clock tests pass.",
+  "prediction": "Eliminates observed held-key sticking caused by clock echoes; other gameplay modifiers still intentionally slow time."
+}

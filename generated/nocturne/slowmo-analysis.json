@@ -1,0 +1,17 @@
+{
+  "date": "2026-11-01",
+  "observed": {
+    "timescale": 0.06,
+    "sv_fps": 60,
+    "com_maxfps": 144,
+    "cg_skeletal": 1
+  },
+  "findings": [
+    "Integer game milliseconds limit distinct pose times to about 60/s at 0.06 speed",
+    "Skeletal integration uses cg.frametime updated after entity rendering, while transitions use current cg.time",
+    "Server floor writes timescale 0.06 when configured time-bind minimum is 0.05",
+    "Time-bind publishes scale in discrete 0.02/0.1 steps"
+  ],
+  "prediction": "A fractional presentation clock and same-frame pose delta should reduce steady slow-motion stepping; separate continuous local time scale should reduce transition speed jumps.",
+  "limits": "Source analysis and live cvars; no controlled motion capture or patch validation. Daemon port 18700 unavailable."
+}

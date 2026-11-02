@@ -1,0 +1,6 @@
+{
+  "finding": "Local predicted body bypassed smoothing while chase camera followed a smoothed anchor, creating relative position jitter.",
+  "fix": "Share camera anchor including prediction-error decay with local third-person render origin; exponential real-time camera smoothing and teleport/inactivity reset. Physics and bot rendering paths unchanged.",
+  "validation": "Build and fractional-clock regression passed. Reloaded Nocturne, ran local movement and jump inputs at 0.05x, restored max time scale 1.",
+  "prediction": "Shared anchor eliminates body-camera translation mismatch. Remaining limb or collision artifacts require further observation."
+}
