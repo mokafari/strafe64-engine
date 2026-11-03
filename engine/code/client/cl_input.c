@@ -530,7 +530,7 @@ void CL_CmdButtons( usercmd_t *cmd ) {
 	// send a button bit even if the key was pressed and released in
 	// less than a frame
 	//	
-	for (i = 0 ; i < 15 ; i++) {
+	for (i = 0 ; i < 16 ; i++) {
 		if ( in_buttons[i].active || in_buttons[i].wasPressed ) {
 			cmd->buttons |= 1 << i;
 		}
@@ -1005,6 +1005,8 @@ void CL_InitInput( void ) {
 	Cmd_AddCommand ("-button13", IN_Button13Up);
 	Cmd_AddCommand ("+button14", IN_Button14Down);
 	Cmd_AddCommand ("-button14", IN_Button14Up);
+	Cmd_AddCommand ("+focus", IN_Button15Down);
+	Cmd_AddCommand ("-focus", IN_Button15Up);
 	Cmd_AddCommand ("+mlook", IN_MLookDown);
 	Cmd_AddCommand ("-mlook", IN_MLookUp);
 
@@ -1082,6 +1084,8 @@ void CL_ShutdownInput(void)
 	Cmd_RemoveCommand("-button13");
 	Cmd_RemoveCommand("+button14");
 	Cmd_RemoveCommand("-button14");
+	Cmd_RemoveCommand("+focus");
+	Cmd_RemoveCommand("-focus");
 	Cmd_RemoveCommand("+mlook");
 	Cmd_RemoveCommand("-mlook");
 

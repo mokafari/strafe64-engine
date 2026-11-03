@@ -1055,6 +1055,8 @@ static void G_ClientKick( gentity_t *ent, usercmd_t *ucmd ) {
 }
 
 static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd ) {
+	static int focusCharge = 1000;  // milliseconds of real time
+	static qboolean focusSpent = qfalse;
 	static float	cur = -1.0f;		// last applied timescale (one human assumed)
 	static qboolean	active = qfalse;	// did we take over the timescale cvar?
 	static int		lastReal = 0;		// trap_Milliseconds at the previous update
@@ -1080,6 +1082,8 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd ) {
 	}
 
 	if ( !g_timeBind.integer ) {
+		focusCharge = 1000;
+		focusSpent = qfalse;
 		// hand the clock back exactly once when disabled
 		if ( active ) {
 			trap_Cvar_Set( "timescale", "1" );
@@ -1106,80 +1110,6 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd ) {
 		trap_Cvar_Set( "pmove_fixed", "1" );
 	}
 
-	tmin  = g_timeBindMin.value;
-	tmax  = g_timeBindMax.value;
-	ref   = g_timeBindRef.value;
-	curve = g_timeBindCurve.value;
-	if ( ref < 1.0f )    ref = 1.0f;
-	if ( curve < 0.1f )  curve = 0.1f;
-	if ( tmin < 0.01f )  tmin = 0.01f;
-	if ( tmax < tmin ) tmax = tmin;	// keep the log map well-defined
-
-	// speed component: how fast we're actually moving on the floor plane
-	hspeed = sqrt( ent->client->ps.velocity[0] * ent->client->ps.velocity[0]
-				 + ent->client->ps.velocity[1] * ent->client->ps.velocity[1] );
-	speedFrac = hspeed / ref;
-	if ( speedFrac > 1.0f ) speedFrac = 1.0f;
-
-	// input component: SUPERHOT keys on *wanting* to move, not just moving
-	inputMag = sqrt( (float)( ucmd->forwardmove * ucmd->forwardmove
-							+ ucmd->rightmove   * ucmd->rightmove ) )
-		/ ( ( ucmd->buttons & BUTTON_WALKING ) ? 64.0f : 127.0f );
-	if ( inputMag > 1.0f ) inputMag = 1.0f;
-
-	// SUPERHOT follows deliberate input. Residual velocity after releasing
-	// a key must not keep time running; jump alone should also wake it.
-	intent = inputMag;
-	if ( ucmd->upmove > 0 ) intent = 1.0f;
-
-	// firing nudges time forward even when stationary (tunable, 0 = off)
-	if ( ( ucmd->buttons & BUTTON_ATTACK ) && g_timeBindFire.value > intent ) {
-		intent = g_timeBindFire.value;
-	}
-
-	// DASH wakes the clock: for a short window after a dash, force intent high so
-	// the lunge is a FAST real-time burst, not a slow-mo drift (a 430u/s dash at
-	// timescale 0.06 would crawl). This is what makes SHIFT read as "dash", not
-	// "slow time". (See G_ClientDash, which stamps client->dashSurge.)
-	if ( level.time < ent->client->dashSurge && intent < 0.95f ) {
-		intent = 0.95f;
-	}
-
-	if ( intent > 1.0f ) intent = 1.0f;
-
-	if ( g_timeBindLog.integer ) {
-		// logarithmic (geometric) slow-mo: each step of intent MULTIPLIES the
-		// timescale rather than adding to it, so the deep end feels far slower
-		// and the ramp back to realtime is perceptually even — the Matrix curve
-		target = tmin * pow( tmax / tmin, pow( intent, curve ) );
-	} else {
-		// linear interpolation of the shaped intent
-		target = tmin + ( tmax - tmin ) * pow( intent, curve );
-	}
-
-	// raising the GUARD dips the world into a defensive slow-mo beat — a moment to
-	// read the room / time a parry. A MULTIPLIER on the target (not an intent cap),
-	// so it ALWAYS ramps time down a notch while BUTTON_BLOCK is held, whether
-	// you're sprinting or nearly still. g_timeBindBlock = the dip (0.5 = half-speed
-	// of whatever the clock would otherwise be; lower = deeper; 1 = off).
-	if ( ( ucmd->buttons & BUTTON_BLOCK ) && g_timeBindBlock.value < 1.0f ) {
-		target *= g_timeBindBlock.value;
-		if ( target < tmin ) target = tmin;
-	}
-
-	// crouch/slide TIME BRAKE: while ducked, CAP the clock at a KINETIC slow-mo —
-	// and scale it with speed so a fast slide RIPS near-realtime (Titanfall feel)
-	// while a slow slide keeps more dilation. g_timeBindCrouch is the slow-end
-	// floor (at slide-min speed); a full-speed slide eases up toward ~0.92, so the
-	// ground rushes past when you commit hard. Caps only (never speeds up), so a
-	// still crouch stays at its already-lower freeze. 1.0 = brake off entirely.
-	if ( ( ent->client->ps.pm_flags & PMF_DUCKED ) && g_timeBindCrouch.value < 1.0f ) {
-		float slideTs = g_timeBindCrouch.value
-					  + ( 0.92f - g_timeBindCrouch.value ) * speedFrac;
-		if ( slideTs > 0.92f ) slideTs = 0.92f;
-		if ( target > slideTs ) target = slideTs;
-	}
-
 	// smooth toward target so the world eases in/out instead of snapping.
 	// Step the ease on REAL time (trap_Milliseconds), NOT the passed-in msec:
 	// msec is the timescale-SCALED frame delta, so deep in slow-mo it shrinks
@@ -1192,6 +1122,94 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd ) {
 	lastReal = now;
 	if ( realMsec < 0 ) realMsec = 0;
 	if ( realMsec > 250 ) realMsec = 250;
+	if ( g_timeBind.integer == 2 ) {
+		if ( !(ucmd->buttons & BUTTON_FOCUS) ) {
+			focusSpent = qfalse;
+			focusCharge += realMsec;
+			if ( focusCharge > 1000 ) focusCharge = 1000;
+		} else if ( !focusSpent ) {
+			focusCharge -= realMsec;
+			if ( focusCharge <= 0 ) {
+				focusCharge = 0;
+				focusSpent = qtrue;
+			}
+		}
+		target = (ucmd->buttons & BUTTON_FOCUS) && !focusSpent ? 0.333f : 1.0f;
+	} else {
+		tmin  = g_timeBindMin.value;
+		tmax  = g_timeBindMax.value;
+		ref   = g_timeBindRef.value;
+		curve = g_timeBindCurve.value;
+		if ( ref < 1.0f )    ref = 1.0f;
+		if ( curve < 0.1f )  curve = 0.1f;
+		if ( tmin < 0.01f )  tmin = 0.01f;
+		if ( tmax < tmin ) tmax = tmin;	// keep the log map well-defined
+
+		// speed component: how fast we're actually moving on the floor plane
+		hspeed = sqrt( ent->client->ps.velocity[0] * ent->client->ps.velocity[0]
+					 + ent->client->ps.velocity[1] * ent->client->ps.velocity[1] );
+		speedFrac = hspeed / ref;
+		if ( speedFrac > 1.0f ) speedFrac = 1.0f;
+
+		// input component: SUPERHOT keys on *wanting* to move, not just moving
+		inputMag = sqrt( (float)( ucmd->forwardmove * ucmd->forwardmove
+								+ ucmd->rightmove   * ucmd->rightmove ) )
+			/ ( ( ucmd->buttons & BUTTON_WALKING ) ? 64.0f : 127.0f );
+		if ( inputMag > 1.0f ) inputMag = 1.0f;
+
+		// SUPERHOT follows deliberate input. Residual velocity after releasing
+		// a key must not keep time running; jump alone should also wake it.
+		intent = inputMag;
+		if ( ucmd->upmove > 0 ) intent = 1.0f;
+
+		// firing nudges time forward even when stationary (tunable, 0 = off)
+		if ( ( ucmd->buttons & BUTTON_ATTACK ) && g_timeBindFire.value > intent ) {
+			intent = g_timeBindFire.value;
+		}
+
+		// DASH wakes the clock: for a short window after a dash, force intent high so
+		// the lunge is a FAST real-time burst, not a slow-mo drift (a 430u/s dash at
+		// timescale 0.06 would crawl). This is what makes SHIFT read as "dash", not
+		// "slow time". (See G_ClientDash, which stamps client->dashSurge.)
+		if ( level.time < ent->client->dashSurge && intent < 0.95f ) {
+			intent = 0.95f;
+		}
+
+		if ( intent > 1.0f ) intent = 1.0f;
+
+		if ( g_timeBindLog.integer ) {
+			// logarithmic (geometric) slow-mo: each step of intent MULTIPLIES the
+			// timescale rather than adding to it, so the deep end feels far slower
+			// and the ramp back to realtime is perceptually even — the Matrix curve
+			target = tmin * pow( tmax / tmin, pow( intent, curve ) );
+		} else {
+			// linear interpolation of the shaped intent
+			target = tmin + ( tmax - tmin ) * pow( intent, curve );
+		}
+
+		// raising the GUARD dips the world into a defensive slow-mo beat — a moment to
+		// read the room / time a parry. A MULTIPLIER on the target (not an intent cap),
+		// so it ALWAYS ramps time down a notch while BUTTON_BLOCK is held, whether
+		// you're sprinting or nearly still. g_timeBindBlock = the dip (0.5 = half-speed
+		// of whatever the clock would otherwise be; lower = deeper; 1 = off).
+		if ( ( ucmd->buttons & BUTTON_BLOCK ) && g_timeBindBlock.value < 1.0f ) {
+			target *= g_timeBindBlock.value;
+			if ( target < tmin ) target = tmin;
+		}
+
+		// crouch/slide TIME BRAKE: while ducked, CAP the clock at a KINETIC slow-mo —
+		// and scale it with speed so a fast slide RIPS near-realtime (Titanfall feel)
+		// while a slow slide keeps more dilation. g_timeBindCrouch is the slow-end
+		// floor (at slide-min speed); a full-speed slide eases up toward ~0.92, so the
+		// ground rushes past when you commit hard. Caps only (never speeds up), so a
+		// still crouch stays at its already-lower freeze. 1.0 = brake off entirely.
+		if ( ( ent->client->ps.pm_flags & PMF_DUCKED ) && g_timeBindCrouch.value < 1.0f ) {
+			float slideTs = g_timeBindCrouch.value
+						  + ( 0.92f - g_timeBindCrouch.value ) * speedFrac;
+			if ( slideTs > 0.92f ) slideTs = 0.92f;
+			if ( target > slideTs ) target = slideTs;
+		}
+	}
 	if ( cur < 0.0f ) {
 		cur = target;
 	} else {
@@ -1203,6 +1221,7 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd ) {
 		// back into near-freeze. (Time only pumps up quick, never down, so no
 		// jitter.)
 		rate = ( target > cur ) ? g_timeBindRise.value : g_timeBindSmooth.value;
+		if ( g_timeBind.integer == 2 ) rate = target > cur ? 40.0f : 18.0f;
 		t = 1.0f - exp( -rate * ( realMsec * 0.001f ) );
 		if ( t > 1.0f ) t = 1.0f;
 		if ( t < 0.0f ) t = 0.0f;

@@ -61,12 +61,20 @@ def generate(seed, difficulty, length, out_dir, want_map, want_pk3,
              item_trail=False, standalone=False, backup=False,
              bake=False, bake_bounce=3,
              vscale=1.0, hscale=1.0, density=1.0, sections=None,
-             theme="ethereal", greeble_density=1.0, showcase=False, marble=False, granite=False):
+             theme="ethereal", greeble_density=1.0, showcase=False, marble=False, granite=False, station=False):
     os.makedirs(out_dir, exist_ok=True)
     cfg.THEME = theme           # read by BspWriter to remap bulk faces to concrete
     mods = cfg.GenMods(vscale=vscale, hscale=hscale, density=density,
                        sections=sections)
-    if granite == "lab":
+    if station == "blocks":
+        from strafegen_station_blocks import StationBlocks
+        name = name or "station_blocks"
+        course = StationBlocks(seed).build()
+    elif station:
+        from strafegen_station import Station
+        name = name or "station_roof"
+        course = Station(seed).build()
+    elif granite == "lab":
         from strafegen_animlab import AnimLab
         name = name or "strafe64_animlab"
         course = AnimLab(seed or 64).build()
@@ -277,6 +285,8 @@ def main():
                          "banked arc — candidate corner geometry, feel-test by hand)")
     ap.add_argument("--showcase", action="store_true",
                     help="the hand-composed ethereal showcase map (strafe64_showcase)")
+    ap.add_argument("--station-blocks", action="store_true", help="fixed station galleries and service lift")
+    ap.add_argument("--station", action="store_true", help="station roof sword encounter")
     ap.add_argument("--animlab", action="store_true",
                     help="animation state test bench (strafe64_animlab)")
     ap.add_argument("--granite", action="store_true",
@@ -419,6 +429,13 @@ def main():
                      voidrise=args.voidrise, voiddelay=args.voiddelay,
                      item_trail=args.item_trail, name=args.name,
                      standalone=args.standalone, backup=args.backup, **_genmods)
+        return
+    if args.station_blocks:
+        generate(args.seed if args.seed is not None else 7, 1, 1, args.out, args.map, args.pk3,
+                 station="blocks", name=args.name, theme="default", greeble_density=0)
+        return
+    if args.station:
+        generate(64, 1, 1, args.out, args.map, args.pk3, station=True, theme="default", greeble_density=0)
         return
     if args.animlab:
         generate(args.seed or 64, 1, 1, args.out, args.map, args.pk3, granite="lab", name=args.name,
