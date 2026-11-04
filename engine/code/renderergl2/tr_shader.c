@@ -1987,6 +1987,47 @@ static qboolean ParseShader( char **text )
 			shader.isPortal = qtrue;
 			continue;
 		}
+		// STRAFE 64 water <distort> <tintR G B> <lightDirX Y Z> <lightR G B> <specPower>
+		else if ( !Q_stricmp(token, "water") )
+		{
+			float v[11];
+			int k;
+
+			for ( k = 0; k < 11; k++ )
+			{
+				token = COM_ParseExt( text, qfalse );
+				if ( token[0] == 0 )
+					break;
+				v[k] = atof( token );
+			}
+			if ( k < 11 )
+			{
+				ri.Printf( PRINT_WARNING, "WARNING: 'water' needs 11 parameters in shader '%s'\n", shader.name );
+				continue;
+			}
+			shader.isWater = qtrue;
+			shader.waterDistort = v[0];
+			VectorSet( shader.waterTint, v[1], v[2], v[3] );
+			VectorSet( shader.waterLightDir, v[4], v[5], v[6] );
+			VectorNormalize( shader.waterLightDir );
+			VectorSet( shader.waterLightCol, v[7], v[8], v[9] );
+			shader.waterSpecPower = v[10];
+			continue;
+		}
+		// waterNormal <image>
+		else if ( !Q_stricmp(token, "waterNormal") )
+		{
+			token = COM_ParseExt( text, qfalse );
+			if ( token[0] == 0 )
+			{
+				ri.Printf( PRINT_WARNING, "WARNING: missing image for waterNormal in shader '%s'\n", shader.name );
+				continue;
+			}
+			shader.waterNormal = R_FindImageFile( token, IMGTYPE_COLORALPHA, IMGFLAG_MIPMAP | IMGFLAG_NOLIGHTSCALE | IMGFLAG_NO_COMPRESSION );
+			if ( !shader.waterNormal )
+				ri.Printf( PRINT_WARNING, "WARNING: waterNormal image '%s' not found in shader '%s'\n", token, shader.name );
+			continue;
+		}
 		// skyparms <cloudheight> <outerbox> <innerbox>
 		else if ( !Q_stricmp( token, "skyparms" ) )
 		{

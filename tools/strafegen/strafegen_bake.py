@@ -288,6 +288,12 @@ def bake_bsp(name, course, map_path, bake_pk3_path, dest_bsp, bounce=3):
             os.link(bake_pk3_path, asset_target)
         except OSError:
             shutil.copy(bake_pk3_path, asset_target)
+        for extra in getattr(course, "extra_pk3", []):     # e.g. a texture pack the map's shaders point at
+            dst = os.path.join(boa, os.path.basename(extra))
+            try:
+                os.link(extra, dst)
+            except OSError:
+                shutil.copy(extra, dst)
         bm = os.path.join(maps, name + ".map")
         shutil.copy(map_path, bm)
         common = ["-fs_basepath", tmp, "-fs_game", "baseoa"]
@@ -353,13 +359,14 @@ def build_baked_pk3(name, course, out_dir, bounce=3):
                      extra_world={"_ambient": amb, "_color": col})
         # COMPILE shader = the shared script: it carries the *_lm lightmapped
         # materials and the *_bk skies (q3map_sun kept, runtime q3gl2_sun gone).
-        shader = shaders.build_shader(True)
+        shader = shaders.build_shader(True) + getattr(course, "extra_shader", "")
         # SHIP: the map pk3 carries ONLY the baked variants, under a unique file
         # name. A scripts/strafe64.shader here always lost to the shared pak's
         # and the baked surfaces rendered with the vertex-lit shaders (the
         # "white blowout"); the variants also live in the shared pak, so this
         # copy just makes the pk3 work standalone.
-        ship_shader = baked_variants(gfx.augment(shaders.SHADER_SCRIPT))
+        ship_shader = baked_variants(gfx.augment(shaders.SHADER_SCRIPT)) \
+            + getattr(course, "extra_shader", "")
         tex = dict(sg.build_detail_textures())
         tex.update(gfx.gfx_textures())
         bake_pk3 = os.path.join(work, "zzz_bake_assets.pk3")
@@ -390,6 +397,8 @@ def build_baked_pk3(name, course, out_dir, bounce=3):
                 z.write(aas, "maps/%s.aas" % name)
             z.writestr("scripts/%s.arena" % name, arena)
             z.writestr("scripts/%s_baked.shader" % name, ship_shader)
+            for arc, data in getattr(course, "extra_files", {}).items():   # map-specific textures
+                z.writestr(arc, data)
             # no textures: they ship ONCE in the shared zzz_strafe64_shader.pk3
             # (which baked maps need anyway for their *_lm/*_bk variants).
             # Bundling them made every map pk3 ~80 MB with the 2048 material set.

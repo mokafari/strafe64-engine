@@ -19,7 +19,7 @@ vec3 GetValues(vec2 offset, vec3 current)
   #endif
 
 	float lumi = max(dot(LUMINANCE_VECTOR, minAvgMax), 0.000001);
-	float loglumi = clamp(log2(lumi), -10.0, 10.0);
+	float loglumi = clamp(log2(lumi), u_Color.x, 10.0);
 	minAvgMax = vec3(loglumi * 0.05 + 0.5);
 #endif
 

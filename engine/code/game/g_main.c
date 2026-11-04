@@ -55,6 +55,7 @@ vmCvar_t	g_speedKnockback;
 vmCvar_t	g_grapple;
 vmCvar_t	g_grappleInstant;	// 1 = instant trace-attach (movement tool), 0 = fly-out projectile
 vmCvar_t	g_truckRamp;		// func_truck: seconds per stage (speed/gap/enemies ramp each stage)
+vmCvar_t g_truckTestLine;
 vmCvar_t	g_truckMaxGap;		// func_truck: hard ceiling on the hop between trucks (always reachable)
 vmCvar_t	g_truckBots;		// func_truck: max Assassin bots dropped in (one per stage)
 vmCvar_t	g_truckRiders;		// func_truck: 1 = also static slice-gate/gunner riders
@@ -210,6 +211,7 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_grapple, "g_grapple", "1", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_grappleInstant, "g_grappleInstant", "1", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_truckRamp, "g_truckRamp", "30", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_truckTestLine, "g_truckTestLine", "0", CVAR_INIT, 0, qfalse },
 	{ &g_truckMaxGap, "g_truckMaxGap", "340", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_truckBots, "g_truckBots", "4", CVAR_ARCHIVE, 0, qfalse  },
 	{ &g_truckRiders, "g_truckRiders", "0", CVAR_ARCHIVE, 0, qfalse  },
@@ -565,6 +567,7 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	srand( randomSeed );
 
 	G_RegisterCvars();
+	if ( g_truckTestLine.integer ) srand( trap_Cvar_VariableIntegerValue("g_truckTestSeed") );
 
 	// STRAFE 64 daily mutator rotation: g_mutator 9 = "daily" — resolve it to a
 	// concrete twist (1..3) by the calendar day and write it back, so the whole

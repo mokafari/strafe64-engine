@@ -1234,6 +1234,7 @@ typedef struct playerState_s {
 
 #define	BUTTON_ANY			2048			// any key whatsoever
 
+#define BUTTON_FOCUS        32768           // manual local time dilation
 #define	BUTTON_BLOCK		4096			// STRAFE 64: raise the blade to guard /
 											// deflect (bit 12 -> bind to +button12)
 #define	BUTTON_DASH			8192			// STRAFE 64: dash that revectors toward

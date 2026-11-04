@@ -110,3 +110,25 @@ the no-regression rule rejects changes that rob one archetype to help another.
 Bots don't navigate the linear race courses (`strafe64_*`) well — they stall.
 The arena (`strafe64dm_*`) plays but under-exercises top speed and wall-run.
 Both are exactly the kind of signal this system exists to surface.
+
+## Moving-roof line trials
+
+Build with `scripts/build.sh`, then run the following from the project root:
+
+```sh
+python3 scripts/test-truck-lines.py --seeds 7 64 --seconds 20 --output generated/truck-lines/baseline.json
+```
+
+Use `--lines center high low weave` to select policies, or `--difficulty 0|1|2` to change the fleet. Each seed builds a fresh three-lane map and navigation file. Every policy for that seed uses the same compiled course in its own local dedicated server. The seed also initializes gameplay randomness. Live scheduling and recycling can still change individual trajectories. Each trial begins on a roof. This tests transfers, not boarding from the start pad.
+
+One bot drives the treadmill with normal movement commands. Center, high and low aim for the next roof ahead in the chosen lane. Weave starts in the center and requests high, center, low, center in sequence, restarting the pattern after placement. The pilot steers, jumps near the lip and can use a second jump in flight. Riders, combat opponents and time dilation are off during route measurement.
+
+The JSON records an attempt's source, intended target, lane IDs (0 center, 1 high, 2 low), elapsed simulation time and observed contact entity. A clean landing requires the physics ground entity to match the chosen target before a reset. A different roof, a fall, a timeout, a rescue or a recycle can close an attempt. A rescue following a fall is recorded as a separate event, without counting a second failed transfer. A trial ending mid-transfer is marked in progress. Use the attempts list for rates and the events list to diagnose placements, falls and rescues between attempts. A run with no attempts fails the harness.
+
+Compare the same seed, difficulty, duration and policy when changing the course. A failed attempt is a diagnostic for the combination of pilot and geometry. This baseline does not measure sword timing or Focus readability.
+
+Initial two-seed, 20-second baseline (7 and 64): center 5/13, high 13/18, low 3/16, weave 3/14 intended landings per resolved attempt. Seven attempts were still open. All three weave successes went from center to high. Prediction for a follow-up: aiming for where a moving target will be at landing time should reduce wrong-deck contacts, especially on the low line. Compare against the saved baseline before changing gap geometry.
+
+For the fixed station variant run `scripts/station-roof.sh --building`. Its seven bays contain twenty stationary deck modules and one vertical service lift in the upper gallery. The two other lines are continuously available. The gold gate returns the player to the first bay. This is a finite test loop. Seeds currently vary deck lengths and the gaps they leave.
+
+Use `--layout building` with the line-test harness. Here route_end means the pilot touched the last bay before being placed back at the start, even if it skipped an intermediate deck. lift_contact records actual contact with the moving lift. The initial 16-second runs on seeds 7 and 64 recorded four upper-line lift contacts. The weave reached the last bay twice on 7 and fell three times on 64. Prediction: the drop from the upper line and the next diagonal transfer will be more sensitive to the takeoff point than the three straight lines.

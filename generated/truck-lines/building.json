@@ -1,0 +1,2695 @@
+{
+  "layout": "building",
+  "difficulty": 1,
+  "wall_seconds": 16,
+  "trials": [
+    {
+      "line": "center",
+      "seed": 7,
+      "counts": {
+        "place": 3,
+        "attempt": 10,
+        "land": 5,
+        "wrong_deck": 4,
+        "route_end": 2
+      },
+      "attempts": [
+        {
+          "start": 1056,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 1664,
+          "contact": 85
+        },
+        {
+          "start": 2720,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 91
+        },
+        {
+          "start": 3984,
+          "source": 91,
+          "target": 94,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 2016,
+          "contact": 94
+        },
+        {
+          "start": 6000,
+          "source": 94,
+          "target": 97,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 100
+        },
+        {
+          "start": 7472,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 1664,
+          "contact": 85
+        },
+        {
+          "start": 9136,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 91
+        },
+        {
+          "start": 10400,
+          "source": 91,
+          "target": 94,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 2016,
+          "contact": 94
+        },
+        {
+          "start": 12416,
+          "source": 94,
+          "target": 97,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 100
+        },
+        {
+          "start": 13888,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 1664,
+          "contact": 85
+        },
+        {
+          "start": 15552,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "in_progress"
+        }
+      ],
+      "events": [
+        {
+          "event": "place",
+          "ms": 300,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 1056,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 82
+        },
+        {
+          "event": "land",
+          "ms": 2720,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 85
+        },
+        {
+          "event": "attempt",
+          "ms": 2720,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 85
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 3984,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 91
+        },
+        {
+          "event": "attempt",
+          "ms": 3984,
+          "source": 91,
+          "target": 94,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 91
+        },
+        {
+          "event": "land",
+          "ms": 6000,
+          "source": 91,
+          "target": 94,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 94
+        },
+        {
+          "event": "attempt",
+          "ms": 6000,
+          "source": 94,
+          "target": 97,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 94
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 7264,
+          "source": 94,
+          "target": 97,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 100
+        },
+        {
+          "event": "route_end",
+          "ms": 7264,
+          "source": 100,
+          "target": -1,
+          "source_lane": 0,
+          "target_lane": -1,
+          "contact": 100
+        },
+        {
+          "event": "place",
+          "ms": 7264,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 7472,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 82
+        },
+        {
+          "event": "land",
+          "ms": 9136,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 85
+        },
+        {
+          "event": "attempt",
+          "ms": 9136,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 85
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 10400,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 91
+        },
+        {
+          "event": "attempt",
+          "ms": 10400,
+          "source": 91,
+          "target": 94,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 91
+        },
+        {
+          "event": "land",
+          "ms": 12416,
+          "source": 91,
+          "target": 94,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 94
+        },
+        {
+          "event": "attempt",
+          "ms": 12416,
+          "source": 94,
+          "target": 97,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 94
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 13680,
+          "source": 94,
+          "target": 97,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 100
+        },
+        {
+          "event": "route_end",
+          "ms": 13680,
+          "source": 100,
+          "target": -1,
+          "source_lane": 0,
+          "target_lane": -1,
+          "contact": 100
+        },
+        {
+          "event": "place",
+          "ms": 13680,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 13888,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 82
+        },
+        {
+          "event": "land",
+          "ms": 15552,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 85
+        },
+        {
+          "event": "attempt",
+          "ms": 15552,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 85
+        }
+      ]
+    },
+    {
+      "line": "high",
+      "seed": 7,
+      "counts": {
+        "place": 3,
+        "attempt": 10,
+        "land": 5,
+        "lift_contact": 2,
+        "wrong_deck": 4,
+        "route_end": 2
+      },
+      "attempts": [
+        {
+          "start": 944,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 1648,
+          "contact": 86
+        },
+        {
+          "start": 2592,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "wrong_deck",
+          "duration_ms": 1232,
+          "contact": 92
+        },
+        {
+          "start": 3824,
+          "source": 92,
+          "target": 95,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 2112,
+          "contact": 95
+        },
+        {
+          "start": 5936,
+          "source": 95,
+          "target": 98,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 101
+        },
+        {
+          "start": 7408,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 1648,
+          "contact": 86
+        },
+        {
+          "start": 9056,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "wrong_deck",
+          "duration_ms": 1312,
+          "contact": 92
+        },
+        {
+          "start": 10368,
+          "source": 92,
+          "target": 95,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 1904,
+          "contact": 95
+        },
+        {
+          "start": 12272,
+          "source": 95,
+          "target": 98,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 101
+        },
+        {
+          "start": 13744,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 1648,
+          "contact": 86
+        },
+        {
+          "start": 15392,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "in_progress"
+        }
+      ],
+      "events": [
+        {
+          "event": "place",
+          "ms": 300,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 944,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 83
+        },
+        {
+          "event": "land",
+          "ms": 2592,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "attempt",
+          "ms": 2592,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "lift_contact",
+          "ms": 3824,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 92
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 3824,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 92
+        },
+        {
+          "event": "attempt",
+          "ms": 3824,
+          "source": 92,
+          "target": 95,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 92
+        },
+        {
+          "event": "land",
+          "ms": 5936,
+          "source": 92,
+          "target": 95,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 95
+        },
+        {
+          "event": "attempt",
+          "ms": 5936,
+          "source": 95,
+          "target": 98,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 95
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 7200,
+          "source": 95,
+          "target": 98,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 101
+        },
+        {
+          "event": "route_end",
+          "ms": 7200,
+          "source": 101,
+          "target": -1,
+          "source_lane": 1,
+          "target_lane": -1,
+          "contact": 101
+        },
+        {
+          "event": "place",
+          "ms": 7200,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 7408,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 83
+        },
+        {
+          "event": "land",
+          "ms": 9056,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "attempt",
+          "ms": 9056,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "lift_contact",
+          "ms": 10368,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 92
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 10368,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 92
+        },
+        {
+          "event": "attempt",
+          "ms": 10368,
+          "source": 92,
+          "target": 95,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 92
+        },
+        {
+          "event": "land",
+          "ms": 12272,
+          "source": 92,
+          "target": 95,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 95
+        },
+        {
+          "event": "attempt",
+          "ms": 12272,
+          "source": 95,
+          "target": 98,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 95
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 13536,
+          "source": 95,
+          "target": 98,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 101
+        },
+        {
+          "event": "route_end",
+          "ms": 13536,
+          "source": 101,
+          "target": -1,
+          "source_lane": 1,
+          "target_lane": -1,
+          "contact": 101
+        },
+        {
+          "event": "place",
+          "ms": 13536,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 13744,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 83
+        },
+        {
+          "event": "land",
+          "ms": 15392,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "attempt",
+          "ms": 15392,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 86
+        }
+      ]
+    },
+    {
+      "line": "low",
+      "seed": 7,
+      "counts": {
+        "place": 3,
+        "attempt": 10,
+        "land": 5,
+        "wrong_deck": 4,
+        "route_end": 2
+      },
+      "attempts": [
+        {
+          "start": 848,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "land",
+          "duration_ms": 1680,
+          "contact": 87
+        },
+        {
+          "start": 2528,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 93
+        },
+        {
+          "start": 3792,
+          "source": 93,
+          "target": 96,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "land",
+          "duration_ms": 2000,
+          "contact": 96
+        },
+        {
+          "start": 5792,
+          "source": 96,
+          "target": 99,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 102
+        },
+        {
+          "start": 7264,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "land",
+          "duration_ms": 1680,
+          "contact": 87
+        },
+        {
+          "start": 8944,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 93
+        },
+        {
+          "start": 10208,
+          "source": 93,
+          "target": 96,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "land",
+          "duration_ms": 2000,
+          "contact": 96
+        },
+        {
+          "start": 12208,
+          "source": 96,
+          "target": 99,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 102
+        },
+        {
+          "start": 13680,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "land",
+          "duration_ms": 1680,
+          "contact": 87
+        },
+        {
+          "start": 15360,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "in_progress"
+        }
+      ],
+      "events": [
+        {
+          "event": "place",
+          "ms": 300,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 848,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 84
+        },
+        {
+          "event": "land",
+          "ms": 2528,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 87
+        },
+        {
+          "event": "attempt",
+          "ms": 2528,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 87
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 3792,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 93
+        },
+        {
+          "event": "attempt",
+          "ms": 3792,
+          "source": 93,
+          "target": 96,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 93
+        },
+        {
+          "event": "land",
+          "ms": 5792,
+          "source": 93,
+          "target": 96,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 96
+        },
+        {
+          "event": "attempt",
+          "ms": 5792,
+          "source": 96,
+          "target": 99,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 96
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 7056,
+          "source": 96,
+          "target": 99,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 102
+        },
+        {
+          "event": "route_end",
+          "ms": 7056,
+          "source": 102,
+          "target": -1,
+          "source_lane": 2,
+          "target_lane": -1,
+          "contact": 102
+        },
+        {
+          "event": "place",
+          "ms": 7056,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 7264,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 84
+        },
+        {
+          "event": "land",
+          "ms": 8944,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 87
+        },
+        {
+          "event": "attempt",
+          "ms": 8944,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 87
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 10208,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 93
+        },
+        {
+          "event": "attempt",
+          "ms": 10208,
+          "source": 93,
+          "target": 96,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 93
+        },
+        {
+          "event": "land",
+          "ms": 12208,
+          "source": 93,
+          "target": 96,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 96
+        },
+        {
+          "event": "attempt",
+          "ms": 12208,
+          "source": 96,
+          "target": 99,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 96
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 13472,
+          "source": 96,
+          "target": 99,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 102
+        },
+        {
+          "event": "route_end",
+          "ms": 13472,
+          "source": 102,
+          "target": -1,
+          "source_lane": 2,
+          "target_lane": -1,
+          "contact": 102
+        },
+        {
+          "event": "place",
+          "ms": 13472,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 13680,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 84
+        },
+        {
+          "event": "land",
+          "ms": 15360,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 87
+        },
+        {
+          "event": "attempt",
+          "ms": 15360,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 87
+        }
+      ]
+    },
+    {
+      "line": "weave",
+      "seed": 7,
+      "counts": {
+        "place": 3,
+        "attempt": 11,
+        "land": 8,
+        "wrong_deck": 2,
+        "route_end": 2
+      },
+      "attempts": [
+        {
+          "start": 816,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 1552,
+          "contact": 86
+        },
+        {
+          "start": 2368,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 1648,
+          "contact": 88
+        },
+        {
+          "start": 4016,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "outcome": "land",
+          "duration_ms": 1408,
+          "contact": 93
+        },
+        {
+          "start": 5424,
+          "source": 93,
+          "target": 94,
+          "source_lane": 2,
+          "target_lane": 0,
+          "outcome": "wrong_deck",
+          "duration_ms": 1168,
+          "contact": 97
+        },
+        {
+          "start": 6592,
+          "source": 97,
+          "target": 100,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 1584,
+          "contact": 100
+        },
+        {
+          "start": 8384,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 1552,
+          "contact": 86
+        },
+        {
+          "start": 9936,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 1648,
+          "contact": 88
+        },
+        {
+          "start": 11584,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "outcome": "land",
+          "duration_ms": 1408,
+          "contact": 93
+        },
+        {
+          "start": 12992,
+          "source": 93,
+          "target": 94,
+          "source_lane": 2,
+          "target_lane": 0,
+          "outcome": "wrong_deck",
+          "duration_ms": 1168,
+          "contact": 97
+        },
+        {
+          "start": 14160,
+          "source": 97,
+          "target": 100,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 1584,
+          "contact": 100
+        },
+        {
+          "start": 15952,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "outcome": "in_progress"
+        }
+      ],
+      "events": [
+        {
+          "event": "place",
+          "ms": 300,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 816,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "contact": 82
+        },
+        {
+          "event": "land",
+          "ms": 2368,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "attempt",
+          "ms": 2368,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "contact": 86
+        },
+        {
+          "event": "land",
+          "ms": 4016,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "contact": 88
+        },
+        {
+          "event": "attempt",
+          "ms": 4016,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "contact": 88
+        },
+        {
+          "event": "land",
+          "ms": 5424,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "contact": 93
+        },
+        {
+          "event": "attempt",
+          "ms": 5424,
+          "source": 93,
+          "target": 94,
+          "source_lane": 2,
+          "target_lane": 0,
+          "contact": 93
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 6592,
+          "source": 93,
+          "target": 94,
+          "source_lane": 2,
+          "target_lane": 0,
+          "contact": 97
+        },
+        {
+          "event": "attempt",
+          "ms": 6592,
+          "source": 97,
+          "target": 100,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 97
+        },
+        {
+          "event": "land",
+          "ms": 8176,
+          "source": 97,
+          "target": 100,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 100
+        },
+        {
+          "event": "route_end",
+          "ms": 8176,
+          "source": 100,
+          "target": -1,
+          "source_lane": 0,
+          "target_lane": -1,
+          "contact": 100
+        },
+        {
+          "event": "place",
+          "ms": 8176,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 8384,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "contact": 82
+        },
+        {
+          "event": "land",
+          "ms": 9936,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "attempt",
+          "ms": 9936,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "contact": 86
+        },
+        {
+          "event": "land",
+          "ms": 11584,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "contact": 88
+        },
+        {
+          "event": "attempt",
+          "ms": 11584,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "contact": 88
+        },
+        {
+          "event": "land",
+          "ms": 12992,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "contact": 93
+        },
+        {
+          "event": "attempt",
+          "ms": 12992,
+          "source": 93,
+          "target": 94,
+          "source_lane": 2,
+          "target_lane": 0,
+          "contact": 93
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 14160,
+          "source": 93,
+          "target": 94,
+          "source_lane": 2,
+          "target_lane": 0,
+          "contact": 97
+        },
+        {
+          "event": "attempt",
+          "ms": 14160,
+          "source": 97,
+          "target": 100,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 97
+        },
+        {
+          "event": "land",
+          "ms": 15744,
+          "source": 97,
+          "target": 100,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 100
+        },
+        {
+          "event": "route_end",
+          "ms": 15744,
+          "source": 100,
+          "target": -1,
+          "source_lane": 0,
+          "target_lane": -1,
+          "contact": 100
+        },
+        {
+          "event": "place",
+          "ms": 15744,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 15952,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "contact": 82
+        }
+      ]
+    },
+    {
+      "line": "center",
+      "seed": 64,
+      "counts": {
+        "place": 3,
+        "attempt": 10,
+        "land": 5,
+        "wrong_deck": 4,
+        "route_end": 2
+      },
+      "attempts": [
+        {
+          "start": 832,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 1680,
+          "contact": 85
+        },
+        {
+          "start": 2512,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 91
+        },
+        {
+          "start": 3776,
+          "source": 91,
+          "target": 94,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 2000,
+          "contact": 94
+        },
+        {
+          "start": 5776,
+          "source": 94,
+          "target": 97,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 100
+        },
+        {
+          "start": 7248,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 1680,
+          "contact": 85
+        },
+        {
+          "start": 8928,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 91
+        },
+        {
+          "start": 10192,
+          "source": 91,
+          "target": 94,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 2000,
+          "contact": 94
+        },
+        {
+          "start": 12192,
+          "source": 94,
+          "target": 97,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 100
+        },
+        {
+          "start": 13664,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 1680,
+          "contact": 85
+        },
+        {
+          "start": 15344,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "outcome": "in_progress"
+        }
+      ],
+      "events": [
+        {
+          "event": "place",
+          "ms": 300,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 832,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 82
+        },
+        {
+          "event": "land",
+          "ms": 2512,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 85
+        },
+        {
+          "event": "attempt",
+          "ms": 2512,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 85
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 3776,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 91
+        },
+        {
+          "event": "attempt",
+          "ms": 3776,
+          "source": 91,
+          "target": 94,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 91
+        },
+        {
+          "event": "land",
+          "ms": 5776,
+          "source": 91,
+          "target": 94,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 94
+        },
+        {
+          "event": "attempt",
+          "ms": 5776,
+          "source": 94,
+          "target": 97,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 94
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 7040,
+          "source": 94,
+          "target": 97,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 100
+        },
+        {
+          "event": "route_end",
+          "ms": 7040,
+          "source": 100,
+          "target": -1,
+          "source_lane": 0,
+          "target_lane": -1,
+          "contact": 100
+        },
+        {
+          "event": "place",
+          "ms": 7040,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 7248,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 82
+        },
+        {
+          "event": "land",
+          "ms": 8928,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 85
+        },
+        {
+          "event": "attempt",
+          "ms": 8928,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 85
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 10192,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 91
+        },
+        {
+          "event": "attempt",
+          "ms": 10192,
+          "source": 91,
+          "target": 94,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 91
+        },
+        {
+          "event": "land",
+          "ms": 12192,
+          "source": 91,
+          "target": 94,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 94
+        },
+        {
+          "event": "attempt",
+          "ms": 12192,
+          "source": 94,
+          "target": 97,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 94
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 13456,
+          "source": 94,
+          "target": 97,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 100
+        },
+        {
+          "event": "route_end",
+          "ms": 13456,
+          "source": 100,
+          "target": -1,
+          "source_lane": 0,
+          "target_lane": -1,
+          "contact": 100
+        },
+        {
+          "event": "place",
+          "ms": 13456,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 13664,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 82
+        },
+        {
+          "event": "land",
+          "ms": 15344,
+          "source": 82,
+          "target": 85,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 85
+        },
+        {
+          "event": "attempt",
+          "ms": 15344,
+          "source": 85,
+          "target": 88,
+          "source_lane": 0,
+          "target_lane": 0,
+          "contact": 85
+        }
+      ]
+    },
+    {
+      "line": "high",
+      "seed": 64,
+      "counts": {
+        "place": 3,
+        "attempt": 10,
+        "land": 5,
+        "lift_contact": 2,
+        "wrong_deck": 4,
+        "route_end": 2
+      },
+      "attempts": [
+        {
+          "start": 944,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 1648,
+          "contact": 86
+        },
+        {
+          "start": 2592,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "wrong_deck",
+          "duration_ms": 1232,
+          "contact": 92
+        },
+        {
+          "start": 3824,
+          "source": 92,
+          "target": 95,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 2128,
+          "contact": 95
+        },
+        {
+          "start": 5952,
+          "source": 95,
+          "target": 98,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 101
+        },
+        {
+          "start": 7424,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 1648,
+          "contact": 86
+        },
+        {
+          "start": 9072,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "wrong_deck",
+          "duration_ms": 1312,
+          "contact": 92
+        },
+        {
+          "start": 10384,
+          "source": 92,
+          "target": 95,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 1920,
+          "contact": 95
+        },
+        {
+          "start": 12304,
+          "source": 95,
+          "target": 98,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 101
+        },
+        {
+          "start": 13776,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 1648,
+          "contact": 86
+        },
+        {
+          "start": 15424,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "outcome": "in_progress"
+        }
+      ],
+      "events": [
+        {
+          "event": "place",
+          "ms": 300,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 944,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 83
+        },
+        {
+          "event": "land",
+          "ms": 2592,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "attempt",
+          "ms": 2592,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "lift_contact",
+          "ms": 3824,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 92
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 3824,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 92
+        },
+        {
+          "event": "attempt",
+          "ms": 3824,
+          "source": 92,
+          "target": 95,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 92
+        },
+        {
+          "event": "land",
+          "ms": 5952,
+          "source": 92,
+          "target": 95,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 95
+        },
+        {
+          "event": "attempt",
+          "ms": 5952,
+          "source": 95,
+          "target": 98,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 95
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 7216,
+          "source": 95,
+          "target": 98,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 101
+        },
+        {
+          "event": "route_end",
+          "ms": 7216,
+          "source": 101,
+          "target": -1,
+          "source_lane": 1,
+          "target_lane": -1,
+          "contact": 101
+        },
+        {
+          "event": "place",
+          "ms": 7216,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 7424,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 83
+        },
+        {
+          "event": "land",
+          "ms": 9072,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "attempt",
+          "ms": 9072,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "lift_contact",
+          "ms": 10384,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 92
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 10384,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 92
+        },
+        {
+          "event": "attempt",
+          "ms": 10384,
+          "source": 92,
+          "target": 95,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 92
+        },
+        {
+          "event": "land",
+          "ms": 12304,
+          "source": 92,
+          "target": 95,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 95
+        },
+        {
+          "event": "attempt",
+          "ms": 12304,
+          "source": 95,
+          "target": 98,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 95
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 13568,
+          "source": 95,
+          "target": 98,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 101
+        },
+        {
+          "event": "route_end",
+          "ms": 13568,
+          "source": 101,
+          "target": -1,
+          "source_lane": 1,
+          "target_lane": -1,
+          "contact": 101
+        },
+        {
+          "event": "place",
+          "ms": 13568,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 13776,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 83
+        },
+        {
+          "event": "land",
+          "ms": 15424,
+          "source": 83,
+          "target": 86,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "attempt",
+          "ms": 15424,
+          "source": 86,
+          "target": 89,
+          "source_lane": 1,
+          "target_lane": 1,
+          "contact": 86
+        }
+      ]
+    },
+    {
+      "line": "low",
+      "seed": 64,
+      "counts": {
+        "place": 3,
+        "attempt": 10,
+        "land": 5,
+        "wrong_deck": 4,
+        "route_end": 2
+      },
+      "attempts": [
+        {
+          "start": 1168,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "land",
+          "duration_ms": 1696,
+          "contact": 87
+        },
+        {
+          "start": 2864,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 93
+        },
+        {
+          "start": 4128,
+          "source": 93,
+          "target": 96,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "land",
+          "duration_ms": 1984,
+          "contact": 96
+        },
+        {
+          "start": 6112,
+          "source": 96,
+          "target": 99,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 102
+        },
+        {
+          "start": 7584,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "land",
+          "duration_ms": 1696,
+          "contact": 87
+        },
+        {
+          "start": 9280,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 93
+        },
+        {
+          "start": 10544,
+          "source": 93,
+          "target": 96,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "land",
+          "duration_ms": 1984,
+          "contact": 96
+        },
+        {
+          "start": 12528,
+          "source": 96,
+          "target": 99,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "wrong_deck",
+          "duration_ms": 1264,
+          "contact": 102
+        },
+        {
+          "start": 14000,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "land",
+          "duration_ms": 1696,
+          "contact": 87
+        },
+        {
+          "start": 15696,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "outcome": "in_progress"
+        }
+      ],
+      "events": [
+        {
+          "event": "place",
+          "ms": 300,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 1168,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 84
+        },
+        {
+          "event": "land",
+          "ms": 2864,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 87
+        },
+        {
+          "event": "attempt",
+          "ms": 2864,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 87
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 4128,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 93
+        },
+        {
+          "event": "attempt",
+          "ms": 4128,
+          "source": 93,
+          "target": 96,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 93
+        },
+        {
+          "event": "land",
+          "ms": 6112,
+          "source": 93,
+          "target": 96,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 96
+        },
+        {
+          "event": "attempt",
+          "ms": 6112,
+          "source": 96,
+          "target": 99,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 96
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 7376,
+          "source": 96,
+          "target": 99,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 102
+        },
+        {
+          "event": "route_end",
+          "ms": 7376,
+          "source": 102,
+          "target": -1,
+          "source_lane": 2,
+          "target_lane": -1,
+          "contact": 102
+        },
+        {
+          "event": "place",
+          "ms": 7376,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 7584,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 84
+        },
+        {
+          "event": "land",
+          "ms": 9280,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 87
+        },
+        {
+          "event": "attempt",
+          "ms": 9280,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 87
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 10544,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 93
+        },
+        {
+          "event": "attempt",
+          "ms": 10544,
+          "source": 93,
+          "target": 96,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 93
+        },
+        {
+          "event": "land",
+          "ms": 12528,
+          "source": 93,
+          "target": 96,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 96
+        },
+        {
+          "event": "attempt",
+          "ms": 12528,
+          "source": 96,
+          "target": 99,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 96
+        },
+        {
+          "event": "wrong_deck",
+          "ms": 13792,
+          "source": 96,
+          "target": 99,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 102
+        },
+        {
+          "event": "route_end",
+          "ms": 13792,
+          "source": 102,
+          "target": -1,
+          "source_lane": 2,
+          "target_lane": -1,
+          "contact": 102
+        },
+        {
+          "event": "place",
+          "ms": 13792,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 14000,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 84
+        },
+        {
+          "event": "land",
+          "ms": 15696,
+          "source": 84,
+          "target": 87,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 87
+        },
+        {
+          "event": "attempt",
+          "ms": 15696,
+          "source": 87,
+          "target": 90,
+          "source_lane": 2,
+          "target_lane": 2,
+          "contact": 87
+        }
+      ]
+    },
+    {
+      "line": "weave",
+      "seed": 64,
+      "counts": {
+        "place": 4,
+        "attempt": 10,
+        "land": 6,
+        "fall": 3
+      },
+      "attempts": [
+        {
+          "start": 1088,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 1568,
+          "contact": 86
+        },
+        {
+          "start": 2656,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 1680,
+          "contact": 88
+        },
+        {
+          "start": 4336,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "outcome": "fall",
+          "duration_ms": 1456,
+          "contact": -1
+        },
+        {
+          "start": 6000,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 1568,
+          "contact": 86
+        },
+        {
+          "start": 7568,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 1680,
+          "contact": 88
+        },
+        {
+          "start": 9248,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "outcome": "fall",
+          "duration_ms": 1456,
+          "contact": -1
+        },
+        {
+          "start": 10912,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "outcome": "land",
+          "duration_ms": 1568,
+          "contact": 86
+        },
+        {
+          "start": 12480,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "outcome": "land",
+          "duration_ms": 1680,
+          "contact": 88
+        },
+        {
+          "start": 14160,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "outcome": "fall",
+          "duration_ms": 1456,
+          "contact": -1
+        },
+        {
+          "start": 15824,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "outcome": "in_progress"
+        }
+      ],
+      "events": [
+        {
+          "event": "place",
+          "ms": 300,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 1088,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "contact": 82
+        },
+        {
+          "event": "land",
+          "ms": 2656,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "attempt",
+          "ms": 2656,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "contact": 86
+        },
+        {
+          "event": "land",
+          "ms": 4336,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "contact": 88
+        },
+        {
+          "event": "attempt",
+          "ms": 4336,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "contact": 88
+        },
+        {
+          "event": "fall",
+          "ms": 5792,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "contact": -1
+        },
+        {
+          "event": "place",
+          "ms": 5792,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 6000,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "contact": 82
+        },
+        {
+          "event": "land",
+          "ms": 7568,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "attempt",
+          "ms": 7568,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "contact": 86
+        },
+        {
+          "event": "land",
+          "ms": 9248,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "contact": 88
+        },
+        {
+          "event": "attempt",
+          "ms": 9248,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "contact": 88
+        },
+        {
+          "event": "fall",
+          "ms": 10704,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "contact": -1
+        },
+        {
+          "event": "place",
+          "ms": 10704,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 10912,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "contact": 82
+        },
+        {
+          "event": "land",
+          "ms": 12480,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "contact": 86
+        },
+        {
+          "event": "attempt",
+          "ms": 12480,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "contact": 86
+        },
+        {
+          "event": "land",
+          "ms": 14160,
+          "source": 86,
+          "target": 88,
+          "source_lane": 1,
+          "target_lane": 0,
+          "contact": 88
+        },
+        {
+          "event": "attempt",
+          "ms": 14160,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "contact": 88
+        },
+        {
+          "event": "fall",
+          "ms": 15616,
+          "source": 88,
+          "target": 93,
+          "source_lane": 0,
+          "target_lane": 2,
+          "contact": -1
+        },
+        {
+          "event": "place",
+          "ms": 15616,
+          "source": -1,
+          "target": -1,
+          "source_lane": -1,
+          "target_lane": -1,
+          "contact": -1
+        },
+        {
+          "event": "attempt",
+          "ms": 15824,
+          "source": 82,
+          "target": 86,
+          "source_lane": 0,
+          "target_lane": 1,
+          "contact": 82
+        }
+      ]
+    }
+  ]
+}

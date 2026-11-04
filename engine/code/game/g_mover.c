@@ -1476,6 +1476,7 @@ void SP_func_static( gentity_t *ent ) {
 	InitMover( ent );
 	VectorCopy( ent->s.origin, ent->s.pos.trBase );
 	VectorCopy( ent->s.origin, ent->r.currentOrigin );
+	trap_LinkEntity(ent); // InitMover linked pos1 before applying the brush origin.
 }
 
 
@@ -1786,6 +1787,8 @@ static void Truck_RiderFire( gentity_t *truck ) {
 
 // place a truck at the back of the queue: one gap behind the current tail,
 // jogged sideways from it, at the fleet's stage speed
+static void TrialRecycle(gentity_t *truck);
+
 static void Truck_Launch( gentity_t *ent ) {
 	float		x, y, gap, jog, laneY, d, cap;
 	int			lane = ent->count;
@@ -1794,6 +1797,7 @@ static void Truck_Launch( gentity_t *ent ) {
 	if ( lane < 0 || lane >= truckLanes ) {
 		lane = 0;
 	}
+	if (g_truckTestLine.integer) TrialRecycle(ent);
 	tail = truckTails[lane];
 	laneY = truckLaneY[lane];
 	// CONTINUOUS ramp (not per stage): d climbs 0->1 over ~10 stages of run
@@ -1841,6 +1845,114 @@ static void Truck_Launch( gentity_t *ent ) {
 	Truck_MoveRider( ent );
 }
 
+// Opt-in dedicated trial: one runner per server, routed by actual moving decks.
+typedef struct {
+	gentity_t *source, *target;
+	int started, jumps, jumpTime, transfers, runnerNum;
+} truckTrial_t;
+static truckTrial_t trial;
+
+static int stationTrialStart = -1;
+static qboolean StationDeck(gentity_t *e) {
+	return e->inuse && e->s.eType == ET_MOVER && e->targetname
+		&& !Q_stricmp(e->targetname, "station_route_deck");
+}
+
+static qboolean TrialTruck(gentity_t *e) {
+	if (stationTrialStart == level.startTime) return StationDeck(e);
+	return e->inuse && e->classname && !Q_stricmp(e->classname, "func_truck");
+}
+
+static void TrialEvent(const char *event, gentity_t *contact) {
+	G_Printf("TRUCKTEST %s %d %d %d %d %d %d\n", event, level.time,
+		trial.source ? trial.source->s.number : -1, trial.target ? trial.target->s.number : -1,
+		trial.source ? trial.source->count : -1, trial.target ? trial.target->count : -1,
+		contact ? contact->s.number : -1);
+}
+
+static void TrialRecycle(gentity_t *truck) {
+	if (trial.target && (truck == trial.target || (truck == trial.source
+		&& level.clients[trial.runnerNum].ps.groundEntityNum == truck->s.number))) {
+		TrialEvent("recycled", NULL);
+		trial.target = NULL;
+	}
+}
+
+static int TrialLane(void) {
+	// Weave alternates centre/high/centre/low. Other policies follow one lane.
+	static const int weave[] = {1, 0, 2, 0};
+	return g_truckTestLine.integer == 4 ? weave[trial.transfers % 4] : g_truckTestLine.integer - 1;
+}
+
+void G_TruckTestInput(gentity_t *bot, usercmd_t *cmd) {
+	playerState_t *ps = &bot->client->ps;
+	gentity_t *ground, *e;
+	float dx, dy, best = 1e8f, edge;
+	int i, lane;
+	qboolean station = stationTrialStart == level.startTime;
+	if ((!station && (!truckTail || truckMapStart != level.startTime)) || bot->health <= 0) return;
+	if (station && ps->origin[2] < 24) {
+		TrialEvent("fall", NULL);
+		trial.target = NULL;
+		G_TruckPlaceBot(bot);
+		return;
+	}
+	cmd->buttons = cmd->upmove = cmd->rightmove = cmd->forwardmove = 0;
+	ground = &g_entities[ps->groundEntityNum];
+	if (trial.target && TrialTruck(ground) && ground != trial.source) {
+		if (station && ground->s.pos.trType == TR_SINE) TrialEvent("lift_contact", ground);
+		if (ground == trial.target) {
+			TrialEvent("land", ground);
+			trial.transfers++;
+		} else {
+			TrialEvent("wrong_deck", ground);
+		}
+		trial.target = NULL;
+	}
+	if (!trial.target && TrialTruck(ground)) {
+		trial.source = ground;
+		lane = TrialLane();
+		for (i = MAX_CLIENTS; i < level.num_entities; i++) {
+			e = &g_entities[i];
+			if (!TrialTruck(e) || e == ground || e->count != lane) continue;
+			dx = e->r.currentOrigin[0] - ground->r.currentOrigin[0];
+			if (dx > 0 && dx < best) { best = dx; trial.target = e; }
+		}
+		if (!trial.target) {
+			if (station) {
+				TrialEvent("route_end", ground);
+				G_TruckPlaceBot(bot);
+			}
+			return;
+		}
+		trial.runnerNum = bot->s.number;
+		trial.started = level.time;
+		trial.jumps = trial.jumpTime = 0;
+		TrialEvent("attempt", ground);
+	}
+	if (!trial.target) return;
+	if (level.time - trial.started > 5500) {
+		TrialEvent("timeout", NULL);
+		trial.target = NULL;
+		G_TruckPlaceBot(bot);
+		return;
+	}
+	dx = trial.target->r.absmin[0] + 70 - ps->origin[0];
+	dy = trial.target->r.currentOrigin[1] - ps->origin[1];
+	edge = trial.source->r.absmax[0] - ps->origin[0];
+	// Approach straight first. Bias toward the target as the launch lip approaches.
+	if (ground == trial.source && edge > 140) dy = trial.source->r.currentOrigin[1] - ps->origin[1];
+	cmd->angles[YAW] = ANGLE2SHORT(atan2(dy, dx > 32 ? dx : 32) * 180 / M_PI) - ps->delta_angles[YAW];
+	cmd->angles[PITCH] = -ps->delta_angles[PITCH];
+	cmd->forwardmove = 127;
+	if ((ground == trial.source && edge < 100 && level.time - trial.jumpTime > 230)
+		|| (ground == &g_entities[ENTITYNUM_NONE] && trial.jumps == 1 && ps->velocity[2] < 60)) {
+		cmd->upmove = 127;
+		trial.jumps++;
+		trial.jumpTime = level.time;
+	}
+}
+
 // the human doing the run (single-player treadmill): first live non-bot
 static gentity_t *Truck_Runner( void ) {
 	gentity_t	*cl;
@@ -1849,7 +1961,7 @@ static gentity_t *Truck_Runner( void ) {
 	for ( i = 0; i < level.maxclients; i++ ) {
 		cl = &g_entities[i];
 		if ( cl->inuse && cl->client && cl->health > 0
-				&& !( cl->r.svFlags & SVF_BOT )
+				&& (!( cl->r.svFlags & SVF_BOT ) || g_truckTestLine.integer)
 				&& cl->client->sess.sessionTeam != TEAM_SPECTATOR
 				&& cl->client->pers.connected == CON_CONNECTED ) {
 			return cl;
@@ -1953,29 +2065,53 @@ void G_TruckPlaceBot( gentity_t *bot ) {
 	int			i, seen = 0;
 	vec3_t		ang;
 
-	if ( truckMapStart != level.startTime || !truckTail ) {
-		return;
-	}
-	runner = Truck_Runner();
-	rx = runner ? runner->r.currentOrigin[0] : 0;
-	for ( i = MAX_CLIENTS, e = g_entities + MAX_CLIENTS; i < level.num_entities; i++, e++ ) {
-		if ( !e->inuse || !e->classname || Q_stricmp( e->classname, "func_truck" ) ) {
-			continue;
+	// Static route tests start on the first marked roof of their selected lane.
+	if (g_truckTestLine.integer) {
+		int lane = g_truckTestLine.integer == 4 ? 0 : TrialLane();
+		for (i = MAX_CLIENTS; i < level.num_entities; i++) {
+			e = &g_entities[i];
+			if (StationDeck(e) && e->count == lane &&
+				(!pick || e->r.currentOrigin[0] < pick->r.currentOrigin[0])) pick = e;
 		}
-		d = e->r.currentOrigin[0] - rx;
-		if ( d >= 1200 && d <= 3600 ) {
-			if ( rand() % ++seen == 0 ) {	// reservoir pick
-				pick = e;
+		if (pick) stationTrialStart = level.startTime;
+	}
+	if (!pick) {
+		if ( truckMapStart != level.startTime || !truckTail ) {
+			return;
+		}
+		runner = Truck_Runner();
+		rx = runner ? runner->r.currentOrigin[0] : 0;
+		for ( i = MAX_CLIENTS, e = g_entities + MAX_CLIENTS; i < level.num_entities; i++, e++ ) {
+			if ( !e->inuse || !e->classname || Q_stricmp( e->classname, "func_truck" ) ) {
+				continue;
 			}
-		} else if ( !seen && d > 400 && ( !far || d < far->r.currentOrigin[0] - rx ) ) {
-			far = e;	// fallback: nearest truck still ahead of the runner
+			d = e->r.currentOrigin[0] - rx;
+			if (g_truckTestLine.integer) {
+				int lane = g_truckTestLine.integer == 4 ? 0 : TrialLane();
+				// Start well clear of the recycle boundary so the pilot has a run-up.
+				if (e->count == lane && (!pick || fabs(e->r.currentOrigin[0] - 1600)
+						< fabs(pick->r.currentOrigin[0] - 1600))) pick = e;
+				continue;
+			}
+			if ( d >= 1200 && d <= 3600 ) {
+				if ( rand() % ++seen == 0 ) {	// reservoir pick
+					pick = e;
+				}
+			} else if ( !seen && d > 400 && ( !far || d < far->r.currentOrigin[0] - rx ) ) {
+				far = e;	// fallback: nearest truck still ahead of the runner
+			}
+		}
+		if ( !pick ) {
+			pick = far ? far : truckTail;	// never the spawn pad: it may have wrapped away
+		}
+		if ( !pick ) {
+			return;
 		}
 	}
-	if ( !pick ) {
-		pick = far ? far : truckTail;	// never the spawn pad: it may have wrapped away
-	}
-	if ( !pick ) {
-		return;
+	if (g_truckTestLine.integer) {
+		if (trial.target) TrialEvent("respawn", NULL);
+		memset(&trial, 0, sizeof(trial));
+		TrialEvent("place", NULL);
 	}
 	VectorAdd( pick->r.currentOrigin, pick->movedir, bot->client->ps.origin );
 	bot->client->ps.origin[2] += 40;
@@ -2016,6 +2152,11 @@ static void Truck_RescueBots( void ) {
 		if ( bot->r.currentOrigin[2] < truckLaneZ[2] - 160
 				|| fabs( bot->r.currentOrigin[1] ) > 1100
 				|| bot->r.currentOrigin[0] < rx - 1600 ) {
+			if (g_truckTestLine.integer) {
+				if (bot->r.currentOrigin[2] < truckLaneZ[2] - 160) TrialEvent("fall", NULL);
+				TrialEvent("rescue", NULL);
+				trial.target = NULL;
+			}
 			G_TruckPlaceBot( bot );
 		}
 	}
@@ -2179,6 +2320,7 @@ void SP_func_truck( gentity_t *ent ) {
 
 	if ( truckMapStart != level.startTime ) {
 		truckMapStart = level.startTime;
+		memset(&trial, 0, sizeof(trial));
 		truckRunStart = level.time;
 		truckStage = 1;
 		truckTail = NULL;

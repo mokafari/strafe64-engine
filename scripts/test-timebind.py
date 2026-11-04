@@ -22,6 +22,7 @@ typedef int qboolean;
 #define SVF_BOT 1
 #define STAT_HEALTH 0
 #define PMF_DUCKED 1
+#define BUTTON_FOCUS 32768
 #define BUTTON_ATTACK 1
 #define BUTTON_BLOCK 2
 #define BUTTON_WALKING 4
@@ -57,6 +58,14 @@ int main(void){
  u.upmove=0;advance(&e,&u,1000);assert(applied<.053);
  g_timeBind.integer=0;advance(&e,&u,10);assert(applied==1);
  g_timeBind.integer=1;advance(&e,&u,10);assert(applied<.053);
+ g_timeBind.integer=2;advance(&e,&u,500);assert(applied>.99);
+ u.buttons=BUTTON_FOCUS;advance(&e,&u,650);assert(fabs(applied-.333)<.01);
+ advance(&e,&u,650);assert(applied>.99);
+ advance(&e,&u,1000);assert(applied>.99);
+ u.buttons=0;advance(&e,&u,1100);
+ u.buttons=BUTTON_FOCUS;advance(&e,&u,500);assert(fabs(applied-.333)<.02);
+ u.buttons=0;advance(&e,&u,250);assert(applied>.99);
+ puts("PASS: manual Focus tap, exhaustion, release and recharge");
  puts("PASS: idle, repeated move/release, residual velocity, walking, jump, disable/re-enable, pre-physics input ordering");
 }
 '''

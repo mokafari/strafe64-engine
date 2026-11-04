@@ -1,0 +1,7 @@
+Station Roof, local arm64 engine, 2026-11-02
+Run scripts/station-roof.sh for the player and one skill-4 Assassin. Hold F for Focus, Mouse1 cuts, Mouse2 guards, 1 selects katana. The illuminated exit returns you to the start. The launcher uses a separate station profile.
+Run scripts/station-roof.sh --bots for two skill-4 Assassins. Type quit to flush playtest/station.jsonl in the station profile.
+Observed: final headless run, ~48 seconds, six MOD_SWORD deaths, tied 3–3, peak 1289 units/sec. Neither bot finished a lap in this sample. Autonomous bots hunt each other and never operate the world clock.
+Player-input checks: ordinary forward movement after initial alignment completed both exits. Lower deck lap 13.274 s. Elevated rail lap 13.282 s and upper armor pickup. Missing the rail during an approach also produced a successful lower-deck finish. No speedrun optimization.
+Live client with Assassin: key bound to +focus, target .333, settled actual .333, release restored 1.000. Separate controller regression covered burst exhaustion and recharging. One transition sample briefly reported 1.000 during entry.
+Prediction for a human session: the lower deck should make a missed rail feel recoverable. Whether the player chooses to retry for the upper line remains untested.

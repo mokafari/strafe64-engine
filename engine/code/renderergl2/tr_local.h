@@ -479,6 +479,15 @@ typedef struct shader_s {
 	fogParms_t	fogParms;
 
 	float		portalRange;			// distance to fog out at
+
+	// STRAFE 64 water: a portal/mirror surface drawn by RB_DrawWater (distorted reflection of the mirror view)
+	qboolean	isWater;
+	float		waterDistort;			// reflection lookup offset per unit of ripple slope (screen uv)
+	vec3_t		waterTint;				// deep-water colour seen where nothing reflects
+	vec3_t		waterLightDir;			// unit vector towards the moon/sun (specular glints)
+	vec3_t		waterLightCol;			// HDR colour of the glints
+	float		waterSpecPower;
+	struct image_s	*waterNormal;		// tileable ripple slopes (rg), animated by the program
 	qboolean	isPortal;
 
 	cullType_t	cullType;				// CT_FRONT_SIDED, CT_BACK_SIDED, or CT_TWO_SIDED
@@ -1564,6 +1573,7 @@ typedef struct {
 	image_t					*renderDepthImage;
 	image_t					*pshadowMaps[MAX_DRAWN_PSHADOWS];
 	image_t					*screenScratchImage;
+	image_t					*waterCopyImage;		// STRAFE 64 water: snapshot of the mirror view (HDR)
 	image_t					*textureScratchImage[2];
 	image_t                 *quarterImage[2];
 	image_t					*calcLevelsImage;
@@ -1583,6 +1593,7 @@ typedef struct {
 	FBO_t					*depthFbo;
 	FBO_t					*pshadowFbos[MAX_DRAWN_PSHADOWS];
 	FBO_t					*screenScratchFbo;
+	FBO_t					*waterCopyFbo;
 	FBO_t					*textureScratchFbo[2];
 	FBO_t                   *quarterFbo[2];
 	FBO_t					*calcLevelsFbo;
@@ -1638,6 +1649,8 @@ typedef struct {
 	shaderProgram_t depthOfFieldShader;	// STRAFE 64 cinematic DoF
 	shaderProgram_t bloomShader;		// STRAFE 64 bloom bright-pass / blur / composite
 	shaderProgram_t colorGradeShader;	// STRAFE 64 FXAA + grade + vignette + grain
+	shaderProgram_t shaftsShader;		// STRAFE 64 moon shafts: screen-space light shafts
+	shaderProgram_t waterShader;		// STRAFE 64 water: distorted mirror reflection + fresnel + moon glints
 	shaderProgram_t bodycamShader;		// STRAFE 64 bodycam: warp/chroma/crunch/scanline/grain
 	shaderProgram_t testcubeShader;
 	shaderProgram_t greyscaleShader;
@@ -1870,6 +1883,12 @@ extern  cvar_t  *r_gradeLiveSat;	// game-driven saturation multiplier (time-grad
 extern  cvar_t  *r_gradeLiveTemp;	// game-driven white-balance offset (time-grade)
 extern  cvar_t  *r_vignette;		// edge darkening strength
 extern  cvar_t  *r_filmGrain;		// animated film grain strength
+extern  cvar_t  *r_gradeExposure;	// exposure bias in stops, applied at tonemap (0 = unchanged)
+extern  cvar_t  *r_gradeShoulder;	// 0..1 soft highlight rolloff in the grade pass
+extern  cvar_t  *r_gradeSplit;		// 0..1 split-toning: cool shadows, warm highlights
+extern  cvar_t  *r_gradeMeterFloor;	// auto-exposure metering: log2 luminance floor (-10 = off); dark pixels stop pulling exposure up
+extern  cvar_t  *r_gradeWhitePoint;	// tonemap white point in stops above the level default (0 = unchanged); more = highlight headroom
+extern  cvar_t  *r_gradeLift;		// 0..~0.1 black lift (hazy floor)
 
 extern  cvar_t  *r_legacySpecular;	// STRAFE 64: scale on legacy alphaGen lightingSpecular gloss passes (0 = remove the blown-out additive shine on models)
 extern  cvar_t  *r_rimLight;		// STRAFE 64: character fresnel rim master toggle (0 = off)
@@ -1878,6 +1897,14 @@ extern  cvar_t  *r_rimExp;			// rim falloff (higher = thinner edge)
 extern  cvar_t  *r_rimColorR;		// rim color red
 extern  cvar_t  *r_rimColorG;		// rim color green
 extern  cvar_t  *r_rimColorB;		// rim color blue
+extern  cvar_t  *r_shafts;			// moon shafts intensity (0 = off)
+extern  cvar_t  *r_shaftsDir;			// "x y z" world direction towards the moon
+extern  cvar_t  *r_shaftsColor;		// "r g b" shaft colour
+extern  cvar_t  *r_shaftsDensity;		// march length (fraction of the way to the moon)
+extern  cvar_t  *r_shaftsDecay;		// per-sample falloff (1 = none)
+extern  cvar_t  *r_water;			// STRAFE 64 water pass on (1) / fall back to the plain mirror stages (0)
+extern  cvar_t  *r_waterSpeed;		// water animation speed multiplier
+extern  cvar_t  *r_waterDistort;	// multiplier on every water shader's reflection distortion
 extern  cvar_t  *r_bodycam;			// STRAFE 64 bodycam finish-pass master toggle
 extern  cvar_t  *r_bodycamWarp;		// barrel distortion strength
 extern  cvar_t  *r_bodycamChroma;	// chromatic aberration (px at edge)

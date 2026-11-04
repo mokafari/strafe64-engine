@@ -10,9 +10,9 @@
 
 uniform sampler2D u_ScreenImageMap;   // composited tonemapped scene (TB_COLORMAP)
 
-uniform vec4 u_ViewInfo;     // x,y unused; zw = 1/width, 1/height  (rcpFrame for FXAA)
+uniform vec4 u_ViewInfo;     // x = highlight shoulder, y = split-tone, zw = 1/width, 1/height (rcpFrame for FXAA)
 uniform vec4 u_ColorGrade;   // contrast, saturation, temperature, vignette
-uniform vec4 u_ColorGradeFx; // filmGrain, fxaaEnable, frameSeed, (reserved)
+uniform vec4 u_ColorGradeFx; // filmGrain, fxaaEnable, frameSeed, black lift
 
 varying vec2 var_ScreenTex;
 
@@ -84,6 +84,41 @@ void main()
 	float l = dot(col, LUMA);
 	col = mix(vec3(l), col, u_ColorGrade.y);
 
+	col = max(col, vec3(0.0));
+
+	// --- split-toning: teal-cool shadows, warm peach highlights ---
+	// Multiplicative so it follows the image's own values, strength 1 = a clear but
+	// restrained grade; luma-preserved so it separates hue without changing exposure.
+	float split = u_ViewInfo.y;
+	if (split > 0.0)
+	{
+		float l0 = dot(col, LUMA);
+		float lt = smoothstep(0.08, 0.85, l0);
+		vec3 tint = mix(vec3(-0.12, 0.05, 0.08), vec3(0.16, 0.06, -0.05), lt);
+		col *= 1.0 + tint * split;
+		col *= l0 / max(dot(col, LUMA), 0.0001);
+	}
+
+	// --- highlight shoulder: roll the top of the range off smoothly instead of a hard
+	// cut. Above the knee the curve flattens, then is rescaled so 1.0 in is still 1.0
+	// out; bright marble keeps its veining and the neon keeps its punch.
+	float sh = u_ViewInfo.x;
+	if (sh > 0.0)
+	{
+		float knee = 0.9 - 0.4 * clamp(sh, 0.0, 1.0);
+		float peak = knee + (1.0 - knee) * 0.5;
+		// roll off by the brightest channel and scale all three by the same factor, so
+		// near-white pixels keep their hue. The curve is continuous and smooth at the knee
+		// (y = m below it); the whole image is then gained by 1/peak so 1.0 stays white.
+		// (Rescaling only the part above the knee made a visible step there.)
+		float m = max(col.r, max(col.g, col.b));
+		float d = max(m - knee, 0.0);
+		float rolled = m - d + d / (1.0 + d / (1.0 - knee));
+		col *= (m > 0.0001 ? rolled / m : 1.0) / peak;
+	}
+
+	// --- black lift: milky floor in the darks (ethereal haze) ---
+	col = col * (1.0 - u_ColorGradeFx.w) + u_ColorGradeFx.w;
 	col = max(col, vec3(0.0));
 
 	// --- vignette: darken toward the frame edge, filmic falloff ---

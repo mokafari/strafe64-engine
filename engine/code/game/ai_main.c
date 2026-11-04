@@ -2247,6 +2247,7 @@ int BotAIStartFrame(int time) {
 		}
 
 		BotUpdateInput(botstates[i], time, elapsed_time);
+		if (g_truckTestLine.integer) G_TruckTestInput(&g_entities[i], &botstates[i]->lastucmd);
 		trap_BotUserCommand(botstates[i]->client, &botstates[i]->lastucmd);
 	}
 

@@ -34,13 +34,17 @@ void RB_ToneMap(FBO_t *hdrFbo, ivec4_t hdrBox, FBO_t *ldrFbo, ivec4_t ldrBox, in
 		{
 			// determine average log luminance
 			FBO_t *srcFbo, *dstFbo, *tmp;
+			vec4_t meter;
 			int size = 256;
 
 			lastFrameCount = tr.frameCount;
 
 			VectorSet4(dstBox, 0, 0, size, size);
 
-			FBO_Blit(hdrFbo, hdrBox, NULL, tr.textureScratchFbo[0], dstBox, &tr.calclevels4xShader[0], NULL, 0);
+			// x = metering luminance floor in stops (see r_gradeMeterFloor)
+			VectorSet4(meter, Com_Clamp(-10.0f, 10.0f, r_gradeMeterFloor->value), 0.0f, 0.0f, 1.0f);
+
+			FBO_Blit(hdrFbo, hdrBox, NULL, tr.textureScratchFbo[0], dstBox, &tr.calclevels4xShader[0], meter, 0);
 
 			srcFbo = tr.textureScratchFbo[0];
 			dstFbo = tr.textureScratchFbo[1];
@@ -82,7 +86,7 @@ void RB_ToneMap(FBO_t *hdrFbo, ivec4_t hdrBox, FBO_t *ldrFbo, ivec4_t ldrBox, in
 	// tonemap
 	color[0] =
 	color[1] =
-	color[2] = pow(2, r_cameraExposure->value - autoExposure); //exp2(r_cameraExposure->value);
+	color[2] = pow(2, r_cameraExposure->value - autoExposure + r_gradeExposure->value); //exp2(r_cameraExposure->value);
 	color[3] = 1.0f;
 
 	if (autoExposure)
@@ -687,7 +691,7 @@ void RB_ColorGrade(FBO_t *srcFbo, FBO_t *dstFbo)
 	height = (float)srcFbo->height;
 
 	// x,y unused; zw = rcpFrame for FXAA neighbour taps (source texel size)
-	VectorSet4(viewInfo, 0.0f, 0.0f, 1.0f / width, 1.0f / height);
+	VectorSet4(viewInfo, r_gradeShoulder->value, r_gradeSplit->value, 1.0f / width, 1.0f / height);
 	VectorSet4(grade,
 	           r_gradeContrast->value,
 	           r_gradeSaturation->value * r_gradeLiveSat->value,
@@ -697,7 +701,7 @@ void RB_ColorGrade(FBO_t *srcFbo, FBO_t *dstFbo)
 	           r_filmGrain->value,
 	           r_fxaa->integer ? 1.0f : 0.0f,
 	           (float)(tr.frameCount % 1024) * 0.137f,   // animate the grain
-	           0.0f);
+	           r_gradeLift->value);
 
 	VectorSet4(quadVerts[0], -1.0f,  1.0f, 0.0f, 1.0f);
 	VectorSet4(quadVerts[1],  1.0f,  1.0f, 0.0f, 1.0f);
@@ -737,6 +741,85 @@ void RB_ColorGrade(FBO_t *srcFbo, FBO_t *dstFbo)
 	GLSL_SetUniformVec4(&tr.colorGradeShader, UNIFORM_COLORGRADE,   grade);
 	GLSL_SetUniformVec4(&tr.colorGradeShader, UNIFORM_COLORGRADEFX, gradeFx);
 	RB_InstantQuad2(quadVerts, texCoords);
+}
+
+
+/*
+=============
+RB_MoonShafts
+
+STRAFE 64 screen-space light shafts toward a fixed world direction (the moon). Half-res march
+over the depth buffer into quarterFbo[0], then added over srcFbo (tonemapped, pre-grade). Needs
+tr.hdrDepthImage (allocated when r_dof, r_ssao or r_shadowBlur is on). No-ops when the moon is
+behind the camera.
+=============
+*/
+void RB_MoonShafts(FBO_t *srcFbo, ivec4_t srcBox)
+{
+	vec4_t quadVerts[4], viewInfo, color;
+	vec2_t texCoords[4];
+	vec3_t dir, col;
+	vec4_t pos, hpos;
+	mat4_t mvp, trans, model;
+	ivec4_t quarterBox;
+	float facing;
+	FBO_t *q = tr.quarterFbo[0];
+
+	if (!srcFbo || !q || !tr.hdrDepthImage)
+		return;
+
+	if (sscanf(r_shaftsDir->string, "%f %f %f", &dir[0], &dir[1], &dir[2]) != 3)
+		return;
+	if (sscanf(r_shaftsColor->string, "%f %f %f", &col[0], &col[1], &col[2]) != 3)
+		return;
+	VectorNormalize(dir);
+
+	// moon in front of the camera? smooth fade as it leaves the view cone
+	facing = DotProduct(dir, backEnd.viewParms.or.axis[0]);
+	if (facing < -0.25f)
+		return;
+
+	Mat4Translation(backEnd.viewParms.or.origin, trans);
+	Mat4Multiply(backEnd.viewParms.world.modelMatrix, trans, model);
+	Mat4Multiply(backEnd.viewParms.projectionMatrix, model, mvp);
+	VectorScale(dir, backEnd.viewParms.zFar / 1.75f, pos);
+	pos[3] = 1.0f;
+	Mat4Transform(mvp, pos, hpos);
+	if (hpos[3] < 0.001f)
+		return;
+	hpos[3] = 0.5f / hpos[3];
+
+	VectorSet4(viewInfo, 0.5f + hpos[0] * hpos[3], 0.5f + hpos[1] * hpos[3],
+	           r_shaftsDensity->value, r_shaftsDecay->value);
+	VectorSet4(color, col[0] * r_shafts->value, col[1] * r_shafts->value, col[2] * r_shafts->value,
+	           Com_Clamp(0.0f, 1.0f, (facing + 0.25f) * 2.0f));
+
+	VectorSet4(quadVerts[0], -1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[1],  1.0f,  1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[2],  1.0f, -1.0f, 0.0f, 1.0f);
+	VectorSet4(quadVerts[3], -1.0f, -1.0f, 0.0f, 1.0f);
+	texCoords[0][0] = 0.0f; texCoords[0][1] = 1.0f;
+	texCoords[1][0] = 1.0f; texCoords[1][1] = 1.0f;
+	texCoords[2][0] = 1.0f; texCoords[2][1] = 0.0f;
+	texCoords[3][0] = 0.0f; texCoords[3][1] = 0.0f;
+
+	// 1) march into the half-res buffer
+	FBO_Bind(q);
+	qglViewport(0, 0, q->width, q->height);
+	qglScissor (0, 0, q->width, q->height);
+	GL_State(GLS_DEPTHTEST_DISABLE);
+	Mat4Identity(mvp);
+
+	GLSL_BindProgram(&tr.shaftsShader);
+	GLSL_SetUniformMat4(&tr.shaftsShader, UNIFORM_MODELVIEWPROJECTIONMATRIX, mvp);
+	GL_BindToTMU(tr.hdrDepthImage, TB_COLORMAP);
+	GLSL_SetUniformVec4(&tr.shaftsShader, UNIFORM_VIEWINFO, viewInfo);
+	GLSL_SetUniformVec4(&tr.shaftsShader, UNIFORM_COLOR, color);
+	RB_InstantQuad2(quadVerts, texCoords);
+
+	// 2) add it over the scene (bilinear upsample)
+	quarterBox[0] = 0; quarterBox[1] = 0; quarterBox[2] = q->width; quarterBox[3] = q->height;
+	FBO_Blit(q, quarterBox, NULL, srcFbo, srcBox, NULL, NULL, GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE);
 }
 
 

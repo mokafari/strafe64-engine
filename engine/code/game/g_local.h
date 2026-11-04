@@ -789,6 +789,8 @@ extern	vmCvar_t	g_grapple;
 extern	vmCvar_t	g_grappleInstant;
 extern	vmCvar_t	g_truckRamp;
 extern	vmCvar_t	g_truckBest;
+extern vmCvar_t g_truckTestLine;
+void G_TruckTestInput(gentity_t *bot, usercmd_t *cmd);
 extern	vmCvar_t	g_truckBots;
 extern	vmCvar_t	g_truckMaxGap;
 extern	vmCvar_t	g_truckRiders;

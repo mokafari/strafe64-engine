@@ -1685,7 +1685,7 @@ const void *RB_PostProcess(const void *data)
 
 			color[0] =
 			color[1] =
-			color[2] = pow(2, r_cameraExposure->value); //exp2(r_cameraExposure->value);
+			color[2] = pow(2, r_cameraExposure->value + r_gradeExposure->value); //exp2(r_cameraExposure->value);
 			color[3] = 1.0f;
 
 			FBO_BlitFromTexture(tr.whiteImage, NULL, NULL, srcFbo, srcBox, NULL, color, GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO);
@@ -1699,6 +1699,9 @@ const void *RB_PostProcess(const void *data)
 
 	if (r_drawSunRays->integer)
 		RB_SunRays(srcFbo, srcBox, srcFbo, srcBox);
+
+	if (r_shafts->value > 0.0f)
+		RB_MoonShafts(srcFbo, srcBox);
 
 	// STRAFE 64 cinematic DoF -- after bloom/sunrays so the glow defocuses too
 	R_GpuMark(GPUT_BLOOM);
