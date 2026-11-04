@@ -277,7 +277,7 @@ the original shooter. Returns qtrue if the shot was deflected (only frontal
 projectiles parry; side/back shots fall through to normal impact).
 ================
 */
-static qboolean G_DeflectMissile( gentity_t *ent, gentity_t *blocker ) {
+static qboolean G_DeflectMissile( gentity_t *ent, gentity_t *blocker, const vec3_t impact ) {
 	vec3_t		forward, dir, origin;
 	float		speed;
 	gentity_t	*tent;
@@ -294,7 +294,7 @@ static qboolean G_DeflectMissile( gentity_t *ent, gentity_t *blocker ) {
 	}
 
 	// the impact point becomes the new launch point
-	BG_EvaluateTrajectory( &ent->s.pos, level.time, origin );
+	VectorCopy( impact, origin );
 
 	// GUIDED RETURN-TO-SENDER (OpenJK-style): a skilled parry doesn't just bat
 	// the bolt away — if an enemy sits in the blocker's front arc, the deflection
@@ -323,6 +323,13 @@ static qboolean G_DeflectMissile( gentity_t *ent, gentity_t *blocker ) {
 				continue;
 			}
 			if ( DotProduct( to, forward ) > bestDot ) {
+				trace_t sight;
+				trap_Trace( &sight, origin, NULL, NULL, cl->r.currentOrigin,
+					blocker->s.number, MASK_SHOT & ~CONTENTS_CORPSE );
+				if ( sight.startsolid || sight.allsolid
+						|| ( sight.fraction < 1.0f && sight.entityNum != cl->s.number ) ) {
+					continue;
+				}
 				bestDot = DotProduct( to, forward );
 				best = cl;
 				VectorCopy( to, aim );
@@ -414,7 +421,9 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace ) {
 	// back at whoever fired it instead of taking the hit
 	if ( other->client && ( other->client->ps.eFlags & EF_BLOCKING )
 			&& ent->r.ownerNum != other->s.number
-			&& G_DeflectMissile( ent, other ) ) {
+			&& ( g_swordGuardRaise.value <= 0.0f
+				|| level.time - other->client->guardRaiseTime >= (int)g_swordGuardRaise.value )
+			&& G_DeflectMissile( ent, other, trace->endpos ) ) {
 		return;
 	}
 

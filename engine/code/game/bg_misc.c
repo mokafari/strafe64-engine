@@ -1620,7 +1620,7 @@ void BG_PlayerStateToEntityState( playerState_t *ps, entityState_t *s, qboolean 
 	s->loopSound = ps->loopSound;
 	s->generic1 = ps->generic1;
 	// STRAFE 64: wall-run side and grapple, for the skeletal body on other clients
-	s->frame = ( ps->stats[STAT_WALLRUN] > 0 ? 1 : ps->stats[STAT_WALLRUN] < 0 ? 2 : 0 )
+	s->frame = ( BG_WallRunSide(ps->stats[STAT_WALLRUN]) > 0 ? 1 : BG_WallRunSide(ps->stats[STAT_WALLRUN]) < 0 ? 2 : 0 )
 		| ( ( ps->pm_flags & PMF_GRAPPLE_PULL ) ? 4 : 0 );
 }
 
@@ -1703,6 +1703,20 @@ void BG_PlayerStateToEntityStateExtraPolate( playerState_t *ps, entityState_t *s
 	s->loopSound = ps->loopSound;
 	s->generic1 = ps->generic1;
 	// STRAFE 64: wall-run side and grapple, for the skeletal body on other clients
-	s->frame = ( ps->stats[STAT_WALLRUN] > 0 ? 1 : ps->stats[STAT_WALLRUN] < 0 ? 2 : 0 )
+	s->frame = ( BG_WallRunSide(ps->stats[STAT_WALLRUN]) > 0 ? 1 : BG_WallRunSide(ps->stats[STAT_WALLRUN]) < 0 ? 2 : 0 )
 		| ( ( ps->pm_flags & PMF_GRAPPLE_PULL ) ? 4 : 0 );
+}
+
+int BG_WallRunElapsed(int state) {
+ int v = abs(state);
+ return v >= 0x4000 ? (v & 0x3fff) : (v ? v-1 : 0);
+}
+int BG_WallRunSide(int state) {
+ return state && abs(state) < 0x4000 ? (state > 0 ? 1 : -1) : 0;
+}
+int BG_WallRunEncode(int elapsed, int side) {
+ if (elapsed < 0) elapsed = 0;
+ if (elapsed > 16382) elapsed = 16382;
+ if (!side) return elapsed ? 0x4000 | elapsed : 0;
+ return (side > 0 ? 1 : -1) * (elapsed+1);
 }

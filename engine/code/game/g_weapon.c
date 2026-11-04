@@ -176,6 +176,7 @@ static gentity_t *G_SwordFindTarget( gentity_t *self, const vec3_t from,
 	vec3_t		delta, dir;
 	float		dist, dot, score, bestScore;
 	int			i;
+	trace_t sight;
 
 	best = NULL;
 	bestScore = byAngle ? cosHalf : range;		// must beat the cone/range to count
@@ -188,6 +189,7 @@ static gentity_t *G_SwordFindTarget( gentity_t *self, const vec3_t from,
 		if ( !t->client && !( t->flags & FL_SLICE_GATE ) ) {
 			continue;
 		}
+		if (OnSameTeam(self, t)) continue;
 		VectorSubtract( t->r.currentOrigin, from, delta );
 		dist = VectorLength( delta );
 		if ( dist < 1.0f || dist > range ) {
@@ -198,6 +200,9 @@ static gentity_t *G_SwordFindTarget( gentity_t *self, const vec3_t from,
 		if ( dot < cosHalf ) {
 			continue;							// outside the cone
 		}
+		// Assistance must not steer a cut or kill-chain through solid cover.
+		trap_Trace(&sight, from, NULL, NULL, t->r.currentOrigin, self->s.number, MASK_SHOT & ~CONTENTS_CORPSE);
+		if (sight.fraction < 1.0f && sight.entityNum != t->s.number) continue;
 		score = byAngle ? dot : dist;
 		if ( byAngle ? ( score > bestScore ) : ( score < bestScore ) ) {
 			bestScore = score;
@@ -216,11 +221,16 @@ void Weapon_Sword( gentity_t *ent ) {
 	float		sr, su, er, eu;
 	qboolean	finisher;
 	vec3_t		dir, end, sliceAngles, velDir, viewDir, axis;
-	vec3_t		swFwd, swRight, swUp;
+	vec3_t		swFwd, swRight, swUp, bladeOrigin;
 	trace_t		tr;
 	gentity_t	*traceEnt, *tent;
 	int			hit[ SWORD_NUM_TRACES * 2 ];	// entities already damaged this swing
 	int			numHit, kills;
+
+	// Blade reach is measured from the authoritative eye, without the gun
+	// muzzle offset or network coordinate rounding. Shared with lunge detection.
+	VectorCopy(ent->client->ps.origin, bladeOrigin);
+	bladeOrigin[2] += ent->client->ps.viewheight;
 
 	// --- combo: chained swings within the window ramp damage; every 3rd is a
 	// wide, heavy finisher. The combo decays if you stop swinging. ---
@@ -285,15 +295,17 @@ void Weapon_Sword( gentity_t *ent ) {
 		VectorCopy( viewDir, axis );
 	}
 
+	range = SWORD_RANGE + frac * SWORD_RANGE_BONUS;
+
 	// --- AIM-SNAP: bend the cut onto a near-miss enemy so slightly-off aim still
 	// connects clean. Only assists misses within g_swordAimSnap degrees of the cut
 	// line — never a hard turn — and nudges the blade, not the camera. ---
 	if ( g_swordAimSnap.value > 0.0f && !( ent->r.svFlags & SVF_BOT ) ) {	// assist bends PLAYER cuts only
 		float		snapCos = cos( DEG2RAD( g_swordAimSnap.value ) );
-		float		reach = SWORD_RANGE + SWORD_RANGE_BONUS;
-		gentity_t	*snap = G_SwordFindTarget( ent, muzzle, axis, reach, snapCos, qtrue );
+		float		reach = range;
+		gentity_t	*snap = G_SwordFindTarget( ent, bladeOrigin, axis, reach, snapCos, qtrue );
 		if ( snap ) {
-			VectorSubtract( snap->r.currentOrigin, muzzle, axis );
+			VectorSubtract( snap->r.currentOrigin, bladeOrigin, axis );
 			if ( VectorNormalize( axis ) == 0.0f ) {
 				VectorCopy( viewDir, axis );
 			}
@@ -302,8 +314,7 @@ void Weapon_Sword( gentity_t *ent ) {
 
 	vectoangles( axis, sliceAngles );
 
-	// reach grows with speed so a fast fly-by still connects the cut
-	range = SWORD_RANGE + frac * SWORD_RANGE_BONUS;
+	// Reach was computed before aim assistance so both use the same bound.
 
 	// --- DIRECTIONAL SWEEP (OpenJK-style): the swing is a discrete move that
 	// travels the blade from a start quadrant to an end quadrant. We sample the
@@ -330,9 +341,9 @@ void Weapon_Sword( gentity_t *ent ) {
 			dir[i] = swFwd[i] + spread * ( swRight[i] * dx + swUp[i] * dy );
 		}
 		VectorNormalize( dir );
-		VectorMA( muzzle, range, dir, end );
+		VectorMA( bladeOrigin, range, dir, end );
 
-		trap_Trace( &tr, muzzle, NULL, NULL, end, ent->s.number, MASK_SHOT );
+		trap_Trace( &tr, bladeOrigin, NULL, NULL, end, ent->s.number, MASK_SHOT & ~CONTENTS_CORPSE );
 		if ( tr.surfaceFlags & SURF_NOIMPACT ) {
 			continue;
 		}
@@ -344,7 +355,7 @@ void Weapon_Sword( gentity_t *ent ) {
 		}
 
 		traceEnt = &g_entities[ tr.entityNum ];
-		if ( !traceEnt->takedamage ) {
+		if ( !traceEnt->takedamage || traceEnt->health <= 0 ) {
 			continue;
 		}
 
@@ -352,9 +363,16 @@ void Weapon_Sword( gentity_t *ent ) {
 		// enemy in your face whiffs and you must step to distance (kills the
 		// occupy-the-same-voxel ram). Speed-gated: a fast fly-by ignores it, since
 		// at flow speed you're passing through, not standing on them.
-		if ( g_swordMinRange.value > 0.0f && speed < SWORD_VEL_ALIGN
-				&& tr.fraction * range < g_swordMinRange.value ) {
-			continue;
+		if ( g_swordMinRange.value > 0.0f && speed < SWORD_VEL_ALIGN ) {
+			vec3_t closest;
+			// Use the nearest body surface for every ray. Measuring along each
+			// ray let a wider/diagonal cut bypass the same close-range dead zone.
+			for (i = 0; i < 3; i++) {
+				float low = traceEnt->r.currentOrigin[i] + traceEnt->r.mins[i];
+				float high = traceEnt->r.currentOrigin[i] + traceEnt->r.maxs[i];
+				closest[i] = Com_Clamp(low, high, bladeOrigin[i]);
+			}
+			if (Distance(bladeOrigin, closest) < g_swordMinRange.value) continue;
 		}
 
 		// only hit each entity once per swing

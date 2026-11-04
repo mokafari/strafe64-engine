@@ -164,7 +164,7 @@ void G_PlaytestSample( void ) {
 		if ( speed > p->maxSpeed )    p->maxSpeed = speed;
 		if ( speed > PT_RUNSPEED )    p->framesFast++;
 		if ( cl->ps.groundEntityNum == ENTITYNUM_NONE ) p->framesAir++;
-		if ( cl->ps.stats[STAT_WALLRUN] != 0 ) p->wallrunFrames++;
+		if ( BG_WallRunSide(cl->ps.stats[STAT_WALLRUN]) != 0 ) p->wallrunFrames++;
 		if ( cl->ps.eFlags & EF_SLIDING ) p->slideFrames++;
 		if ( cl->ps.stats[STAT_BHOP_STREAK] > p->maxBhop ) {
 			p->maxBhop = cl->ps.stats[STAT_BHOP_STREAK];

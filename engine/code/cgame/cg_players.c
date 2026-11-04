@@ -3263,7 +3263,7 @@ static void CG_SkeletalPlayer( centity_t *cent, vec3_t axis[3], int renderfx ) {
 	wallrun = ( s->frame & 3 ) != 0;
 	grapple = ( s->frame & 4 ) != 0;
 	if ( s->clientNum == cg.snap->ps.clientNum ) {
-		wallrun = cg.predictedPlayerState.stats[STAT_WALLRUN] != 0;
+		wallrun = BG_WallRunSide(cg.predictedPlayerState.stats[STAT_WALLRUN]) != 0;
 		grapple = ( cg.predictedPlayerState.pm_flags & PMF_GRAPPLE_PULL ) != 0;
 	}
 	if ( speed > 1 ) {

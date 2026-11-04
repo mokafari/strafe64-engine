@@ -1108,6 +1108,10 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		}
 	}
 
+	// A clean parry is a complete stop; do not turn it into chip damage
+	// through the general minimum-damage clamp below. Clash/riposte already ran.
+	if (damage <= 0) return;
+
 	knockback = damage;
 	// fast attackers launch people: same curve as speed damage
 	// (self-knockback stays unscaled so rocket jumps are consistent)

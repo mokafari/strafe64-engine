@@ -544,6 +544,9 @@ static qboolean PM_CheckJump( void ) {
 	pm->ps->pm_flags |= PMF_JUMP_HELD;
 
 	pm->ps->groundEntityNum = ENTITYNUM_NONE;
+	// Consume grace now, before collision can clip the upward velocity. Waiting
+	// for the next timer update misclassified a head-bumped jump as walking off.
+	pm->ps->stats[STAT_GROUND_MS] = COYOTE_PARKED;
 	pm->ps->velocity[2] = JUMP_VELOCITY;
 
 	// double jump: a second jump inside the window goes higher
@@ -814,7 +817,7 @@ static qboolean PM_CheckWallJump( void ) {
 	// pops you off; before that it doesn't, so jumping to reach the wall doesn't
 	// instantly bounce you straight back off.
 	if ( pm->ps->pm_flags & PMF_JUMP_HELD ) {
-		if ( abs( pm->ps->stats[STAT_WALLRUN] ) < WALLRUN_ATTACH_GRACE_MS ) {
+		if ( !BG_WallRunSide(pm->ps->stats[STAT_WALLRUN]) || BG_WallRunElapsed(pm->ps->stats[STAT_WALLRUN]) < WALLRUN_ATTACH_GRACE_MS ) {
 			return qfalse;
 		}
 	}
@@ -997,7 +1000,7 @@ static qboolean PM_CheckWallRun( void ) {
 	if ( speed < pm_wallRunMinSpeed ) {
 		goto detach;
 	}
-	if ( abs( pm->ps->stats[STAT_WALLRUN] ) >= pm_wallRunDurationMs ) {
+	if ( BG_WallRunElapsed(pm->ps->stats[STAT_WALLRUN]) >= (pm_wallRunDurationMs < 16382 ? pm_wallRunDurationMs : 16382) ) {
 		goto detach;		// this airtime's ride is spent; needs to touch ground
 	}
 
@@ -1044,7 +1047,7 @@ static qboolean PM_CheckWallRun( void ) {
 				pm->ps->velocity[2] = pm_wallRunJumpUp;
 			}
 			pm->ps->pm_flags |= PMF_JUMP_HELD;
-			pm->ps->stats[STAT_WALLRUN] = 0;		// detached
+			pm->ps->stats[STAT_WALLRUN] = BG_WallRunEncode(BG_WallRunElapsed(pm->ps->stats[STAT_WALLRUN]), 0);	// detached
 			pml.groundPlane = qfalse;
 			PM_AddEvent( EV_JUMP );
 			PM_ForceLegsAnim( LEGS_JUMP );
@@ -1056,7 +1059,7 @@ static qboolean PM_CheckWallRun( void ) {
 
 		// a small lift the moment you attach while falling, then ride with a
 		// capped gentle downward slide
-		if ( pm->ps->stats[STAT_WALLRUN] == 0 && pm->ps->velocity[2] < 0 ) {
+		if ( !BG_WallRunSide(pm->ps->stats[STAT_WALLRUN]) && pm->ps->velocity[2] < 0 ) {
 			pm->ps->velocity[2] = pm_wallRunBoost;
 		} else if ( pm->ps->velocity[2] < -pm_wallRunSlideSpeed ) {
 			pm->ps->velocity[2] = -pm_wallRunSlideSpeed;
@@ -1069,13 +1072,14 @@ static qboolean PM_CheckWallRun( void ) {
 
 		// accumulate ride time, sign carries the wall side for the camera
 		sign = ( s == 0 ) ? 1 : -1;
-		elapsed = abs( pm->ps->stats[STAT_WALLRUN] ) + pml.msec;
-		pm->ps->stats[STAT_WALLRUN] = sign * elapsed;
+		elapsed = BG_WallRunElapsed(pm->ps->stats[STAT_WALLRUN]) + pml.msec;
+		pm->ps->stats[STAT_WALLRUN] = BG_WallRunEncode(elapsed, sign);
 		return qtrue;
 	}
 
 detach:
-	pm->ps->stats[STAT_WALLRUN] = 0;
+	// Detaching must not refill the airtime budget; only grounding does.
+	pm->ps->stats[STAT_WALLRUN] = BG_WallRunEncode(BG_WallRunElapsed(pm->ps->stats[STAT_WALLRUN]), 0);
 	return qfalse;
 }
 
@@ -1158,6 +1162,20 @@ static qboolean PM_CheckVault( void ) {
 		return qfalse;				// ledge not in vault range
 	}
 
+	// A clear landing beyond the face does not guarantee room to rise here.
+	// Under a partial overhang the old launch hit the ceiling, lost upward
+	// velocity, then retriggered automatically every tick with no jump input.
+	// Require hull clearance for the lift and passage over the lip first.
+	VectorCopy(pm->ps->origin, top);
+	top[2] += climb + 16.0f;
+	pm->trace(&trace, pm->ps->origin, pm->mins, pm->maxs, top,
+		pm->ps->clientNum, pm->tracemask);
+	if (trace.startsolid || trace.allsolid || trace.fraction < 1.0f) return qfalse;
+	VectorMA(top, pm_vaultReach + 8.0f, fwd, end);
+	pm->trace(&trace, top, pm->mins, pm->maxs, end,
+		pm->ps->clientNum, pm->tracemask);
+	if (trace.startsolid || trace.allsolid || trace.fraction < 1.0f) return qfalse;
+
 	// VAULT: ballistic lift to clear the lip, keep most horizontal speed
 	up = sqrt( 2.0f * pm->ps->gravity * ( climb + 16.0f ) );
 	pm->ps->velocity[2] = up;
@@ -1239,6 +1257,7 @@ static void PM_AirMove( void ) {
 	// checks below bail out, so the press is never double-spent; we then park
 	// STAT_GROUND_MS out of range so a held jump can't re-fire while airborne.
 	if ( pm_coyoteTimeMs > 0
+		&& !(pm->ps->pm_flags & PMF_JUMP_HELD)
 		&& pm->ps->stats[STAT_GROUND_MS] < 0
 		&& pm->ps->stats[STAT_GROUND_MS] > -pm_coyoteTimeMs
 		&& PM_CheckJump() ) {
@@ -1588,6 +1607,14 @@ static void PM_WalkMove( void ) {
 //		pm->ps->velocity[2] = 0;
 	}
 
+	// Flat-ground contact consumes vertical landing velocity. Otherwise the
+	// slope-preserving normalization below can amplify an OVERCLIP residual
+	// back into the full falling speed, launching a fractional-step landing.
+	// Keep the existing tangent/speed treatment on actual slopes.
+	if (pml.groundTrace.plane.normal[2] > 0.99999f) {
+		pm->ps->velocity[2] = 0.0f;
+	}
+
 	// crouch slide: carve toward aim + feed downhill speed while ducked at pace.
 	// Runs before the magnitude is captured below so a downhill gain survives the
 	// slope rescale. The slide is STICKY — entry needs slide speed, but once you're
@@ -1913,6 +1940,10 @@ static void PM_GroundTraceMissed( void ) {
 	vec3_t		point;
 
 	if ( pm->ps->groundEntityNum != ENTITYNUM_NONE ) {
+		// Record loss of real support here, including a ledge crossed by the
+		// movement at the END of a tick. The next tick already has no groundEntity.
+		if (pm->ps->stats[STAT_GROUND_MS] >= 0 && pm->ps->velocity[2] < 100)
+			pm->ps->stats[STAT_GROUND_MS] = COYOTE_ARMED;
 		// we just transitioned into freefall
 		if ( pm->debugLevel ) {
 			Com_Printf("%i:lift\n", c_pmove);
@@ -2429,16 +2460,17 @@ static float PM_SwordMagnetLunge( vec3_t outDir ) {
 		AngleVectors( ang, dir, NULL, NULL );
 		VectorMA( eye, pm_swordMagnetRange, dir, end );
 
-		pm->trace( &tr, eye, vec3_origin, vec3_origin, end, pm->ps->clientNum, MASK_SHOT );
+		pm->trace( &tr, eye, vec3_origin, vec3_origin, end, pm->ps->clientNum, MASK_SHOT & ~CONTENTS_CORPSE );
 		// a client entity (< MAX_CLIENTS) is a player/bot body; ignore world + movers
 		if ( tr.fraction >= 1.0f || tr.entityNum >= MAX_CLIENTS
 			|| tr.entityNum == pm->ps->clientNum ) {
 			continue;
 		}
 		dist = tr.fraction * pm_swordMagnetRange;
-		// centred rays win ties: weight 1 at the crosshair, tapering to the rim
-		w = 1.0f - ( (float)i > 0 ? 0.10f * i : 0.0f );
-		if ( dist < bestDist ) {
+		// Mirror-symmetric angular weighting; array ordering must not change pull.
+		w = 1.0f - 0.15f * sqrtf((off[i][0]/14.0f)*(off[i][0]/14.0f)
+			+ (off[i][1]/12.0f)*(off[i][1]/12.0f));
+		if ( dist < bestDist - 0.001f || (fabsf(dist-bestDist) <= 0.001f && w > bestWeight) ) {
 			bestDist = dist;
 			bestWeight = w;
 			VectorSubtract( tr.endpos, eye, best );
@@ -2887,14 +2919,13 @@ static void PM_UpdateMovementTimers( void ) {
 	} else {
 		// airborne: STAT_GROUND_MS goes NEGATIVE to time the coyote window.
 		// On the frame we leave the ground, arm it only if we walked off a
-		// ledge (not rising out of a jump/air-jump); otherwise park it far out
+		// ledge with actual prior support (not an airborne spawn or a jump);
+		// otherwise park it far out
 		// of range so jumping off never grants a free coyote jump.
 		if ( pm->ps->stats[STAT_GROUND_MS] >= 0 ) {
-			if ( pm->ps->velocity[2] < 100 ) {
-				pm->ps->stats[STAT_GROUND_MS] = COYOTE_ARMED;	// walked off: coyote armed
-			} else {
-				pm->ps->stats[STAT_GROUND_MS] = COYOTE_PARKED;	// jumped off: no coyote
-			}
+			// GroundTraceMissed arms real walk-offs. A nonnegative value here
+			// has no recorded support transition (e.g. spawning in midair).
+			pm->ps->stats[STAT_GROUND_MS] = COYOTE_PARKED;
 		} else if ( pm->ps->stats[STAT_GROUND_MS] > COYOTE_FLOOR ) {
 			pm->ps->stats[STAT_GROUND_MS] -= realMsec;	// count airborne time
 		}

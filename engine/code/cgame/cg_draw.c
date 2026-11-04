@@ -3176,7 +3176,7 @@ static void CG_UpdateCombo( void ) {
 	}
 	cg.comboAirjumpSeen = ps->stats[STAT_AIRJUMP_COUNT];
 
-	if ( ps->stats[STAT_WALLRUN] != 0 ) {
+	if ( BG_WallRunSide(ps->stats[STAT_WALLRUN]) != 0 ) {
 		cg.comboMult += 0.6f * dt;
 		if ( cg.comboMult > COMBO_MAX ) cg.comboMult = COMBO_MAX;
 		cg.comboEventTime = cg.time;

@@ -583,7 +583,7 @@ static void CG_MoveKicks( void ) {
 
 	if ( cg_moveKick.value > 0.0f && ps->pm_type == PM_NORMAL ) {
 		if ( wj > cg.mkPrevWalljump ) {				// walljump: up + roll off the wall
-			int wr = ps->stats[STAT_WALLRUN];
+			int wr = BG_WallRunSide(ps->stats[STAT_WALLRUN]);
 			CG_MoveKick( -2.2f, wr > 0 ? 3.0f : ( wr < 0 ? -3.0f : 0.0f ) );
 		} else if ( aj > cg.mkPrevAirjump ) {		// air / double jump: upward pop
 			CG_MoveKick( -1.8f, 0.0f );
@@ -716,7 +716,7 @@ static void CG_OffsetFirstPersonView( void ) {
 	{
 		static float	wallRoll = 0;
 		float			target = 0;
-		int				wr = cg.predictedPlayerState.stats[STAT_WALLRUN];
+		int				wr = BG_WallRunSide(cg.predictedPlayerState.stats[STAT_WALLRUN]);
 
 		if ( wr > 0 ) {
 			target = -12.0f;	// wall on the right

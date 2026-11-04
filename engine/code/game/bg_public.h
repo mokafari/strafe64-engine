@@ -274,11 +274,19 @@ typedef enum {
 	STAT_AIRJUMP_COUNT,				// air jumps used since last grounding
 	STAT_RACE_START,				// race timer: (start - level.startTime)/100 + 1 in
 									// deciseconds, 0 = not racing (16-bit nets ~54 min of map time)
-	STAT_WALLRUN,					// wall run: |value| = elapsed ms, sign = wall side
-									// (+ right / - left), 0 = not wall running
+	STAT_WALLRUN,					// wall run: encoded elapsed/active side; use BG_WallRun helpers
+									// (+ right / - left); detached state retains time budget
 	STAT_GRAPPLE_LEN				// grapple swing: fixed rope length while attached,
 									// 0 = not set yet (PM_GrappleMove seeds it on attach)
 } statIndex_t;
+
+// Wall-run state stays in the existing signed 16-bit stat. Active state is
+// signed (elapsed+1); 0x4000|elapsed retains spent time while detached.
+// Always use these helpers: a nonzero stat does not imply an active ride.
+int BG_WallRunElapsed(int state);
+int BG_WallRunSide(int state);
+int BG_WallRunEncode(int elapsed, int side);
+
 
 
 // player_state->persistant[] indexes

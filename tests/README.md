@@ -8,7 +8,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1 -Smoke
 ```
 
-The fast suite runs 16 native CTest cases and 49 Python asset/API/smoke checks.
+The fast suite runs 168 native CTest cases and 49 Python asset/API/smoke checks.
+See [the coverage audit](../docs/TEST_COVERAGE_AUDIT.md) for current coverage,
+limits and prioritised gaps, and [sword coverage](../docs/SWORD_COMBAT_TESTS.md)
+for the combat fixtures. The movement suite runs production pmove against
+synthetic collision planes at normal speed and 0.04x slow motion.
 Native results are saved to `engine/build/regressions/results.xml` (JUnit).
 Requirements: Visual Studio 2022 C++ tools and Python 3.13 with Pillow/NumPy.
 Each timebind case runs in a separate process, with a deterministic real-time
@@ -43,12 +47,13 @@ The first three reproduced failures before the 2026-11-04 smoothing fix and pass
 after it. The harness supplies deterministic position samples and a real-time
 clock; it does not establish that every observed live bot hitch is fixed.
 
-Nocturne requires the external `nocturne_reservoir.pk3` material pack installed
+The newer reservoir version of Nocturne requires the external `nocturne_reservoir.pk3` material pack installed
 in `assets/openarena/baseoa/`. It is not included in Git (upstream kept it on a
 Mac external drive). The smoke suite deliberately fails on missing shader
 images rather than accepting a checkerboard-rendered map as a pass.
 
-Integration verification on Windows, 2026-11-04 (`ethereal-grade` tip `1250438`):
+Historical integration verification before restoring classic Nocturne,
+2026-11-04 (`ethereal-grade` tip `1250438`):
 
 - Release engine build and asset staging passed (existing compiler warnings remain).
 - All 10 native cases and 49 Python checks passed.
@@ -62,7 +67,9 @@ Integration verification on Windows, 2026-11-04 (`ethereal-grade` tip `1250438`)
 Local logs and screenshots are under `engine/build/polish-regression-*`;
 `engine/build/ethereal-tests.log` records the fast suite and `windows-build.log`
 records compilation. These runtime defects are not waived by the passing unit
-tests. Combat damage, movement collision, and multiplayer remain future coverage.
+tests. The restored classic Nocturne subsequently passed GL2 smoke checks.
+Movement collision now has synthetic fixtures; real combat damage resolution,
+BSP traversal and multiplayer remain coverage gaps.
 
 Build the engine with `scripts/build.ps1` first. These small native harnesses
 exercise production code with mocked engine services; they do not replace a

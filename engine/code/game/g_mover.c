@@ -185,6 +185,7 @@ qboolean	G_TryPushingEntity( gentity_t *check, gentity_t *pusher, vec3_t move, v
 	VectorCopy( (pushed_p-1)->origin, check->s.pos.trBase);
 	if ( check->client ) {
 		VectorCopy( (pushed_p-1)->origin, check->client->ps.origin);
+		check->client->ps.delta_angles[YAW] = (pushed_p-1)->deltayaw;
 	}
 	VectorCopy( (pushed_p-1)->angles, check->s.apos.trBase );
 	block = G_TestEntityPosition (check);
@@ -398,6 +399,8 @@ qboolean G_MoverPush( gentity_t *pusher, vec3_t move, vec3_t amove, gentity_t **
 		// twice, it goes back to the original position
 		for ( p=pushed_p-1 ; p>=pushed ; p-- ) {
 			VectorCopy (p->origin, p->ent->s.pos.trBase);
+			VectorCopy (p->origin, p->ent->r.currentOrigin);
+			VectorCopy (p->angles, p->ent->r.currentAngles);
 			VectorCopy (p->angles, p->ent->s.apos.trBase);
 			if ( p->ent->client ) {
 				p->ent->client->ps.delta_angles[YAW] = p->deltayaw;
