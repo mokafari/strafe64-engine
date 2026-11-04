@@ -1,6 +1,12 @@
 /* CMake extracts these functions directly from the current g_active.c. */
 #include "../../engine/code/game/g_local.h"
 #include "clock_under_test.h"
+slowmoStep_t g_slowmoStep;
+static int requestedOwner;
+static float requestedTarget, requestedRate;
+void trap_SlowmoRequest(int owner, float target, float rate) {
+    requestedOwner=owner; requestedTarget=target; requestedRate=rate;
+}
 level_locals_t level;
 gentity_t g_entities[MAX_GENTITIES];
 vmCvar_t g_timeBind, g_timeBindMin, g_timeBindMax, g_timeBindRef, g_timeBindCurve;
@@ -39,6 +45,19 @@ int main(int argc, char **argv) {
     g_timeBindSmooth.value = 18;
     g_timeBindCrouch.value = 1;
     g_timeBindBlock.value = 0.5f;
+    if (argc > 1 && !strcmp(argv[1], "experimental-intent")) {
+        g_slowmoStep.active=1; g_slowmoStep.scale=.05f;
+        G_UpdateTimeBind(&g_entities[0], &cmd);
+        CHECK(requestedOwner==1 && fabs(requestedTarget-.05f)<.0001, "idle submits fractional clock target");
+        cmd.forwardmove=127; G_UpdateTimeBind(&g_entities[0], &cmd);
+        CHECK(requestedTarget==1 && requestedRate==40, "movement requests fast rise");
+        CHECK(writes==0, "experimental path never publishes timescale or forces pmove_fixed");
+        clients[0].ps.stats[STAT_HEALTH]=0; G_UpdateTimeBind(&g_entities[0], &cmd);
+        CHECK(requestedTarget==1 && requestedRate==30, "death releases gameplay clock while killcam may override");
+        clients[0].ps.stats[STAT_HEALTH]=100; G_ReleaseTimeBind(0);
+        CHECK(requestedTarget==1 && writes==0, "spectator release uses clock request");
+        goto done;
+    }
     if (argc > 1 && !strcmp(argv[1], "bot-exclusion")) {
         g_entities[0].r.svFlags = SVF_BOT;
         G_UpdateTimeBind(&g_entities[0], &cmd);

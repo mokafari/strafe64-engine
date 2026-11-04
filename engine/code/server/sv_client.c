@@ -339,6 +339,10 @@ void SV_DirectConnect( netadr_t from ) {
 #endif
 
 	Com_DPrintf ("SVC_DirectConnect ()\n");
+	if (SV_SlowmoActive() && from.type != NA_LOOPBACK) {
+		NET_OutOfBandPrint(NS_SERVER, from, "print\nExperimental slow motion supports local play only.\n");
+		return;
+	}
 
 	// Prevent using connect as an amplifier (from Quake3e)
 	if ( SVC_RateLimitAddress( from, 10, 1000 ) ) {

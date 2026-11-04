@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 project(timebind_regression C)
 enable_testing()
-foreach(case ownership bot-exclusion movement-intent guard-brake focus-recharge clock-recovery death-respawn fixed-movement)
+foreach(case experimental-intent ownership bot-exclusion movement-intent guard-brake focus-recharge clock-recovery death-respawn fixed-movement)
   add_test(NAME timebind.${case} COMMAND timebind_regression ${case})
 endforeach()
 add_executable(timebind_regression timebind_regression.c ../../engine/code/qcommon/q_shared.c)

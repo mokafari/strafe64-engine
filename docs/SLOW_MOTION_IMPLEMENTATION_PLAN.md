@@ -171,3 +171,61 @@ movement step cost before setting the default cadence.
 
 The next slice is instrumentation plus the clock core, not a larger smoothing
 constant. No production simulation code was changed during this research.
+
+
+## Implemented local prototype (2026-11-04)
+
+`com_slowmo 1` now selects the native local path on map load/restart. Default is
+0. The Windows launcher exposes `-ExperimentalSlowmo`; ordinary launches select
+0 explicitly. Keep all three native modules and the engine from the same build.
+
+Implemented:
+
+- Engine-owned clock with analytical exponential integration, gameplay/killcam
+  ownership, and a 125 Hz real-time accumulator. Pause stops simulation; map
+  restart resets clock and pose history. Catch-up is limited to 16 ticks (128 ms)
+  per host frame; excess real time is discarded and counted, never integrated
+  as one large physics step.
+- Player and bot pmove consume fractional world milliseconds, including repeated
+  integer command timestamps. Velocity and collision bounds keep fractional
+  precision. Movement windows use world time; footstep phase carries fractional
+  residue. Legacy inverse-scale acceleration and forced fixed-pmove rounding
+  are bypassed. At 0.04x, each movement tick integrates 0.32 world milliseconds.
+- Cgame reads local authoritative player state and interpolates neighboring
+  authoritative positions with the real accumulator fraction. Camera and local
+  body share the resulting position. Aim reads the latest command each render;
+  mouse, keyboard and joystick turning are independent of world slowdown.
+- Local prediction does not replay integer commands with an unrelated scale.
+  This prototype instead samples the latest local input at simulation ticks.
+  It incurs a tick of interpolation delay plus host input scheduling; timestamped
+  input replay and network prediction remain future work.
+- Snapshot publication uses real tick cadence. The changing scale is passed
+  through a local native ABI instead of reliable SYSTEMINFO cvar updates.
+  No serialized playerState/usercmd fields were added. Remote connections and
+  recording are rejected in this mode; existing recording stops on activation.
+  Enabling with an existing remote client falls back to the legacy path.
+
+Validation on Windows: Release engine/game builds passed; **28 native regression
+cases plus 49 Python checks passed**. New cases exercise clock integration,
+30/60/144/240 Hz accumulation, ownership, overload, reset, sub-millisecond free
+and grounded movement, gravity, world timers, aiming and gameplay intent routing.
+Live GL2 runs on the restored old Nocturne passed startup/render/error checks:
+constant 0.04x -> 1x -> 0.04x, two moving bots, forward press/release, death and
+killcam ownership, map restart, and the legacy fallback. Runtime traces showed
+0.32 ms steps at 0.04x and continued fractional bot displacements. Restart reset
+tick/history; its subsequent run reported zero dropped real milliseconds.
+Initial map-loading stalls were counted separately as dropped catch-up time.
+
+Diagnostics: `com_slowmoTrace 1` emits `SM_CLOCK` and per-client `SM_POSE` rows
+once per 16 ticks. Disable it for feel testing. Build/test artifacts are under
+`engine/build/slowmo-{build,tests}.log` and the ignored
+`engine/build/polish-{fractional-slowmo,slowmo-transitions,slowmo-legacy}-*` folders.
+
+This is an opt-in movement/render prototype, not the completed release gate.
+Integer world timestamps remain for legacy gameplay timers, animation, missiles,
+shaders and snapshots. Full collision scenarios (stairs/platforms/wall slides),
+teleport and respawn visual continuity, input replay across render schedules,
+CPU benchmarks, audio/FX policy and subjective high-refresh feel still need
+broader validation. The real-time void/race policies are unchanged. Multiplayer,
+demo timing formats and tuning are explicitly deferred; the legacy mode remains
+available with `com_slowmo 0` followed by a map reload.

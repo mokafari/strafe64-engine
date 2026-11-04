@@ -599,6 +599,7 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 	// and any configstring changes should be reliably transmitted
 	// to all clients
 	sv.state = SS_GAME;
+	SV_SlowmoInit();
 
 	// send a heartbeat now so the master will get up to date info
 	SV_Heartbeat_f();

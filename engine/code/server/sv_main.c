@@ -1059,9 +1059,12 @@ Player movement occurs as a result of packet events, which
 happen before SV_Frame is called
 ==================
 */
+#include "sv_slowmo.h"
+
 void SV_Frame( int msec ) {
 	int		frameMsec;
 	int		startTime;
+	smFrameMsec = 0;
 
 	// the menu kills the server with this cvar
 	if ( sv_killserver->integer ) {
@@ -1098,9 +1101,9 @@ void SV_Frame( int msec ) {
 		frameMsec = 1;
 	}
 
-	sv.timeResidual += msec;
+	if (!SV_SlowmoActive()) sv.timeResidual += msec;
 
-	if (!com_dedicated->integer) SV_BotFrame (sv.time + sv.timeResidual);
+	if (!SV_SlowmoActive() && !com_dedicated->integer) SV_BotFrame (sv.time + sv.timeResidual);
 
 	// if time is about to hit the 32nd bit, kick all clients
 	// and clear sv.time, rather
@@ -1123,6 +1126,16 @@ void SV_Frame( int msec ) {
 		Cbuf_AddText( "map_restart 0\n" );
 		return;
 	}
+
+	if (SV_SlowmoActive()) {
+		SV_SlowmoRun(msec);
+		SV_CalcPings();
+		SV_CheckTimeouts();
+		SV_SendClientMessages();
+		SV_MasterHeartbeat(HEARTBEAT_FOR_MASTER);
+		return;
+	}
+
 
 	// update infostrings if anything has been changed
 	if ( cvar_modifiedFlags & CVAR_SERVERINFO ) {

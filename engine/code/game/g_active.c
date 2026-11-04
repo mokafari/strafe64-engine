@@ -351,6 +351,10 @@ void SpectatorThink( gentity_t *ent, usercmd_t *ucmd ) {
 		pm.pointcontents = trap_PointContents;
 
 		// perform a pmove
+		pm.bobFraction = &client->slowmoBobFraction;
+		pm.fractionalStep = g_slowmoStep.active;
+		pm.worldMsec = g_slowmoStep.worldMsec;
+		pm.wholeMsec = g_slowmoStep.wholeMsec;
 		Pmove (&pm);
 		// save results of pmove
 		VectorCopy( client->ps.origin, ent->s.origin );
@@ -807,7 +811,7 @@ void SendPendingPredictableEvents( playerState_t *ps ) {
 		// create temporary entity for event
 		t = G_TempEntity( ps->origin, event );
 		number = t->s.number;
-		BG_PlayerStateToEntityState( ps, &t->s, qtrue );
+		BG_PlayerStateToEntityState( ps, &t->s, !g_slowmoStep.active );
 		t->s.number = number;
 		t->s.eType = ET_EVENTS + event;
 		t->s.eFlags |= EF_PLAYER_EVENT;
@@ -1077,11 +1081,19 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd ) {
 	// Writing here too made both fight over the SYSTEMINFO cvars every frame,
 	// flooding reliable commands. Republish fresh once alive again.
 	if ( ucmd && ent->client->ps.stats[STAT_HEALTH] <= 0 ) {
+		if (g_slowmoStep.active) trap_SlowmoRequest(1, 1.0f, 30.0f);
 		lastReal = 0;
 		published = -1.0f;
 		return;
 	}
 
+	if ( g_slowmoStep.active && (!g_timeBind.integer || !ucmd) ) {
+		if (!g_timeBind.integer || clockOwner == ent->s.number) {
+			focusCharge = 1000; focusSpent = qfalse;
+			trap_SlowmoRequest(1, 1.0f, 30.0f);
+		}
+		return;
+	}
 	if ( !g_timeBind.integer || !ucmd ) {
 		if ( !g_timeBind.integer || clockOwner == ent->s.number ) {
 			focusCharge = 1000;
@@ -1109,7 +1121,7 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd ) {
 	// substeps, so movement physics is identical at every timescale — the core of
 	// making slow-mo feel consistent and crisp. Gated to g_timeBind: default play
 	// and the headless dojo (g_timeBind 0) keep their tuned, unchanged movement.
-	if ( !active ) {
+	if ( !active && !g_slowmoStep.active ) {
 		savedPmoveFixed = pmove_fixed.integer;
 		trap_Cvar_Set( "pmove_fixed", "1" );
 	}
@@ -1126,6 +1138,7 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd ) {
 	lastReal = now;
 	if ( realMsec < 0 ) realMsec = 0;
 	if ( realMsec > 250 ) realMsec = 250;
+	if (g_slowmoStep.active) realMsec = 8;
 	if ( g_timeBind.integer == 2 ) {
 		if ( !(ucmd->buttons & BUTTON_FOCUS) ) {
 			focusSpent = qfalse;
@@ -1213,6 +1226,15 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd ) {
 			if ( slideTs > 0.92f ) slideTs = 0.92f;
 			if ( target > slideTs ) target = slideTs;
 		}
+	}
+	if (g_slowmoStep.active) {
+		rate = target > g_slowmoStep.scale ? g_timeBindRise.value : g_timeBindSmooth.value;
+		if (g_timeBind.integer == 2) rate = target > g_slowmoStep.scale ? 40.0f : 18.0f;
+		if (target > 1.0f) target = 1.0f;
+		if (rate < 0.0f) rate = 0.0f;
+		trap_SlowmoRequest(1, target, rate);
+		clockOwner = ent->s.number;
+		return;
 	}
 	if ( cur < 0.0f ) {
 		cur = target;
@@ -1328,7 +1350,7 @@ void ClientThink_real( gentity_t *ent ) {
 	msec = ucmd->serverTime - client->ps.commandTime;
 	// following others may result in bad times, but we still want
 	// to check for follow toggles
-	if ( msec < 1 && client->sess.spectatorState != SPECTATOR_FOLLOW ) {
+	if ( !g_slowmoStep.active && msec < 1 && client->sess.spectatorState != SPECTATOR_FOLLOW ) {
 		return;
 	}
 	if ( msec > 200 ) {
@@ -1344,7 +1366,8 @@ void ClientThink_real( gentity_t *ent ) {
 		trap_Cvar_Update(&pmove_msec);
 	}
 
-	if ( pmove_fixed.integer || client->pers.pmoveFixed ) {
+	if ( g_slowmoStep.active ) msec = g_slowmoStep.wholeMsec;
+	if ( !g_slowmoStep.active && (pmove_fixed.integer || client->pers.pmoveFixed) ) {
 		ucmd->serverTime = ((ucmd->serverTime + pmove_msec.integer-1) / pmove_msec.integer) * pmove_msec.integer;
 		//if (ucmd->serverTime - client->ps.commandTime <= 0)
 		//	return;
@@ -1500,6 +1523,12 @@ void ClientThink_real( gentity_t *ent ) {
 		pm.timeScale = 1.0f;
 	}
 
+	pm.bobFraction = &client->slowmoBobFraction;
+	pm.fractionalStep = g_slowmoStep.active;
+	pm.worldMsec = g_slowmoStep.worldMsec;
+	pm.wholeMsec = g_slowmoStep.wholeMsec;
+	if (pm.fractionalStep) pm.timeScale = 1.0f;
+
 	// live air-strafe tuning: drive the pmove feel constants from cvars
 	pm_strafeAccelerate  = g_strafeAccel.value;
 	pm_wishSpeedClamp    = g_airWishClamp.value;
@@ -1561,10 +1590,10 @@ void ClientThink_real( gentity_t *ent ) {
 		ent->eventTime = level.time;
 	}
 	if (g_smoothClients.integer) {
-		BG_PlayerStateToEntityStateExtraPolate( &ent->client->ps, &ent->s, ent->client->ps.commandTime, qtrue );
+		BG_PlayerStateToEntityStateExtraPolate( &ent->client->ps, &ent->s, ent->client->ps.commandTime, !g_slowmoStep.active );
 	}
 	else {
-		BG_PlayerStateToEntityState( &ent->client->ps, &ent->s, qtrue );
+		BG_PlayerStateToEntityState( &ent->client->ps, &ent->s, !g_slowmoStep.active );
 	}
 	SendPendingPredictableEvents( &ent->client->ps );
 
@@ -1650,6 +1679,7 @@ A new command has arrived from the client
 void ClientThink( int clientNum ) {
 	gentity_t *ent;
 
+	trap_SlowmoStep(&g_slowmoStep);
 	ent = g_entities + clientNum;
 	trap_GetUsercmd( clientNum, &ent->client->pers.cmd );
 
@@ -1657,14 +1687,14 @@ void ClientThink( int clientNum ) {
 	// phone jack if they don't get any for a while
 	ent->client->lastCmdTime = level.time;
 
-	if ( !(ent->r.svFlags & SVF_BOT) && !g_synchronousClients.integer ) {
+	if ( !g_slowmoStep.active && !(ent->r.svFlags & SVF_BOT) && !g_synchronousClients.integer ) {
 		ClientThink_real( ent );
 	}
 }
 
 
 void G_RunClient( gentity_t *ent ) {
-	if ( !(ent->r.svFlags & SVF_BOT) && !g_synchronousClients.integer ) {
+	if ( !g_slowmoStep.active && !(ent->r.svFlags & SVF_BOT) && !g_synchronousClients.integer ) {
 		return;
 	}
 	ent->client->pers.cmd.serverTime = level.time;
@@ -1802,10 +1832,10 @@ void ClientEndFrame( gentity_t *ent ) {
 
 	// set the latest infor
 	if (g_smoothClients.integer) {
-		BG_PlayerStateToEntityStateExtraPolate( &ent->client->ps, &ent->s, ent->client->ps.commandTime, qtrue );
+		BG_PlayerStateToEntityStateExtraPolate( &ent->client->ps, &ent->s, ent->client->ps.commandTime, !g_slowmoStep.active );
 	}
 	else {
-		BG_PlayerStateToEntityState( &ent->client->ps, &ent->s, qtrue );
+		BG_PlayerStateToEntityState( &ent->client->ps, &ent->s, !g_slowmoStep.active );
 	}
 	SendPendingPredictableEvents( &ent->client->ps );
 

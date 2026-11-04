@@ -299,6 +299,13 @@ intptr_t SV_GameSystemCalls( intptr_t *args ) {
 		return 0;
 	case G_MILLISECONDS:
 		return Sys_Milliseconds();
+	case G_SLOWMO_STEP:
+		SV_SlowmoGetStep(VMA(1)); return 0;
+	case G_SLOWMO_REQUEST: {
+		slowmoRequest_t *r = VMA(1);
+		if (r->owner == 1) SV_SlowmoRequest(1, r->target, r->rate);
+		return 0;
+	}
 	case G_CVAR_REGISTER:
 		Cvar_Register( VMA(1), VMA(2), VMA(3), args[4] ); 
 		return 0;

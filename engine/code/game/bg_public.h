@@ -205,6 +205,10 @@ typedef struct {
 	// on server (timescale cvar) and client (prediction) so movement stays
 	// time-invariant for the player without desyncing prediction. 1.0 = normal.
 	float		timeScale;
+	qboolean fractionalStep; /* local authoritative path; never serialized */
+	float worldMsec;
+	int wholeMsec;
+	float *bobFraction;
 
 	// callbacks to test the world
 	// these will be different functions during game and cgame

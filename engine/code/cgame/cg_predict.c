@@ -433,6 +433,22 @@ void CG_PredictPlayerState( void ) {
 		return;
 	}
 
+	// Local native simulation already consumed input at real-time tick cadence.
+	// Never replay integer commands against a different scale history.
+	if (cg.slowmo.active) {
+		int i, n = cg.slowmo.ps.clientNum;
+		oldPlayerState = cg.predictedPlayerState;
+		cg.predictedPlayerState = cg.slowmo.ps;
+		trap_GetUserCmd(trap_GetCurrentCmdNumber(), &latestCmd);
+		PM_UpdateViewAngles(&cg.predictedPlayerState, &latestCmd);
+		CG_TransitionPlayerState(&cg.predictedPlayerState, &oldPlayerState);
+		if (n >= 0 && n < MAX_CLIENTS && cg.slowmo.poses[n].valid)
+			for (i=0; i<3; i++) cg.predictedPlayerState.origin[i] = cg.slowmo.poses[n].previous[i]
+				+ cg.slowmo.alpha * (cg.slowmo.poses[n].current[i] - cg.slowmo.poses[n].previous[i]);
+		VectorClear(cg.predictedError);
+		return;
+	}
+
 	// non-predicting local movement will grab the latest angles
 	if ( cg_nopredict.integer || cg_synchronousClients.integer ) {
 		CG_InterpolatePlayerState( qtrue );

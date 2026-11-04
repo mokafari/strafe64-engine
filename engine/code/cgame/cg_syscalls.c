@@ -56,6 +56,12 @@ void trap_Error(const char *fmt)
 int		trap_Milliseconds( void ) {
 	return syscall( CG_MILLISECONDS ); 
 }
+void trap_SlowmoRender(slowmoRender_t *frame) { syscall(CG_SLOWMO_RENDER, frame); }
+void trap_SlowmoRequest(int owner, float target, float rate) {
+	slowmoRequest_t request;
+	request.owner = owner; request.target = target; request.rate = rate;
+	syscall(CG_SLOWMO_REQUEST, &request);
+}
 
 void	trap_Cvar_Register( vmCvar_t *vmCvar, const char *varName, const char *defaultValue, int flags ) {
 	syscall( CG_CVAR_REGISTER, vmCvar, varName, defaultValue, flags );

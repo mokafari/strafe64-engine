@@ -124,6 +124,7 @@ static void CG_KillcamRestoreCvars( void ) {
 	int i;
 	char saved[MAX_INFO_STRING];
 	trap_Cvar_VariableStringBuffer(KC_RESTORE_CVAR, saved, sizeof(saved));
+	trap_SlowmoRequest(0, 1.0f, 30.0f);
 	if (!saved[0]) return;
 	if (!Info_Validate(saved)) {
 		trap_Cvar_Set(KC_RESTORE_CVAR, "");
@@ -131,6 +132,7 @@ static void CG_KillcamRestoreCvars( void ) {
 	}
 	for ( i = 0; i < (int)ARRAY_LEN( kc_lookCvars ); i++ ) {
 		const char *value = Info_ValueForKey(saved, kc_lookCvars[i].name);
+		if (cg.slowmo.active && (!strcmp(kc_lookCvars[i].name, "timescale") || !strcmp(kc_lookCvars[i].name, "pmove_fixed"))) continue;
 		if (value[0]) trap_Cvar_Set(kc_lookCvars[i].name, value);
 	}
 	// A death-to-spectator transition has no movement controller to replace
@@ -825,8 +827,9 @@ void CG_KillcamUpdate( void ) {
 		if ( d < 0 ) {
 			d = -d;
 		}
-		if ( kcPublished < 0.0f || d >= 0.15f
-				|| ( d >= 0.03f && now - kcLastPublish >= 80 ) ) {
+		if (cg.slowmo.active) trap_SlowmoRequest(2, ts, 0.0f);
+		if ( !cg.slowmo.active && (kcPublished < 0.0f || d >= 0.15f
+				|| ( d >= 0.03f && now - kcLastPublish >= 80 )) ) {
 			kcPublished = ts;
 			kcLastPublish = now;
 			trap_Cvar_Set( "timescale", va( "%.3f", ts ) );

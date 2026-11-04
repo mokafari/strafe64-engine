@@ -2243,7 +2243,13 @@ static void PM_Footsteps( void ) {
 
 	// check for footstep / splash sounds
 	old = pm->ps->bobCycle;
-	pm->ps->bobCycle = (int)( old + bobmove * pml.msec ) & 255;
+	if (pm->fractionalStep && pm->bobFraction) {
+		float phase = *pm->bobFraction + bobmove * pm->worldMsec;
+		pm->ps->bobCycle = (old + (int)phase) & 255;
+		*pm->bobFraction = phase - (int)phase;
+	} else {
+		pm->ps->bobCycle = (int)( old + bobmove * pml.msec ) & 255;
+	}
 
 	// if we just crossed a cycle boundary, play an appropriate footstep event
 	if ( ( ( old + 64 ) ^ ( pm->ps->bobCycle + 64 ) ) & 128 ) {
@@ -2848,7 +2854,8 @@ static void PM_UpdateMovementTimers( void ) {
 	// real-time msec: undo the SUPERHOT world timescale so movement windows
 	// (double jump, bhop chain) stay the same real-time length at any slow-mo
 	int realMsec = (int)( pml.msec / pm->timeScale + 0.5f );
-	if ( realMsec < 1 ) {
+	if (pm->fractionalStep) realMsec = pml.msec;
+	if ( !pm->fractionalStep && realMsec < 1 ) {
 		realMsec = 1;
 	}
 
@@ -3014,6 +3021,7 @@ void PmoveSingle (pmove_t *pmove) {
 	} else if ( pml.msec > 200 ) {
 		pml.msec = 200;
 	}
+	if (pmove->fractionalStep) pml.msec = pmove->wholeMsec;
 	pm->ps->commandTime = pmove->cmd.serverTime;
 
 	// save old org in case we get stuck
@@ -3022,7 +3030,7 @@ void PmoveSingle (pmove_t *pmove) {
 	// save old velocity for crashlanding
 	VectorCopy (pm->ps->velocity, pml.previous_velocity);
 
-	pml.frametime = pml.msec * 0.001;
+	pml.frametime = (pmove->fractionalStep ? pmove->worldMsec : pml.msec) * 0.001f;
 
 	// update the viewangles
 	PM_UpdateViewAngles( pm->ps, &pm->cmd );
@@ -3139,7 +3147,7 @@ void PmoveSingle (pmove_t *pmove) {
 	PM_WaterEvents();
 
 	// snap some parts of playerstate to save network bandwidth
-	trap_SnapVector( pm->ps->velocity );
+	if (!pm->fractionalStep) trap_SnapVector( pm->ps->velocity );
 }
 
 
@@ -3159,6 +3167,13 @@ void Pmove (pmove_t *pmove) {
 		pmove->timeScale = 1.0f;
 	}
 
+	if (pmove->fractionalStep) {
+		if (pmove->worldMsec <= 0.0f || pmove->worldMsec > 8.001f) return;
+		pmove->timeScale = 1.0f;
+		pmove->ps->pmove_framecount = (pmove->ps->pmove_framecount+1) & ((1<<PS_PMOVEFRAMECOUNTBITS)-1);
+		PmoveSingle(pmove);
+		return;
+	}
 	finalTime = pmove->cmd.serverTime;
 
 	if ( finalTime < pmove->ps->commandTime ) {

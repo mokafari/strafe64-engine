@@ -698,6 +698,10 @@ void CL_Record_f( void ) {
 	entityState_t	*ent;
 	entityState_t	nullstate;
 	char		*s;
+	if (SV_SlowmoActive()) {
+		Com_Printf("Demo recording is unavailable with experimental slow motion; use com_slowmo 0 and reload the map.\n");
+		return;
+	}
 
 	if ( Cmd_Argc() > 2 ) {
 		Com_Printf ("record <demoname>\n");

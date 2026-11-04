@@ -2004,9 +2004,13 @@ G_RunFrame
 Advances the non-player objects in the world
 ================
 */
+slowmoStep_t g_slowmoStep;
+
 void G_RunFrame( int levelTime ) {
 	int			i;
 	gentity_t	*ent;
+
+	trap_SlowmoStep(&g_slowmoStep);
 
 	// if we are waiting for the level to restart, do nothing
 	if ( level.restarted ) {

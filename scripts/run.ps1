@@ -19,6 +19,7 @@ param(
     [ValidatePattern('^[1-9][0-9]{2,4}x[1-9][0-9]{2,4}$')]
     [string]$Resolution,
     [switch]$NativeResolution,
+    [switch]$ExperimentalSlowmo,
     [int]$Bots = 0,
     [string]$Map = 'aggressor',
     [switch]$Dedicated,
@@ -102,6 +103,9 @@ if (Test-Path $genDir) {
 }
 
 $common = @('+set','com_basegame','baseoa','+set','fs_basepath',$OA,'+set','sv_pure','0','+set','vm_game','0')
+
+$common += @('+set','com_slowmo',$(if ($ExperimentalSlowmo) {'1'} else {'0'}))
+if ($ExperimentalSlowmo -and $Dedicated) { throw 'Experimental slow motion requires local play.' }
 
 if ($StageOnly) { Write-Host "Staged Windows assets -> $baseoa"; return }
 

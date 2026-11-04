@@ -109,3 +109,5 @@ equ	trap_R_BoneTag				-115
 equ	trap_R_BoneInertiaCapture	-116
 equ	trap_R_BoneInertia			-117
 equ	trap_R_BoneCubic			-118
+equ trap_SlowmoRender -901
+equ trap_SlowmoRequest -902

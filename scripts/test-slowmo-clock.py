@@ -13,7 +13,7 @@ checks = 'int main(void) {\n float rates[]={0.01f,0.05f,0.06f,0.1f,0.5f,1.0f};\n
 renderer = (root / 'engine/code/client/cl_main.c').read_text()
 a = renderer.index('int CL_ScaledMilliseconds(void)')
 b = renderer.index('\n}', a) + 2
-prefix += 'struct { int realtime; } cls;\n'
+prefix += 'struct { int realtime; } cls;\nint SV_SlowmoActive(void) { return 0; }\n'
 clock += '\n' + renderer[a:b] + '\n'
 checks = checks.replace(' ft.integer=16;', ' cls.realtime=123456; ts.value=.05f; assert(CL_ScaledMilliseconds()==123456); ts.value=1; assert(CL_ScaledMilliseconds()==123456); cls.realtime++; assert(CL_ScaledMilliseconds()==123457);\n ft.integer=16;')
 with tempfile.TemporaryDirectory(prefix='s64-clock-') as tmp:

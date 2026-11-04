@@ -293,9 +293,9 @@ void CL_AdjustAngles( void ) {
 	float	speed;
 	
 	if ( in_speed.active ) {
-		speed = 0.001 * cls.frametime * cl_anglespeedkey->value;
+		speed = 0.001 * (SV_SlowmoActive() ? frame_msec : cls.frametime) * cl_anglespeedkey->value;
 	} else {
-		speed = 0.001 * cls.frametime;
+		speed = 0.001 * (SV_SlowmoActive() ? frame_msec : cls.frametime);
 	}
 
 	if ( !in_strafe.active ) {
@@ -403,9 +403,9 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 	}
 
 	if ( in_speed.active ) {
-		anglespeed = 0.001 * cls.frametime * cl_anglespeedkey->value;
+		anglespeed = 0.001 * (SV_SlowmoActive() ? frame_msec : cls.frametime) * cl_anglespeedkey->value;
 	} else {
-		anglespeed = 0.001 * cls.frametime;
+		anglespeed = 0.001 * (SV_SlowmoActive() ? frame_msec : cls.frametime);
 	}
 
 	if ( !in_strafe.active ) {
@@ -662,7 +662,7 @@ void CL_CreateNewCommands( void ) {
 	// command once the server clock has actually ticked, so the ring keeps
 	// spanning real game-time. Mouse/keyboard input keeps accumulating into
 	// cl.viewangles meanwhile, so the next command still carries it in full.
-	if ( cl.cmdNumber > 0
+	if ( !SV_SlowmoActive() && cl.cmdNumber > 0
 		&& cl.serverTime == cl.cmds[ cl.cmdNumber & CMD_MASK ].serverTime ) {
 		return;
 	}
@@ -671,6 +671,18 @@ void CL_CreateNewCommands( void ) {
 	cl.cmdNumber++;
 	cmdNum = cl.cmdNumber & CMD_MASK;
 	cl.cmds[cmdNum] = CL_CreateCmd ();
+}
+
+void CL_PrepareSlowmo(void) {
+	if (clc.demorecording) CL_StopRecord_f();
+}
+
+qboolean CL_LocalSlowmoCommand(int *clientNum, usercmd_t *cmd) {
+	if (clc.state != CA_ACTIVE || clc.demoplaying || !cl.snap.valid || cl.cmdNumber < 1)
+		return qfalse;
+	*clientNum = cl.snap.ps.clientNum;
+	*cmd = cl.cmds[cl.cmdNumber & CMD_MASK];
+	return qtrue;
 }
 
 /*

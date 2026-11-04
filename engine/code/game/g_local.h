@@ -259,6 +259,7 @@ typedef struct {
 struct gclient_s {
 	// ps MUST be the first element, because the server expects it
 	playerState_t	ps;				// communicated by server to clients
+	float slowmoBobFraction;
 
 	// the rest of the structure is private to game
 	clientPersistant_t	pers;
@@ -676,6 +677,9 @@ char *ClientConnect( int clientNum, qboolean firstTime, qboolean isBot );
 void ClientUserinfoChanged( int clientNum );
 void ClientDisconnect( int clientNum );
 void G_ReleaseTimeBind( int clientNum );
+extern slowmoStep_t g_slowmoStep;
+void trap_SlowmoStep(slowmoStep_t *step);
+void trap_SlowmoRequest(int owner, float target, float rate);
 void ClientBegin( int clientNum );
 void ClientCommand( int clientNum );
 

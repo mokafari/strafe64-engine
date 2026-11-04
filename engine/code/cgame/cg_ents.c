@@ -1169,6 +1169,16 @@ static void CG_CalcEntityLerpPositions( centity_t *cent ) {
 		}
 	}
 
+	if (cg.slowmo.active) {
+		int i, n = cent->currentState.number;
+		if (n >= 0 && n < MAX_CLIENTS && cg.slowmo.poses[n].valid)
+			for (i=0; i<3; i++) cent->lerpOrigin[i] = cg.slowmo.poses[n].previous[i]
+				+ cg.slowmo.alpha * (cg.slowmo.poses[n].current[i] - cg.slowmo.poses[n].previous[i]);
+		if (cent == &cg.predictedPlayerEntity && cg.localRenderOriginValid)
+			VectorCopy(cg.localRenderOrigin, cent->lerpOrigin);
+		return;
+	}
+
 	// The chase camera already smoothed and error-corrected this origin.
 	// Smoothing the local body independently would introduce relative jitter.
 	if ( cent == &cg.predictedPlayerEntity && cg.localRenderOriginValid ) {

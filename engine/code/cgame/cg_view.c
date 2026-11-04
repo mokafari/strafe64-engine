@@ -1165,7 +1165,7 @@ static int CG_CalcViewValues( void ) {
 		ts = cg.timeScaleNow;
 		blend = ( 0.95f - ts ) / 0.45f;		// fade with dilation depth
 
-		if ( enbuf[0] != '0' && blend > 0.0f && ps->pm_type != PM_INTERMISSION ) {
+		if ( !cg.slowmo.active && enbuf[0] != '0' && blend > 0.0f && ps->pm_type != PM_INTERMISSION ) {
 			static vec3_t	smoothOrigin;
 			static int		smoothRealMs = 0;
 			static qboolean	seeded = qfalse;
@@ -1924,7 +1924,7 @@ static void CG_UpdateTimeGrade( void ) {
 	}
 
 	trap_Cvar_VariableStringBuffer( "timescale", buf, sizeof( buf ) );
-	ts = atof( buf );
+	ts = cg.slowmo.active ? cg.slowmo.scale : atof( buf );
 	if ( ts <= 0.0f ) {
 		ts = 1.0f;
 	}
@@ -1974,13 +1974,15 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
 	// update cvars
 	CG_UpdateCvars();
+	trap_SlowmoRender(&cg.slowmo);
 
 	// one timescale read per frame; the smoothers and prediction share it
 	{
 		char	tsbuf[32];
 
 		trap_Cvar_VariableStringBuffer( "timescale", tsbuf, sizeof( tsbuf ) );
-		cg.timeScaleNow = atof( tsbuf );
+		cg.timeScaleNow = cg.slowmo.active ? cg.slowmo.scale : atof( tsbuf );
+		if (cg.slowmo.active) cg_timescale.value = cg.timeScaleNow;
 		if ( cg.timeScaleNow <= 0.0f ) {
 			cg.timeScaleNow = 1.0f;
 		}
@@ -2138,7 +2140,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 		cg.oldTime = cg.time;
 		CG_AddLagometerFrameInfo();
 	}
-	if (cg_timescale.value != cg_timescaleFadeEnd.value) {
+	if (!cg.slowmo.active && cg_timescale.value != cg_timescaleFadeEnd.value) {
 		if (cg_timescale.value < cg_timescaleFadeEnd.value) {
 			cg_timescale.value += cg_timescaleFadeSpeed.value * ((float)cg.frametime) / 1000;
 			if (cg_timescale.value > cg_timescaleFadeEnd.value)

@@ -55,6 +55,12 @@ void trap_Error( const char *text )
 int		trap_Milliseconds( void ) {
 	return syscall( G_MILLISECONDS ); 
 }
+void trap_SlowmoStep(slowmoStep_t *step) { syscall(G_SLOWMO_STEP, step); }
+void trap_SlowmoRequest(int owner, float target, float rate) {
+	slowmoRequest_t request;
+	request.owner = owner; request.target = target; request.rate = rate;
+	syscall(G_SLOWMO_REQUEST, &request);
+}
 int		trap_Argc( void ) {
 	return syscall( G_ARGC );
 }

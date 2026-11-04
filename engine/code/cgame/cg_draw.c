@@ -1241,6 +1241,7 @@ Should we draw something differnet for long lag vs no packets?
 ==============
 */
 static void CG_DrawDisconnect( void ) {
+	if (cg.slowmo.active) return;
 	float		x, y;
 	int			cmdNum;
 	usercmd_t	cmd;

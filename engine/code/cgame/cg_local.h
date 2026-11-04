@@ -558,6 +558,7 @@ typedef struct {
 	snapshot_t	activeSnapshots[2];
 
 	float		timeScaleNow;		// world timescale, read ONCE per frame (was a string cvar lookup per entity)
+	slowmoRender_t slowmo;
 
 	float		frameInterpolation;	// (float)( cg.time - cg.frame->serverTime ) / (cg.nextFrame->serverTime - cg.frame->serverTime)
 
@@ -1637,6 +1638,8 @@ void  CG_SwordSlashAnglesForQuads( int startQuad, int endQuad, float f, qboolean
 int   CG_SwordSwingDt( int swingTime );		// elapsed swing ms with hit-stop applied (local player)
 int  CG_GlowPilotCount( void );		// # of ET_PLAYER glow lights this frame (count-clamp)
 void CG_ResetPlayerEntity( centity_t *cent );
+void trap_SlowmoRender(slowmoRender_t *frame);
+void trap_SlowmoRequest(int owner, float target, float rate);
 void CG_AddRefEntityWithPowerups( refEntity_t *ent, entityState_t *state, int team );
 void CG_NewClientInfo( int clientNum );
 sfxHandle_t	CG_CustomSound( int clientNum, const char *soundName );

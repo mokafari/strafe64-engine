@@ -419,6 +419,15 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		return 0;
 	case CG_MILLISECONDS:
 		return Sys_Milliseconds();
+	case CG_SLOWMO_RENDER:
+		if (clc.demoplaying) { memset(VMA(1), 0, sizeof(slowmoRender_t)); return 0; }
+		return SV_SlowmoGetRender(cl.snap.ps.clientNum, VMA(1));
+	case CG_SLOWMO_REQUEST: {
+		slowmoRequest_t *r = VMA(1);
+		if (!clc.demoplaying && (r->owner == 0 || r->owner == 2))
+			SV_SlowmoRequest(r->owner, r->target, r->rate);
+		return 0;
+	}
 	case CG_CVAR_REGISTER:
 		Cvar_Register( VMA(1), VMA(2), VMA(3), args[4] ); 
 		return 0;

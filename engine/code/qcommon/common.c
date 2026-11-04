@@ -2937,6 +2937,8 @@ void Com_Init( char *commandLine ) {
 	com_logfile = Cvar_Get ("logfile", "0", CVAR_TEMP );
 
 	com_timescale = Cvar_Get ("timescale", "1", CVAR_CHEAT | CVAR_SYSTEMINFO );
+	Cvar_Get("com_slowmo", "0", CVAR_ARCHIVE | CVAR_LATCH);
+	Cvar_Get("com_slowmoTrace", "0", 0);
 	com_fixedtime = Cvar_Get ("fixedtime", "0", CVAR_CHEAT);
 	com_showtrace = Cvar_Get ("com_showtrace", "0", CVAR_CHEAT);
 	com_speeds = Cvar_Get ("com_speeds", "0", 0);
@@ -3191,6 +3193,8 @@ float com_effectiveTimeScale = 1.0f;
 
 int Com_ModifyMsec( int msec ) {
 	int		clampTime;
+	// Experimental local scheduler consumes real time and integrates world time.
+	if (SV_SlowmoActive()) return msec > 0 ? msec : 0;
 	// The game/killcam owns easing. A second filter here makes simulation
 	// time disagree with the timescale used by server and client pmove.
 	com_effectiveTimeScale = com_timescale->value;
@@ -3425,7 +3429,7 @@ void Com_Frame( void ) {
 		timeBeforeClient = Sys_Milliseconds ();
 	}
 
-	CL_Frame( msec );
+	CL_Frame( SV_SlowmoActive() ? SV_SlowmoFrameMsec() : msec );
 
 	if ( com_speeds->integer ) {
 		timeAfter = Sys_Milliseconds ();

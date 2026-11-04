@@ -1433,4 +1433,21 @@ typedef enum _flag_status {
 #define LERP( a, b, w ) ( ( a ) * ( 1.0f - ( w ) ) + ( b ) * ( w ) )
 #define LUMA( red, green, blue ) ( 0.2126f * ( red ) + 0.7152f * ( green ) + 0.0722f * ( blue ) )
 
+// Native local-play ABI only: no changes to wire playerState/usercmd formats.
+typedef struct {
+	int active, tick, wholeMsec;
+	float worldMsec, scale;
+} slowmoStep_t;
+typedef struct { int owner; float target, rate; } slowmoRequest_t;
+typedef struct {
+	int valid;
+	vec3_t previous, current;
+} slowmoPose_t;
+typedef struct {
+	int active, tick;
+	float alpha, scale;
+	playerState_t ps;
+	slowmoPose_t poses[MAX_CLIENTS];
+} slowmoRender_t;
+
 #endif	// __Q_SHARED_H

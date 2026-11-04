@@ -853,6 +853,17 @@ extern	cvar_t	*com_speeds;
 extern	cvar_t	*com_timescale;
 extern double com_frameFraction;
 extern float com_effectiveTimeScale;
+qboolean SV_SlowmoActive(void);
+void SV_SlowmoInit(void);
+int SV_SlowmoFrameMsec(void);
+int SV_SlowmoRealTime(void);
+void SV_SlowmoGetStep(slowmoStep_t *step);
+void SV_SlowmoRequest(int owner, float target, float rate);
+qboolean SV_SlowmoGetRender(int clientNum, slowmoRender_t *frame);
+#ifndef DEDICATED
+void CL_PrepareSlowmo(void);
+qboolean CL_LocalSlowmoCommand(int *clientNum, usercmd_t *cmd);
+#endif
 extern	cvar_t	*com_sv_running;
 extern	cvar_t	*com_cl_running;
 extern	cvar_t	*com_version;

@@ -658,12 +658,13 @@ void SV_SendClientMessages(void)
 		// whenever the scaled interval fell between two tick multiples (2.5ms
 		// vs 2ms ticks at the slow-mo floor = ~12Hz instead of 20Hz).
 		{
-			int need = (int)( c->snapshotMsec * com_effectiveTimeScale );
+			int need = SV_SlowmoActive() ? c->snapshotMsec : (int)( c->snapshotMsec * com_effectiveTimeScale );
+			int now = SV_SlowmoActive() ? SV_SlowmoRealTime() : svs.time;
 
 			if ( need < 1 ) {
 				need = 1;
 			}
-			if(svs.time - c->lastSnapshotTime < need)
+			if(now - c->lastSnapshotTime < need)
 				continue;		// It's not time yet
 		}
 
@@ -690,7 +691,7 @@ void SV_SendClientMessages(void)
 
 		// generate and send a new message
 		SV_SendClientSnapshot(c);
-		c->lastSnapshotTime = svs.time;
+		c->lastSnapshotTime = SV_SlowmoActive() ? SV_SlowmoRealTime() : svs.time;
 		c->rateDelayed = qfalse;
 	}
 }
