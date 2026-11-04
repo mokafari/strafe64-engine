@@ -95,7 +95,8 @@ static const char *map_keys[] = {
 	"strafe64kb_court_8240",
 	"strafe64kb_9000",
 	"strafe64kb_8232",
-	"lattice_arena_64"
+	"lattice_arena_64",
+	"strafe64_nocturne"
 };
 static const char *map_names[] = {
 	"VELODROME",
@@ -105,6 +106,7 @@ static const char *map_names[] = {
 	"KILLBOX 9000",
 	"KILLBOX 8232",
 	"LATTICE GRID",
+	"NOCTURNE",
 	NULL
 };
 #define NUM_ARENA_MAPS		( ARRAY_LEN( map_keys ) )

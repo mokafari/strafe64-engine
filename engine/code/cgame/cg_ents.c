@@ -1055,17 +1055,13 @@ Real-time time-constant, so the blur is independent of dilation. Snaps on telepo
 */
 static void CG_SmoothEntityMotion( centity_t *cent ) {
 	float	ts, k, realFrame, dist, blend;
+	int		nowReal;
 	vec3_t	delta, raw;
-	char	tsbuf[16];
 
 	if ( cent->currentState.number >= MAX_CLIENTS || cent == &cg.predictedPlayerEntity ) {
 		return;		// only other players/bots; our own body is predicted
 	}
-	trap_Cvar_VariableStringBuffer( "timescale", tsbuf, sizeof( tsbuf ) );	// listen server shares it
-	ts = atof( tsbuf );
-	if ( ts <= 0.0f ) {
-		ts = 1.0f;
-	}
+	ts = cg.timeScaleNow;	// per-frame read (listen server shares the cvar)
 	// how much to smooth: 1 at/below 0.5x, fading to 0 at/above 0.95x (no lag at speed)
 	blend = ( 0.95f - ts ) / 0.45f;
 	if ( blend <= 0.0f ) {
@@ -1084,9 +1080,49 @@ static void CG_SmoothEntityMotion( centity_t *cent ) {
 		cent->smoothTime = cg.time;
 		return;
 	}
-	// real frametime = dilated game frametime / timescale; ~90ms real time-constant
-	realFrame = cg.frametime / ( ts > 0.01f ? ts : 0.01f );
-	k = realFrame / 90.0f;
+	// REAL frame time (~90ms time-constant). cg.frametime is integer scaled ms
+	// (0 or 1 deep in slow-mo), so dividing it by ts made the step swing between
+	// 0 and ~20ms frame to frame = uneven smoothing. Same clock as the view smoother.
+	nowReal = trap_Milliseconds();
+	if ( cent->smoothRealMs == 0 || nowReal < cent->smoothRealMs
+			|| nowReal - cent->smoothRealMs > 250 ) {
+		realFrame = 0.0f;		// stale / first update: don't lurch
+	} else {
+		realFrame = (float)( nowReal - cent->smoothRealMs );
+	}
+	cent->smoothRealMs = nowReal;
+	{
+		// DEAD-RECKON on the entity's velocity between physics steps, like the
+		// local view (CG_CalcViewValues). pmove_fixed moves a body in pmove_msec
+		// WORLD-ms chunks, so a fast bot in deep slow-mo holds still for ~160ms
+		// real then hops several units; the snapshots just replay that staircase.
+		// Glide the smoothed origin at the true speed and let the low-pass only
+		// absorb the per-step residual, never running ahead of the raw position.
+		const float	*vel = cent->currentState.pos.trDelta;
+		float		worldMs = realFrame * ts, along, tc = 90.0f, stepMs;
+
+		if ( worldMs > pmove_msec.integer ) {
+			worldMs = (float)pmove_msec.integer;
+		}
+		VectorMA( cent->smoothOrigin, worldMs * 0.001f, vel, cent->smoothOrigin );
+		VectorSubtract( cent->smoothOrigin, raw, delta );
+		along = DotProduct( delta, vel );
+		if ( along > 0.0f ) {
+			float	v2 = DotProduct( vel, vel );
+			if ( v2 > 1.0f ) {
+				VectorMA( cent->smoothOrigin, -along / v2, vel, cent->smoothOrigin );
+			}
+		}
+		VectorSubtract( raw, cent->smoothOrigin, delta );
+		stepMs = pmove_msec.integer / ( ts > 0.02f ? ts : 0.02f );
+		if ( stepMs > 250.0f ) {
+			stepMs = 250.0f;
+		}
+		if ( stepMs > tc ) {
+			tc = stepMs;		// spread each step's correction over one step period
+		}
+		k = 1.0f - expf( -realFrame / tc );
+	}
 	if ( k > 1.0f ) k = 1.0f;
 	if ( k < 0.0f ) k = 0.0f;
 	VectorMA( cent->smoothOrigin, k, delta, cent->smoothOrigin );

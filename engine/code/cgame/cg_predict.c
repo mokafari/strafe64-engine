@@ -502,9 +502,7 @@ void CG_PredictPlayerState( void ) {
 	// SUPERHOT: mirror the server's world timescale so predicted movement stays
 	// time-invariant and matches the server (listen server shares the cvar)
 	{
-		char tsbuf[32];
-		trap_Cvar_VariableStringBuffer( "timescale", tsbuf, sizeof( tsbuf ) );
-		cg_pmove.timeScale = atof( tsbuf );
+		cg_pmove.timeScale = cg.timeScaleNow;
 		if ( cg_pmove.timeScale <= 0.01f ) {
 			cg_pmove.timeScale = 1.0f;
 		}

@@ -1158,15 +1158,11 @@ static int CG_CalcViewValues( void ) {
 	// snapped on a big jump (teleport/respawn). Toggle cg_slowmoSmooth 0; the
 	// real-time constant is cg_slowmoSmoothMs (default 55 -> smoothness vs lag).
 	{
-		char	enbuf[32], tsbuf[32], tcbuf[32];
+		char	enbuf[32], tcbuf[32];
 		float	ts, blend;
 
 		trap_Cvar_VariableStringBuffer( "cg_slowmoSmooth", enbuf, sizeof( enbuf ) );
-		trap_Cvar_VariableStringBuffer( "timescale", tsbuf, sizeof( tsbuf ) );
-		ts = atof( tsbuf );
-		if ( ts <= 0.0f ) {
-			ts = 1.0f;
-		}
+		ts = cg.timeScaleNow;
 		blend = ( 0.95f - ts ) / 0.45f;		// fade with dilation depth
 
 		if ( enbuf[0] != '0' && blend > 0.0f && ps->pm_type != PM_INTERMISSION ) {
@@ -1195,9 +1191,42 @@ static int CG_CalcViewValues( void ) {
 				VectorCopy( raw, smoothOrigin );	// seed / snap on teleport or respawn
 				seeded = qtrue;
 			} else {
+				float	stepMs, worldMs, along;
+
 				dtReal = (float)( nowReal - smoothRealMs );
 				if ( dtReal < 0.0f ) {
 					dtReal = 0.0f;
+				}
+				// DEAD-RECKON between fixed pmove steps. pmove_fixed advances the
+				// body in pmove_msec WORLD-ms chunks, i.e. only every pmove_msec/ts
+				// real ms (~160ms at 0.05x), so the raw origin is a staircase. Carry
+				// the smoothed origin forward on the predicted velocity every render
+				// frame so it glides at the true speed between steps, and let the
+				// low-pass only mop up the step's residual error. Never run ahead of
+				// the raw origin along the velocity (it is always one step ahead of
+				// world time already), so a stopped body can't overshoot.
+				worldMs = dtReal * ts;
+				if ( worldMs > pmove_msec.integer ) {
+					worldMs = (float)pmove_msec.integer;
+				}
+				VectorMA( smoothOrigin, worldMs * 0.001f, ps->velocity, smoothOrigin );
+				VectorSubtract( smoothOrigin, raw, delta );
+				along = DotProduct( delta, ps->velocity );
+				if ( along > 0.0f ) {
+					float	v2 = DotProduct( ps->velocity, ps->velocity );
+					if ( v2 > 1.0f ) {
+						VectorMA( smoothOrigin, -along / v2, ps->velocity, smoothOrigin );
+					}
+				}
+				VectorSubtract( raw, smoothOrigin, delta );
+				// the residual repeats once per physics step, so spread its
+				// correction over about one step period instead of the fixed tc
+				stepMs = pmove_msec.integer / ( ts > 0.02f ? ts : 0.02f );
+				if ( stepMs > 250.0f ) {
+					stepMs = 250.0f;
+				}
+				if ( stepMs > tc ) {
+					tc = stepMs;
 				}
 				k = 1.0f - expf( -dtReal / tc ); // frame-rate independent follow
 				if ( k > 1.0f ) {
@@ -1945,6 +1974,17 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
 	// update cvars
 	CG_UpdateCvars();
+
+	// one timescale read per frame; the smoothers and prediction share it
+	{
+		char	tsbuf[32];
+
+		trap_Cvar_VariableStringBuffer( "timescale", tsbuf, sizeof( tsbuf ) );
+		cg.timeScaleNow = atof( tsbuf );
+		if ( cg.timeScaleNow <= 0.0f ) {
+			cg.timeScaleNow = 1.0f;
+		}
+	}
 
 	// if we are only updating the screen as a loading
 	// pacifier, don't even try to read snapshots

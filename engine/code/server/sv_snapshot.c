@@ -653,8 +653,19 @@ void SV_SendClientMessages(void)
 		if(!c->state)
 			continue;		// not connected
 
-		if(svs.time - c->lastSnapshotTime < c->snapshotMsec * com_effectiveTimeScale)
-			continue;		// It's not time yet
+		// Same integer truncation SV_Frame applies to its tick length: comparing
+		// against the unrounded float made the snapshot wait one extra tick
+		// whenever the scaled interval fell between two tick multiples (2.5ms
+		// vs 2ms ticks at the slow-mo floor = ~12Hz instead of 20Hz).
+		{
+			int need = (int)( c->snapshotMsec * com_effectiveTimeScale );
+
+			if ( need < 1 ) {
+				need = 1;
+			}
+			if(svs.time - c->lastSnapshotTime < need)
+				continue;		// It's not time yet
+		}
 
 		if(*c->downloadName)
 			continue;		// Client is downloading, don't send snapshots

@@ -263,6 +263,7 @@ typedef struct centity_s {
 	// integer-quantised snapshot positions don't stair-step in deep bullet-time
 	vec3_t			smoothOrigin;
 	int				smoothTime;		// last frame this was updated (0 = uninitialised)
+	int				smoothRealMs;	// trap_Milliseconds of that update (drives the low-pass)
 
 	// STRAFE 64: per-entity sword swing + blade-trail state, so OTHER players and
 	// bots seen in third person get the same swing timing and slash ribbon the
@@ -555,6 +556,8 @@ typedef struct {
 	snapshot_t	*snap;				// cg.snap->serverTime <= cg.time
 	snapshot_t	*nextSnap;			// cg.nextSnap->serverTime > cg.time, or NULL
 	snapshot_t	activeSnapshots[2];
+
+	float		timeScaleNow;		// world timescale, read ONCE per frame (was a string cvar lookup per entity)
 
 	float		frameInterpolation;	// (float)( cg.time - cg.frame->serverTime ) / (cg.nextFrame->serverTime - cg.frame->serverTime)
 
