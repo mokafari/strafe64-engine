@@ -1,5 +1,9 @@
 # Slow-motion architecture review — 2026-11-04
 
+Follow-up: [online research and implementation plan](SLOW_MOTION_IMPLEMENTATION_PLAN.md)
+compares timing alternatives, cites primary sources, and refines the proposed
+clock/prediction/render contract.
+
 Reviewed local source at `dd66950`, including the entity smoothing fix. This is
 a source-based timing audit, with arithmetic derived from the implementation;
 it is not a capture of end-to-end input latency or proof that all live hitches
