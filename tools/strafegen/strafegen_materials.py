@@ -35,6 +35,7 @@ MATERIALS = {
     "granite_grey":   ("granite_grey.jpg",   0.5,   "polished salt-and-pepper granite"),
     "granite_flamed": ("granite_flamed.jpg", 0.5,   "flamed charcoal granite, matte"),
     "brass":          ("brass.jpg",          0.5,   "brushed champagne brass"),
+    "granite_black":  ("granite_black.jpg",  0.25,  "polished Absolute Black granite, fine sparkle"),
 }
 
 
@@ -58,6 +59,7 @@ RELIEF = {
     "granite_grey":   (0.15, 0.0),
     "granite_flamed": (0.6, 0.0),
     "brass":          (0.3, 0.0),
+    "granite_black":  (0.12, 0.0),     # polished: optically flat
 }
 
 

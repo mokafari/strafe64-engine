@@ -299,12 +299,13 @@ void DismemberEntity( gentity_t *self, gentity_t *attacker ) {
 	}
 
 	// depth of cut from how hard the killing blow overkilled
-	if ( self->health <= GIB_HEALTH * 3 ) {
+	if ( self->health <= GIB_HEALTH * 3 && rand() % 100 < 60 ) {
 		cutType = 2;		// full bisection
-	} else if ( self->health <= GIB_HEALTH ) {
-		cutType = 1;		// decapitation + limb
 	} else {
-		cutType = 0;		// single limb sever
+		// every blade kill takes something off: mostly a limb, often the head
+		int		roll = rand() % 100;
+
+		cutType = roll < 55 ? 0 : roll < 85 ? 1 : 2;
 	}
 
 	tent = G_TempEntity( self->r.currentOrigin, EV_DISMEMBER );

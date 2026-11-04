@@ -339,6 +339,7 @@ void RE_BeginFrame( stereoFrame_t stereoFrame ) {
 	if ( !tr.registered ) {
 		return;
 	}
+	R_ClearBonePoses();
 	glState.finishCalled = qfalse;
 
 	tr.frameCount++;

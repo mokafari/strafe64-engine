@@ -86,6 +86,12 @@ typedef struct {
 	int		(*MarkFragments)( int numPoints, const vec3_t *points, const vec3_t projection,
 				   int maxPoints, vec3_t pointBuffer, int maxFragments, markFragment_t *fragmentBuffer );
 
+	int		(*BoneLayer)( qhandle_t model, int pose, const char *root, int frame, int oldframe, float backlerp, float weight );
+	int		(*BoneTag)( orientation_t *tag, qhandle_t model, int frame, int oldframe, float backlerp, int pose, const char *joint );
+	void	(*BoneInertiaCapture)( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack, int fromNext, int toNext );
+	int		(*BoneInertia)( qhandle_t model, int pose, int slot, float weight, float weightVel );
+	int		(*BoneCubic)( qhandle_t model, int pose, int before, int after );
+	int		(*BoneDelta)( qhandle_t model, int pose, const char *joint, const float *quat );
 	int		(*LerpTag)( orientation_t *tag,  qhandle_t model, int startFrame, int endFrame, 
 					 float frac, const char *tagName );
 	void	(*ModelBounds)( qhandle_t model, vec3_t mins, vec3_t maxs );

@@ -339,6 +339,14 @@ new information out of it.  This will happen at every
 gamestate, and possibly during gameplay.
 ==================
 */
+// A listen server and its loopback client share the same cvar registry.
+// Reapplying a delayed SYSTEMINFO echo rewinds the authoritative clock and
+// republishes that stale value, creating a self-sustaining slow-motion loop.
+static qboolean CL_IsLocalTimeScaleEcho( const char *key ) {
+	return com_sv_running->integer && NET_IsLocalAddress( clc.serverAddress )
+		&& !Q_stricmp( key, "timescale" );
+}
+
 void CL_SystemInfoChanged( void ) {
 	char			*systemInfo;
 	const char		*s, *t;
@@ -396,6 +404,10 @@ void CL_SystemInfoChanged( void ) {
 			break;
 		}
 		
+		if ( CL_IsLocalTimeScaleEcho( key ) ) {
+			continue;
+		}
+
 		// ehw!
 		if (!Q_stricmp(key, "fs_game"))
 		{

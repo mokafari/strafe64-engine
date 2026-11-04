@@ -1250,8 +1250,9 @@ void ClientSpawn(gentity_t *ent) {
 
 	// STRAFE 64: bot sword-only. Strip a bot's loadout down to just the katana
 	// so the field is a pure blade duel (the spawn weapon-select below then
-	// auto-picks WP_SWORD, the highest weapon owned). Humans keep their kit.
-	if ( g_botSwordOnly.integer && ( ent->r.svFlags & SVF_BOT ) ) {
+	// auto-picks WP_SWORD, the highest weapon owned). Humans keep their kit,
+	// unless g_botSwordOnly is 2: then everyone spawns blade-only.
+	if ( g_botSwordOnly.integer && ( g_botSwordOnly.integer >= 2 || ( ent->r.svFlags & SVF_BOT ) ) ) {
 		for ( i = 0 ; i < WP_NUM_WEAPONS ; i++ ) {
 			client->ps.ammo[i] = 0;
 		}
@@ -1345,6 +1346,8 @@ void ClientSpawn(gentity_t *ent) {
 	// truck treadmill: a human (re)spawn ends the run and restarts the fleet
 	if ( !( ent->r.svFlags & SVF_BOT ) && client->sess.sessionTeam != TEAM_SPECTATOR ) {
 		G_TruckRunReset( ent );
+	} else if ( ent->r.svFlags & SVF_BOT ) {
+		G_TruckPlaceBot( ent );		// enemies drop in on the traffic ahead
 	}
 }
 

@@ -55,7 +55,7 @@ Q_EXPORT intptr_t vmMain( int command, int arg0, int arg1, int arg2, int arg3, i
 	case CG_CONSOLE_COMMAND:
 		return CG_ConsoleCommand();
 	case CG_DRAW_ACTIVE_FRAME:
-		CG_DrawActiveFrame( arg0, arg1, arg2 );
+		CG_DrawActiveFrame( arg0, arg1, arg2, arg3 );
 		return 0;
 	case CG_CROSSHAIR_PLAYER:
 		return CG_CrosshairPlayer();
@@ -183,6 +183,12 @@ vmCvar_t	cg_playerGlowClamp;	// 0-1: count-aware soft clamp so N pilots' lights 
 vmCvar_t	cg_playerGlowAudio;	// 0-2: each pilot reacts to a DIFFERENT music band (per-clientNum spectrum) -> they flare out of phase, colours mix over time
 vmCvar_t	cg_playerGlowHue;	// 0-1: blend the glow toward a DISTINCT per-clientNum rainbow hue (0=player's own colour, 1=full rainbow spread) so pilots aren't all the same colour
 vmCvar_t	cg_dashGlitch;		// 0-2: chromatic-ghost glitch trail intensity on air-dash
+vmCvar_t	cg_skelBody;			// the body on the skeleton: a mesh fitted to the mannequin's rig
+vmCvar_t	cg_skelScarf;			// movement-driven scarf tail; robot keeps its neck wrap
+vmCvar_t	cg_skelSwingArc;		// how far the directional arc bends the clip's swing (0 = clip only)
+vmCvar_t	cg_skelFootLock;		// 1: planted feet stay put while running
+vmCvar_t	cg_skelWallClip;		// 1: wall run plays the mocap clip; 0: procedural gait
+vmCvar_t	cg_skeletal;			// 1: players are the skeletal IQM body; 0: legacy MD3s
 vmCvar_t	cg_ragdoll;				// 1: dead bodies ragdoll; 0: stock death animation
 vmCvar_t	cg_ragdollDamp;			// Verlet velocity retention per step (0..1)
 vmCvar_t	cg_ragdollIterations;	// constraint relaxation passes per frame
@@ -314,6 +320,12 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_playerGlowAudio, "cg_playerGlowAudio", "1.0", CVAR_ARCHIVE },
 	{ &cg_playerGlowHue, "cg_playerGlowHue", "0.85", CVAR_ARCHIVE },
 	{ &cg_dashGlitch, "cg_dashGlitch", "1.0", CVAR_ARCHIVE },
+	{ &cg_skeletal, "cg_skeletal", "1", CVAR_ARCHIVE },
+	{ &cg_skelWallClip, "cg_skelWallClip", "0", CVAR_ARCHIVE },
+	{ &cg_skelFootLock, "cg_skelFootLock", "1", CVAR_ARCHIVE },
+	{ &cg_skelBody, "cg_skelBody", "models/s64/robot.iqm", CVAR_ARCHIVE },
+	{ &cg_skelScarf, "cg_skelScarf", "1", CVAR_ARCHIVE },
+	{ &cg_skelSwingArc, "cg_skelSwingArc", "0.6", CVAR_ARCHIVE },
 	{ &cg_ragdoll, "cg_ragdoll", "1", CVAR_ARCHIVE },
 	{ &cg_ragdollDamp, "cg_ragdollDamp", "0.97", CVAR_ARCHIVE },
 	{ &cg_ragdollIterations, "cg_ragdollIterations", "6", CVAR_ARCHIVE },
@@ -1165,6 +1177,10 @@ static void CG_RegisterGraphics( void ) {
 	cgs.media.gibFist = trap_R_RegisterModel( "models/gibs/fist.md3" );
 	cgs.media.gibFoot = trap_R_RegisterModel( "models/gibs/foot.md3" );
 	cgs.media.gibForearm = trap_R_RegisterModel( "models/gibs/forearm.md3" );
+	cgs.media.skelModel = trap_R_RegisterModel( cg_skelBody.string );
+	if ( !cgs.media.skelModel ) {
+		cgs.media.skelModel = trap_R_RegisterModel( "models/s64/mannequin.iqm" );
+	}
 	cgs.media.gibIntestine = trap_R_RegisterModel( "models/gibs/intestine.md3" );
 	cgs.media.gibLeg = trap_R_RegisterModel( "models/gibs/leg.md3" );
 	cgs.media.gibSkull = trap_R_RegisterModel( "models/gibs/skull.md3" );

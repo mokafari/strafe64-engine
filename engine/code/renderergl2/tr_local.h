@@ -2380,6 +2380,13 @@ qboolean R_LoadIQM (model_t *mod, void *buffer, int filesize, const char *name )
 void R_AddIQMSurfaces( trRefEntity_t *ent );
 void RB_IQMSurfaceAnim( surfaceType_t *surface );
 void RB_IQMSurfaceAnimVao( srfVaoIQModel_t *surface );
+int RE_BoneLayer( qhandle_t model, int pose, const char *root, int frame, int oldframe, float backlerp, float weight );
+int RE_BoneTag( orientation_t *tag, qhandle_t model, int frame, int oldframe, float backlerp, int pose, const char *joint );
+void RE_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack, int fromNext, int toNext );
+int RE_BoneInertia( qhandle_t model, int pose, int slot, float weight, float weightVel );
+int RE_BoneCubic( qhandle_t model, int pose, int before, int after );
+int RE_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat );
+void R_ClearBonePoses( void );
 int R_IQMLerpTag( orientation_t *tag, iqmData_t *data,
                   int startFrame, int endFrame,
                   float frac, const char *tagName );

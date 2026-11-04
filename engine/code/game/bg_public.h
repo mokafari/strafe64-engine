@@ -525,6 +525,7 @@ typedef enum {
 	EV_DOUBLE_JUMP,			// STRAFE 64: mid-air double jump (air-dash kick-off) — jump sound + ground-burst puff
 	EV_DASH,				// STRAFE 64: SHIFT revector dash (G_ClientDash) — chromatic-ghost strobe trail
 	EV_WALLJUMP,			// STRAFE 64: wall kick-off — eventParm = DirToByte(wall normal) for the dust puff
+	EV_VAULT,				// STRAFE 64: mantle a ledge -- eventParm = climb height
 	EV_KICK					// STRAFE 64: melee kick (G_ClientKick) — eventParm bits: 1 = airborne
 							// kung-fu, 2 = connected, 4 = ninja launch (kicked at speed)
 

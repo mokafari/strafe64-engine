@@ -1094,7 +1094,7 @@ The "already rising" guard stops it re-firing during the vault's own ascent.
 static qboolean PM_CheckVault( void ) {
 	vec3_t	fwd, spot, top, end;
 	trace_t	trace;
-	float	speed, climb, up;
+	float	speed, climb, up, minClimb;
 
 	if ( pm->ps->pm_flags & PMF_RESPAWNED ) {
 		return qfalse;
@@ -1102,8 +1102,8 @@ static qboolean PM_CheckVault( void ) {
 	if ( pm->waterlevel > 1 ) {
 		return qfalse;
 	}
-	if ( pm->cmd.forwardmove <= 0 ) {
-		return qfalse;				// must be driving into the ledge
+	if ( pm->cmd.forwardmove < 0 ) {
+		return qfalse;				// backing off the ledge, not into it
 	}
 	if ( pm->ps->velocity[2] > 50.0f ) {
 		return qfalse;				// already rising (just vaulted/jumped)
@@ -1115,12 +1115,18 @@ static qboolean PM_CheckVault( void ) {
 		return qfalse;				// momentum vault only
 	}
 
-	fwd[0] = pml.forward[0];
-	fwd[1] = pml.forward[1];
+	// probe along the way you're MOVING, not the way you look: a strafe-jumper
+	// holds A/D (forwardmove 0) with the view 30-60 deg off the travel line, and
+	// the old view+W probe never fired mid-bhop — every truck lip was a dead stop
+	fwd[0] = pm->ps->velocity[0];
+	fwd[1] = pm->ps->velocity[1];
 	fwd[2] = 0;
 	if ( VectorNormalize( fwd ) < 0.1f ) {
 		return qfalse;
 	}
+	// airborne, even a lip at shin height snags the hull: catch it. On the
+	// ground anything under a stair step is already climbed by the step move.
+	minClimb = pml.walking ? pm_vaultMinHeight : 2.0f;
 
 	// 1) a near-vertical face just ahead?
 	VectorMA( pm->ps->origin, pm_vaultReach, fwd, spot );
@@ -1148,7 +1154,7 @@ static qboolean PM_CheckVault( void ) {
 	}
 
 	climb = trace.endpos[2] - pm->ps->origin[2];
-	if ( climb < pm_vaultMinHeight || climb > pm_vaultMaxHeight ) {
+	if ( climb < minClimb || climb > pm_vaultMaxHeight ) {
 		return qfalse;				// ledge not in vault range
 	}
 
@@ -1160,7 +1166,7 @@ static qboolean PM_CheckVault( void ) {
 	pm->ps->groundEntityNum = ENTITYNUM_NONE;
 	pml.groundPlane = qfalse;
 	pml.walking = qfalse;
-	PM_AddEvent( EV_JUMP );
+	BG_AddPredictableEventToPlayerstate( EV_VAULT, (int)climb, pm->ps );
 	return qtrue;
 }
 
@@ -1629,6 +1635,14 @@ static void PM_WalkMove( void ) {
 
 	// don't do anything if standing still
 	if (!pm->ps->velocity[0] && !pm->ps->velocity[1]) {
+		return;
+	}
+
+	// running into a lip too tall to step (a truck edge, a hurdle): vault it
+	// instead of dead-stopping. The vault lifts us off the ground, so finish
+	// this frame as an air move with gravity.
+	if ( PM_CheckVault() ) {
+		PM_StepSlideMove( qtrue );
 		return;
 	}
 

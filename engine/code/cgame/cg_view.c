@@ -144,6 +144,211 @@ void CG_TestModelPrevSkin_f (void) {
 	CG_Printf( "skin %i\n", cg.testModelEntity.skinNum );
 }
 
+/*
+=================
+CG_TwoBoneIK
+
+Bends a limb so its end joint reaches target (model space), on top of whatever
+frame the entity is playing. Reads the animated joints through tags, solves in
+model space, and submits local rotation deltas. Returns the bone pose handle.
+=================
+*/
+int CG_BoneRotation( refEntity_t *ent, int pose, const char *joint, const orientation_t *tag,
+		const vec3_t axis, float angle ) {
+	float	q[4], s = sin( angle * 0.5f );
+
+	// a model-space rotation about axis is the same angle about axis in joint space
+	q[0] = DotProduct( axis, tag->axis[0] ) * s;
+	q[1] = DotProduct( axis, tag->axis[1] ) * s;
+	q[2] = DotProduct( axis, tag->axis[2] ) * s;
+	q[3] = cos( angle * 0.5f );
+	return trap_R_BoneDelta( ent->hModel, pose, joint, q );
+}
+
+static int CG_TwoBoneIK( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end,
+		const vec3_t target ) {
+	orientation_t	a, b, c;
+	vec3_t			ab, cb, ac, at, n, m, rel, c2;
+	float			la, lb, lc, cur, want, ang, t;
+
+	// solve from the pose as built so far: layers and earlier deltas move the limb
+	if ( !trap_R_BoneTag( &a, ent->hModel, ent->frame, ent->oldframe, ent->backlerp, pose, upper )
+		|| !trap_R_BoneTag( &b, ent->hModel, ent->frame, ent->oldframe, ent->backlerp, pose, lower )
+		|| !trap_R_BoneTag( &c, ent->hModel, ent->frame, ent->oldframe, ent->backlerp, pose, end ) ) {
+		return pose;
+	}
+	VectorSubtract( a.origin, b.origin, ab );
+	VectorSubtract( c.origin, b.origin, cb );
+	la = VectorLength( ab );
+	lb = VectorLength( cb );
+	VectorSubtract( target, a.origin, at );
+	lc = VectorLength( at );
+	// never quite straight: at full extension the elbow axis is undefined and flips
+	lc = Com_Clamp( fabs( la - lb ) + 0.5f, ( la + lb ) * 0.97f, lc );
+
+	// elbow: a real hinge, fixed to the lower bone. The axis comes from the rest
+	// pose and is carried by the joint, because taking it from the current pose
+	// makes it undefined near a straight limb, and the joint flips over in a frame
+	{
+		orientation_t	ra, rb, rc;
+		vec3_t			rab, rcb, hinge;
+		int				i;
+
+		if ( trap_R_LerpTag( &ra, ent->hModel, 0, 0, 0, upper ) && trap_R_LerpTag( &rb, ent->hModel, 0, 0, 0, lower )
+			&& trap_R_LerpTag( &rc, ent->hModel, 0, 0, 0, end ) ) {
+			VectorSubtract( ra.origin, rb.origin, rab );
+			VectorSubtract( rc.origin, rb.origin, rcb );
+			CrossProduct( rab, rcb, hinge );
+			VectorClear( m );
+			for ( i = 0; i < 3; i++ ) {
+				VectorMA( m, DotProduct( hinge, rb.axis[i] ), b.axis[i], m );
+			}
+		} else {
+			CrossProduct( ab, cb, m );
+		}
+		if ( VectorNormalize( m ) < 0.001f ) {
+			VectorSet( m, 0, 0, 1 );
+		}
+	}
+	CrossProduct( ab, cb, n );
+	cur = atan2( DotProduct( n, m ), DotProduct( ab, cb ) );
+	want = acos( Com_Clamp( -1, 1, ( la * la + lb * lb - lc * lc ) / ( 2 * la * lb ) ) );
+	ang = want - cur;
+	pose = CG_BoneRotation( ent, pose, lower, &b, m, ang );
+
+	// shoulder: swing the straightened limb onto the target
+	VectorScale( cb, cos( ang ), rel );
+	CrossProduct( m, cb, n );
+	VectorMA( rel, sin( ang ), n, rel );
+	t = DotProduct( m, cb ) * ( 1.0f - cos( ang ) );
+	VectorMA( rel, t, m, rel );
+	VectorAdd( b.origin, rel, c2 );
+	VectorSubtract( c2, a.origin, ac );
+	CrossProduct( ac, at, n );
+	if ( VectorNormalize( n ) < 0.001f ) {
+		return pose;
+	}
+	ang = acos( Com_Clamp( -1, 1, DotProduct( ac, at ) / ( VectorLength( ac ) * VectorLength( at ) ) ) );
+	return CG_BoneRotation( ent, pose, upper, &a, n, ang );
+}
+
+/*
+=================
+CG_PlantLimb
+
+Traces from the limb's root along dir (world space) and, on a hit, solves the
+limb onto the surface, offset back along the normal by standoff.
+=================
+*/
+int CG_PlantLimb( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end,
+		const vec3_t start, const vec3_t dir, float range, float standoff ) {
+	vec3_t	stop, pt, rel, target;
+	trace_t	tr;
+	int		i;
+
+	VectorMA( start, range, dir, stop );
+	CG_Trace( &tr, start, NULL, NULL, stop, cg.predictedPlayerState.clientNum, MASK_SOLID );
+	if ( tr.fraction >= 1.0f || tr.startsolid ) {
+		return pose;
+	}
+	VectorMA( tr.endpos, standoff, tr.plane.normal, pt );
+	VectorSubtract( pt, ent->origin, rel );
+	for ( i = 0; i < 3; i++ ) {
+		target[i] = DotProduct( rel, ent->axis[i] );
+	}
+	return CG_TwoBoneIK( ent, pose, upper, lower, end, target );
+}
+
+// solves a limb onto a world-space point
+int CG_LimbToWorld( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end, const vec3_t pt ) {
+	vec3_t	rel, target;
+	int		i;
+
+	VectorSubtract( pt, ent->origin, rel );
+	for ( i = 0; i < 3; i++ ) {
+		target[i] = DotProduct( rel, ent->axis[i] );
+	}
+	return CG_TwoBoneIK( ent, pose, upper, lower, end, target );
+}
+
+// model-space joint -> world
+qboolean CG_JointWorld( refEntity_t *ent, const char *joint, vec3_t out ) {
+	orientation_t	t;
+	int				i;
+
+	// the pose as built so far: the raw clip can sit 20u away during a blend, and
+	// IK aimed from there drags the limb to it in one frame
+	if ( !trap_R_BoneTag( &t, ent->hModel, ent->frame, ent->oldframe, ent->backlerp, ent->bonePose, joint ) ) {
+		return qfalse;
+	}
+	VectorCopy( ent->origin, out );
+	for ( i = 0; i < 3; i++ ) {
+		VectorMA( out, t.origin[i], ent->axis[i], out );
+	}
+	return qtrue;
+}
+
+// plants both feet on the floor below and each hand on a wall beside the body
+static int CG_PlantOnWorld( refEntity_t *ent ) {
+	static const struct { const char *u, *l, *e; } legs[2] = {
+		{ "thigh_l", "calf_l", "foot_l" }, { "thigh_r", "calf_r", "foot_r" } };
+	static const struct { const char *u, *l, *e; float side; } arms[2] = {
+		{ "upperarm_l", "lowerarm_l", "hand_l", 1 }, { "upperarm_r", "lowerarm_r", "hand_r", -1 } };
+	vec3_t	p, dir;
+	int		i, pose = 0;
+
+	for ( i = 0; i < 2; i++ ) {
+		if ( CG_JointWorld( ent, legs[i].e, p ) ) {
+			p[2] += 24;
+			VectorSet( dir, 0, 0, -1 );
+			pose = CG_PlantLimb( ent, pose, legs[i].u, legs[i].l, legs[i].e, p, dir, 48, 4 );
+		}
+		if ( CG_JointWorld( ent, arms[i].u, p ) ) {
+			VectorScale( ent->axis[1], arms[i].side, dir );
+			pose = CG_PlantLimb( ent, pose, arms[i].u, arms[i].l, arms[i].e, p, dir, 36, 2 );
+		}
+	}
+	return pose;
+}
+
+/*
+=================
+CG_TestCut_f
+
+"testcut <1 limb, 2 decap, 3 bisect>": drops a cut corpse in front of the view with
+the real blood and ragdoll, so every kind of cut can be filmed on demand
+=================
+*/
+static centity_t	testCutEnt;
+
+void CG_TestCut_f( void ) {
+	vec3_t	dir, up;
+	int		cut = atoi( CG_Argv( 1 ) );
+
+	memset( &testCutEnt, 0, sizeof( testCutEnt ) );
+	testCutEnt.currentState.number = MAX_GENTITIES - 3;
+	testCutEnt.currentState.clientNum = cg.snap->ps.clientNum;
+	testCutEnt.currentState.eFlags = EF_DEAD;
+	testCutEnt.currentState.time2 = cut;
+	VectorMA( cg.refdef.vieworg, 150, cg.refdef.viewaxis[0], testCutEnt.lerpOrigin );
+	{
+		trace_t	tr;
+		vec3_t	down;
+
+		testCutEnt.lerpOrigin[2] = cg.refdef.vieworg[2];
+		VectorCopy( testCutEnt.lerpOrigin, down );
+		down[2] -= 2000;
+		CG_Trace( &tr, testCutEnt.lerpOrigin, NULL, NULL, down, cg.snap->ps.clientNum, MASK_SOLID );
+		testCutEnt.lerpOrigin[2] = tr.endpos[2] + 30;
+	}
+	testCutEnt.lerpAngles[YAW] = cg.refdefViewAngles[YAW] + 90;
+	VectorCopy( cg.refdef.viewaxis[1], dir );
+	VectorSet( up, 0, 0, 1 );
+	CG_RagdollReset();
+	CG_RagdollAdd( &testCutEnt, 0, 0 );
+	CG_DismemberPlayer( testCutEnt.lerpOrigin, dir, up, cut - 1, testCutEnt.currentState.number );
+}
+
 static void CG_AddTestModel (void) {
 	int		i;
 
@@ -166,6 +371,51 @@ static void CG_AddTestModel (void) {
 			cg.testModelEntity.origin[i] += cg.refdef.viewaxis[0][i] * cg_gun_x.value;
 			cg.testModelEntity.origin[i] += cg.refdef.viewaxis[1][i] * cg_gun_y.value;
 			cg.testModelEntity.origin[i] += cg.refdef.viewaxis[2][i] * cg_gun_z.value;
+		}
+	}
+
+	// STRAFE 64 DEBUG: `set cg_testIK "x y z"` plants the right hand there (model space)
+	{
+		char	buf[64];
+		vec3_t	target;
+
+		cg.testModelEntity.bonePose = 0;
+
+		// tools/modelgen/animsheet.py: hold an exact frame
+		trap_Cvar_VariableStringBuffer( "cg_testFrame", buf, sizeof( buf ) );
+		if ( buf[0] ) {
+			cg.testModelEntity.frame = cg.testModelEntity.oldframe = atoi( buf );
+			cg.testModelEntity.backlerp = 0;
+		}
+		// and the wall-run gait against whatever wall is on the model's left
+		trap_Cvar_VariableStringBuffer( "cg_testWallRun", buf, sizeof( buf ) );
+		if ( buf[0] ) {
+			vec3_t	mid, end, ang = { 0, 0, 46 }, testVel = { 320, 0, 0 };
+			trace_t	tr;
+			refEntity_t	copy = cg.testModelEntity, *e = &copy;	// per-frame: never touch the original
+
+			vectoangles( e->axis[0], end );
+			ang[YAW] = end[YAW];
+			VectorCopy( e->origin, mid );
+			VectorMA( mid, 40, e->axis[1], end );
+			CG_Trace( &tr, mid, NULL, NULL, end, -1, MASK_SOLID );
+			VectorCopy( e->axis[1], end );
+			AnglesToAxis( ang, e->axis );
+			VectorCopy( mid, e->origin );
+			e->origin[2] += 8;
+			VectorMA( e->origin, -32, e->axis[2], e->origin );
+			CG_SkelWallStride( e, tr.endpos, end, testVel, 1, atof( buf ), 1.0f );
+			trap_R_AddRefEntityToScene( e );
+			return;
+		}
+		trap_Cvar_VariableStringBuffer( "cg_testIK", buf, sizeof( buf ) );
+		if ( sscanf( buf, "%f %f %f", &target[0], &target[1], &target[2] ) == 3 ) {
+			cg.testModelEntity.bonePose = CG_TwoBoneIK( &cg.testModelEntity, 0, "upperarm_r", "lowerarm_r", "hand_r", target );
+		}
+		// `set cg_testPlant 1`: hands and feet find the real walls and floor
+		trap_Cvar_VariableStringBuffer( "cg_testPlant", buf, sizeof( buf ) );
+		if ( atoi( buf ) ) {
+			cg.testModelEntity.bonePose = CG_PlantOnWorld( &cg.testModelEntity );
 		}
 	}
 
@@ -940,7 +1190,8 @@ static int CG_CalcViewValues( void ) {
 			VectorSubtract( raw, smoothOrigin, delta );
 			dist = VectorLength( delta );
 
-			if ( !seeded || dist > 120.0f ) {
+			if ( !seeded || dist > 120.0f || cg.thisFrameTeleport || cg.nextFrameTeleport
+				|| nowReal < smoothRealMs || nowReal - smoothRealMs > 250 ) {
 				VectorCopy( raw, smoothOrigin );	// seed / snap on teleport or respawn
 				seeded = qtrue;
 			} else {
@@ -948,7 +1199,7 @@ static int CG_CalcViewValues( void ) {
 				if ( dtReal < 0.0f ) {
 					dtReal = 0.0f;
 				}
-				k = dtReal / tc;			// real-time exponential follow
+				k = 1.0f - expf( -dtReal / tc ); // frame-rate independent follow
 				if ( k > 1.0f ) {
 					k = 1.0f;
 				}
@@ -982,6 +1233,11 @@ static int CG_CalcViewValues( void ) {
 	}
 
 	if ( cg.renderingThirdPerson ) {
+		// Both the local body and the chase camera must follow the same
+		// presentation anchor, including prediction-error decay. Physics stays
+		// on predictedPlayerState; only the rendered entity uses this origin.
+		VectorCopy( cg.refdef.vieworg, cg.localRenderOrigin );
+		cg.localRenderOriginValid = qtrue;
 		// back away from character
 		CG_OffsetThirdPersonView();
 	} else {
@@ -1674,10 +1930,17 @@ static void CG_UpdateTimeGrade( void ) {
 	}
 }
 
-void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback ) {
+void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback, int fraction ) {
 	int		inwater;
 
 	cg.time = serverTime;
+	if (stereoView != STEREO_RIGHT) {
+		double t = serverTime + Com_Clamp(0, 999999, fraction) * 0.000001;
+		cg.animDelta = (t >= cg.oldAnimTime && t - cg.oldAnimTime < 200)
+			? (t - cg.oldAnimTime) * 0.001 : 0;
+		cg.animTime = cg.oldAnimTime = t;
+		cg.frametime = cg.time >= cg.oldTime ? cg.time - cg.oldTime : 0;
+	}
 	cg.demoPlayback = demoPlayback;
 
 	// update cvars
@@ -1726,6 +1989,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	CG_UpdateTimeGrade();
 
 	// build cg.refdef
+	cg.localRenderOriginValid = qfalse;
 	inwater = CG_CalcViewValues();
 
 	// first person blend blobs, done after AnglesToAxis
@@ -1754,6 +2018,9 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 #endif
 
 	// finish up the rest of the refdef
+	if ( testCutEnt.currentState.eFlags & EF_DEAD ) {
+		CG_RagdollAdd( &testCutEnt, 0, 0 );
+	}
 	if ( cg.testModelEntity.hModel ) {
 		CG_AddTestModel();
 	}

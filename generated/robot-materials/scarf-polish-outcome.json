@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-01",
+  "prediction": "Torso capsule collision with ribbon-width clearance plus body-oriented ribbon edges should prevent standing torso penetration; alpha cutouts should visibly fray silhouette.",
+  "outcome": "Native build passed with existing unused-variable warnings. Actual C collision helper passed contact, velocity, centerline, exterior, cap and degenerate-capsule checks. Live paused bot confirmed speed 0, on ground; three-angle inspection shows scarf outside back and ragged split tips. Moving bot checked in six-frame capture.",
+  "limitations": "Torso proxy only, no arm, wall or cloth-self collision.",
+  "recall": "Daemon unavailable as established in previous turn."
+}

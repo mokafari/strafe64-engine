@@ -1619,6 +1619,9 @@ void BG_PlayerStateToEntityState( playerState_t *ps, entityState_t *s, qboolean 
 
 	s->loopSound = ps->loopSound;
 	s->generic1 = ps->generic1;
+	// STRAFE 64: wall-run side and grapple, for the skeletal body on other clients
+	s->frame = ( ps->stats[STAT_WALLRUN] > 0 ? 1 : ps->stats[STAT_WALLRUN] < 0 ? 2 : 0 )
+		| ( ( ps->pm_flags & PMF_GRAPPLE_PULL ) ? 4 : 0 );
 }
 
 /*
@@ -1699,4 +1702,7 @@ void BG_PlayerStateToEntityStateExtraPolate( playerState_t *ps, entityState_t *s
 
 	s->loopSound = ps->loopSound;
 	s->generic1 = ps->generic1;
+	// STRAFE 64: wall-run side and grapple, for the skeletal body on other clients
+	s->frame = ( ps->stats[STAT_WALLRUN] > 0 ? 1 : ps->stats[STAT_WALLRUN] < 0 ? 2 : 0 )
+		| ( ( ps->pm_flags & PMF_GRAPPLE_PULL ) ? 4 : 0 );
 }

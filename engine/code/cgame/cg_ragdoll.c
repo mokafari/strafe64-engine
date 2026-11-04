@@ -28,6 +28,29 @@ typedef enum {
 	RP_COUNT
 } ragPart_t;
 
+// the mannequin's particles: the spine's four first, so the wounds and the
+// shared step work on either body. RS_LIMB is the severed end of a cut limb; the
+// joint it came off stays behind to hold the body's frame
+typedef enum {
+	RS_NECK = RP_COUNT,
+	RS_ARM_L, RS_ELBOW_L, RS_HAND_L,
+	RS_ARM_R, RS_ELBOW_R, RS_HAND_R,
+	RS_THIGH_L, RS_KNEE_L,
+	RS_THIGH_R, RS_KNEE_R, RS_FOOT_R,
+	RS_LIMB,
+	RS_COUNT
+} ragSkelPart_t;
+#define RS_FOOT_L	RP_FEET
+
+// bones the particles turn. The pelvis and chest take a whole frame from a
+// triangle of particles, the rest follow one particle pair
+typedef enum {
+	RB_PELVIS, RB_CHEST, RB_NECK,
+	RB_UPPER_L, RB_LOWER_L, RB_UPPER_R, RB_LOWER_R,
+	RB_THIGH_L, RB_CALF_L, RB_THIGH_R, RB_CALF_R,
+	RB_COUNT
+} ragBone_t;
+
 typedef struct {
 	int		a, b;			// particle indices
 	float	rest;			// rest length
@@ -37,9 +60,15 @@ typedef struct {
 typedef struct {
 	qboolean	active;
 	int			startTime;
-	int			lastTime;		// last sim time, to derive a stable dt
-	vec3_t		pos[RP_COUNT];
-	vec3_t		prev[RP_COUNT];
+	double          lastTime; // fractional presentation clock
+	double          accumulator;
+	qboolean        historyValid;
+	float           quietSeconds;
+	vec3_t          renderPrev[RS_COUNT];
+	quat_t          rotationPrev[RB_COUNT];
+	float           spinPrev;
+	vec3_t		pos[RS_COUNT];
+	vec3_t		prev[RS_COUNT];
 	float		rest[RP_COUNT];	// seed height above the feet, for re-seed sanity checks
 	float		yaw;			// facing captured at death, for the forward axis
 	qboolean	settled;		// all particles at rest -> stop simulating
@@ -48,8 +77,24 @@ typedef struct {
 	int			airQuietTime;	// when the body first went quiet without ground
 								// support (0 = moving/grounded); drives the
 								// stuck-in-air -> ground-snap recovery
+	int			limb;			// severed limb on a RAG_CUT_LIMB: 1 arm l, 2 arm r, 3 leg l, 4 leg r
+	float		lastDt;			// the step before this one: Verlet velocity is per step
 	float		spin;			// accumulated tumble phase (rad) for severed
 								// pieces; frozen once the body settles
+	// the mannequin: its death pose, and how far each bone has turned from it
+	qboolean	skel;
+	int			frame, oldframe;
+	float		backlerp;
+	vec3_t		seedOrigin;
+	vec3_t		seedAxis[3];
+	vec3_t		seed[RS_COUNT];
+	byte		group[RS_COUNT];	// a cut splits the particles into two groups
+	float		linkRest[32];
+	float		limbRest;			// RS_LIMB to the next joint down
+	quat_t		boneRot[RB_COUNT];
+	quat_t		frameSeed[2];		// pelvis and chest frames at death
+	vec3_t		boneAxis[RB_COUNT][3];
+	vec3_t		spineAxis[3][3];
 } cgRagdoll_t;
 
 // indexed by entity number so it covers both live corpses and body-queue bodies
@@ -76,8 +121,10 @@ static const ragConstraint_t ragConstraints[] = {
 static const float ragSeedZ[RP_COUNT] = { 2.0f, 24.0f, 40.0f, 52.0f };
 
 #define RAG_HALFBOX		3.0f		// collision box half-extent per particle
+#define RAG_SKEL_MAXMS	7000		// a jointed body that still twitches stops here
 #define RAG_GRAVITY		800.0f		// matches g_gravity feel
-#define RAG_SETTLE_VEL2	1.0f		// squared speed below which a particle is "stopped"
+#define RAG_FIXED_DT     0.008f
+#define RAG_SETTLE_VEL2	0.0225f		// squared speed below which a particle is "stopped"
 #define RAG_MAXSTEP		20.0f		// max units a particle may move per step (anti-explode)
 #define RAG_AIRHANG_MS	1500		// quiet + unsupported this long -> a wedged/hung
 									// piece is snapped down onto the floor below it
@@ -404,19 +451,31 @@ Stand the spine up at the entity's feet and inherit its death velocity so the
 corpse carries on from however it was moving when it died.
 ===============
 */
+static int CG_RagdollPickLimb( centity_t *cent ) {
+	char	force[8];
+
+	trap_Cvar_VariableStringBuffer( "cg_testCutLimb", force, sizeof( force ) );
+	return atoi( force ) ? atoi( force ) : 1 + ( cent->currentState.number + cg.time / 13 ) % 4;
+}
+
 static void CG_RagdollSeed( cgRagdoll_t *rag, centity_t *cent, int cut ) {
 	int		i, j;
 	vec3_t	vel, fwd;
 	float	dt;
 
 	rag->active = qtrue;
+	rag->skel = qfalse;
 	rag->settled = qfalse;
 	rag->startTime = cg.time;
-	rag->lastTime = cg.time;
+	rag->lastTime = cg.animTime;
+	rag->accumulator = 0;
+	rag->historyValid = qfalse;
+	rag->quietSeconds = 0;
 	rag->yaw = cent->lerpAngles[YAW];
 	rag->cut = cut;
 	rag->airQuietTime = 0;
 	rag->spin = 0;
+	rag->lastDt = 0.015f;
 
 	fwd[0] = cos( DEG2RAD( rag->yaw ) );
 	fwd[1] = sin( DEG2RAD( rag->yaw ) );
@@ -446,9 +505,9 @@ static void CG_RagdollSeed( cgRagdoll_t *rag, centity_t *cent, int cut ) {
 	if ( cut == RAG_CUT_BISECT ) {
 		// upper body (chest + head) slides off the waist and lifts
 		for ( i = RP_CHEST ; i <= RP_HEAD ; i++ ) {
-			rag->prev[i][0] -= fwd[0] * 150.0f * dt;
-			rag->prev[i][1] -= fwd[1] * 150.0f * dt;
-			rag->prev[i][2] -= 110.0f * dt;
+			rag->prev[i][0] -= fwd[0] * 70.0f * dt;
+			rag->prev[i][1] -= fwd[1] * 70.0f * dt;
+			rag->prev[i][2] -= 90.0f * dt;
 		}
 		// lower body settles back the other way a touch
 		rag->prev[RP_PELVIS][0] += fwd[0] * 40.0f * dt;
@@ -458,6 +517,10 @@ static void CG_RagdollSeed( cgRagdoll_t *rag, centity_t *cent, int cut ) {
 		rag->prev[RP_HEAD][0] -= fwd[0] * 90.0f * dt;
 		rag->prev[RP_HEAD][1] -= fwd[1] * 90.0f * dt;
 		rag->prev[RP_HEAD][2] -= 200.0f * dt;
+	} else if ( cut == RAG_CUT_LIMB ) {
+		rag->limb = CG_RagdollPickLimb( cent );
+	} else {
+		rag->limb = 0;
 	}
 }
 
@@ -472,13 +535,13 @@ supported against gravity) -- the step uses this to decide whether the corpse
 may settle, so a body can't latch "settled" at a toss apex and freeze midair.
 ===============
 */
-static qboolean CG_RagdollCollide( vec3_t pos, vec3_t prev ) {
+static qboolean CG_RagdollCollide( vec3_t pos, vec3_t prev, float r, float friction ) {
 	trace_t	tr;
 	vec3_t	mins, maxs, vel;
 	float	into;
 
-	VectorSet( mins, -RAG_HALFBOX, -RAG_HALFBOX, -RAG_HALFBOX );
-	VectorSet( maxs,  RAG_HALFBOX,  RAG_HALFBOX,  RAG_HALFBOX );
+	VectorSet( mins, -r, -r, -r );
+	VectorSet( maxs,  r,  r,  r );
 
 	CG_Trace( &tr, prev, mins, maxs, pos, -1, CONTENTS_SOLID );
 
@@ -503,7 +566,7 @@ static qboolean CG_RagdollCollide( vec3_t pos, vec3_t prev ) {
 	if ( into < 0 ) {
 		VectorMA( vel, -into, tr.plane.normal, vel );	// keep tangent only
 	}
-	VectorScale( vel, 0.5f, vel );						// surface friction
+	VectorScale( vel, friction, vel );					// surface friction
 	VectorSubtract( pos, vel, prev );
 
 	// supported only if the surface can hold the body up (a floor, not a wall)
@@ -523,13 +586,13 @@ stop it where it is rather than fall through the world.
 ===============
 */
 static void CG_RagdollGroundSnap( cgRagdoll_t *rag ) {
-	int		i, low;
+	int		i, low, count = rag->skel ? RS_COUNT : RP_COUNT;
 	float	drop;
 	trace_t	tr;
 	vec3_t	start, end, mins, maxs;
 
 	low = 0;
-	for ( i = 1 ; i < RP_COUNT ; i++ ) {
+	for ( i = 1 ; i < count ; i++ ) {
 		if ( rag->pos[i][2] < rag->pos[low][2] ) {
 			low = i;
 		}
@@ -550,9 +613,459 @@ static void CG_RagdollGroundSnap( cgRagdoll_t *rag ) {
 		drop = rag->pos[low][2] - tr.endpos[2];
 	}
 
-	for ( i = 0 ; i < RP_COUNT ; i++ ) {
+	for ( i = 0 ; i < count ; i++ ) {
 		rag->pos[i][2] -= drop;
 		VectorCopy( rag->pos[i], rag->prev[i] );		// zero velocity -> rests
+	}
+}
+
+/*
+===============
+The mannequin's jointed body
+
+Particles start on the real joints of the pose the player died in. Each step
+turns the bones to follow them, measured from that pose, so a body keeps its last
+motion and goes limp from there.
+===============
+*/
+
+typedef struct {
+	const char	*joint;
+	int			part;
+} ragJoint_t;
+
+static const ragJoint_t ragJoints[] = {
+	{ "pelvis", RP_PELVIS }, { "spine_03", RP_CHEST }, { "neck_01", RS_NECK }, { "Head", RP_HEAD },
+	{ "upperarm_l", RS_ARM_L }, { "lowerarm_l", RS_ELBOW_L }, { "hand_l", RS_HAND_L },
+	{ "upperarm_r", RS_ARM_R }, { "lowerarm_r", RS_ELBOW_R }, { "hand_r", RS_HAND_R },
+	{ "thigh_l", RS_THIGH_L }, { "calf_l", RS_KNEE_L }, { "foot_l", RS_FOOT_L },
+	{ "thigh_r", RS_THIGH_R }, { "calf_r", RS_KNEE_R }, { "foot_r", RS_FOOT_R },
+};
+#define RAG_NUM_JOINTS ( (int)( sizeof( ragJoints ) / sizeof( ragJoints[0] ) ) )
+
+static const float ragSkelRadius[RS_COUNT] = {
+	3, 6, 6, 4,		// foot, pelvis, chest, crown
+	4,				// neck
+	3, 2, 2,  3, 2, 2,
+	3, 3,  3, 3, 3,
+	3,
+};
+
+// bones: the joint, the particle pair it follows, and the bone it hangs from
+typedef struct {
+	const char	*joint;
+	int			from, to;
+	int			parent;
+} ragBoneDef_t;
+
+static const ragBoneDef_t ragBones[RB_COUNT] = {
+	{ "pelvis",     RP_PELVIS,  RP_PELVIS,  -1 },
+	{ "spine_03",   RP_CHEST,   RP_CHEST,   RB_PELVIS },
+	{ "neck_01",    RS_NECK,    RP_HEAD,    RB_CHEST },
+	{ "upperarm_l", RS_ARM_L,   RS_ELBOW_L, RB_CHEST },
+	{ "lowerarm_l", RS_ELBOW_L, RS_HAND_L,  RB_UPPER_L },
+	{ "upperarm_r", RS_ARM_R,   RS_ELBOW_R, RB_CHEST },
+	{ "lowerarm_r", RS_ELBOW_R, RS_HAND_R,  RB_UPPER_R },
+	{ "thigh_l",    RS_THIGH_L, RS_KNEE_L,  RB_PELVIS },
+	{ "calf_l",     RS_KNEE_L,  RS_FOOT_L,  RB_THIGH_L },
+	{ "thigh_r",    RS_THIGH_R, RS_KNEE_R,  RB_PELVIS },
+	{ "calf_r",     RS_KNEE_R,  RS_FOOT_R,  RB_THIGH_R },
+};
+
+static const char *ragSpineJoints[3] = { "spine_01", "spine_02", "spine_03" };
+
+// rigid links hold their length from the death pose. A folding link only stops
+// two particles closing past fold * the length of the chain through via
+typedef struct {
+	int		a, b, via;
+	float	fold;
+} ragLink_t;
+
+static const ragLink_t ragLinks[] = {
+	{ RP_PELVIS, RS_THIGH_L, -1, 0 }, { RP_PELVIS, RS_THIGH_R, -1, 0 }, { RS_THIGH_L, RS_THIGH_R, -1, 0 },
+	{ RP_CHEST, RS_ARM_L, -1, 0 }, { RP_CHEST, RS_ARM_R, -1, 0 }, { RS_ARM_L, RS_ARM_R, -1, 0 },
+	{ RS_NECK, RS_ARM_L, -1, 0 }, { RS_NECK, RS_ARM_R, -1, 0 }, { RP_CHEST, RS_NECK, -1, 0 },
+	{ RP_PELVIS, RP_CHEST, -1, 0 }, { RS_NECK, RP_HEAD, -1, 0 },
+	{ RS_ARM_L, RS_ELBOW_L, -1, 0 }, { RS_ELBOW_L, RS_HAND_L, -1, 0 },
+	{ RS_ARM_R, RS_ELBOW_R, -1, 0 }, { RS_ELBOW_R, RS_HAND_R, -1, 0 },
+	{ RS_THIGH_L, RS_KNEE_L, -1, 0 }, { RS_KNEE_L, RS_FOOT_L, -1, 0 },
+	{ RS_THIGH_R, RS_KNEE_R, -1, 0 }, { RS_KNEE_R, RS_FOOT_R, -1, 0 },
+	{ RS_ARM_L, RS_HAND_L, RS_ELBOW_L, 0.3f }, { RS_ARM_R, RS_HAND_R, RS_ELBOW_R, 0.3f },
+	{ RS_THIGH_L, RS_FOOT_L, RS_KNEE_L, 0.35f }, { RS_THIGH_R, RS_FOOT_R, RS_KNEE_R, 0.35f },
+	{ RP_CHEST, RS_KNEE_L, RS_THIGH_L, 0.6f }, { RP_CHEST, RS_KNEE_R, RS_THIGH_R, 0.6f },
+	{ RP_PELVIS, RS_NECK, RP_CHEST, 0.8f }, { RP_CHEST, RP_HEAD, RS_NECK, 0.8f },
+};
+#define RAG_NUM_LINKS ( (int)( sizeof( ragLinks ) / sizeof( ragLinks[0] ) ) )
+
+// by rag->limb: the joint it comes off, its bone, and the joints it carries
+static const int ragLimbRoot[5] = { RP_CHEST, RS_ARM_L, RS_ARM_R, RS_THIGH_L, RS_THIGH_R };
+static const int ragLimbBone[5] = { RB_CHEST, RB_UPPER_L, RB_UPPER_R, RB_THIGH_L, RB_THIGH_R };
+static const int ragLimbChain[5][2] = { { 0, 0 },
+	{ RS_ELBOW_L, RS_HAND_L }, { RS_ELBOW_R, RS_HAND_R }, { RS_KNEE_L, RS_FOOT_L }, { RS_KNEE_R, RS_FOOT_R } };
+
+// a cut limb's upper bone hangs from RS_LIMB, not the joint left on the body
+static int RagBoneFrom( const cgRagdoll_t *rag, int bone ) {
+	return rag->limb && bone == ragLimbBone[rag->limb] ? RS_LIMB : ragBones[bone].from;
+}
+
+static void RagQuatMul( const quat_t a, const quat_t b, quat_t out ) {
+	out[0] = a[3]*b[0] + a[0]*b[3] + a[1]*b[2] - a[2]*b[1];
+	out[1] = a[3]*b[1] - a[0]*b[2] + a[1]*b[3] + a[2]*b[0];
+	out[2] = a[3]*b[2] + a[0]*b[1] - a[1]*b[0] + a[2]*b[3];
+	out[3] = a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2];
+}
+
+// a's inverse times b
+static void RagQuatRelative( const quat_t a, const quat_t b, quat_t out ) {
+	quat_t	conj;
+
+	conj[0] = -a[0];
+	conj[1] = -a[1];
+	conj[2] = -a[2];
+	conj[3] = a[3];
+	RagQuatMul( conj, b, out );
+}
+
+// the world-space turn that takes frame a to frame b
+static void RagQuatTurn( const quat_t a, const quat_t b, quat_t out ) {
+	quat_t	conj;
+
+	conj[0] = -a[0];
+	conj[1] = -a[1];
+	conj[2] = -a[2];
+	conj[3] = a[3];
+	RagQuatMul( b, conj, out );
+}
+
+static void RagQuatRotate( const quat_t q, const vec3_t v, vec3_t out ) {
+	vec3_t	t, c;
+
+	CrossProduct( q, v, t );
+	VectorScale( t, 2.0f, t );
+	CrossProduct( q, t, c );
+	VectorMA( v, q[3], t, out );
+	VectorAdd( out, c, out );
+}
+
+static void RagQuatNormalize( quat_t q ) {
+	float	l = sqrt( q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3] );
+
+	if ( l > 0.0001f ) {
+		q[0] /= l;
+		q[1] /= l;
+		q[2] /= l;
+		q[3] /= l;
+	} else {
+		q[0] = q[1] = q[2] = 0;
+		q[3] = 1;
+	}
+}
+
+// the rotation of a frame with these columns
+static void RagQuatFromAxes( const vec3_t x, const vec3_t y, const vec3_t z, quat_t q ) {
+	float	t = x[0] + y[1] + z[2];
+
+	if ( t > 0 ) {
+		q[0] = y[2] - z[1];
+		q[1] = z[0] - x[2];
+		q[2] = x[1] - y[0];
+		q[3] = 1.0f + t;
+	} else if ( x[0] > y[1] && x[0] > z[2] ) {
+		q[0] = 1.0f + x[0] - y[1] - z[2];
+		q[1] = x[1] + y[0];
+		q[2] = z[0] + x[2];
+		q[3] = y[2] - z[1];
+	} else if ( y[1] > z[2] ) {
+		q[0] = x[1] + y[0];
+		q[1] = 1.0f + y[1] - x[0] - z[2];
+		q[2] = y[2] + z[1];
+		q[3] = z[0] - x[2];
+	} else {
+		q[0] = z[0] + x[2];
+		q[1] = y[2] + z[1];
+		q[2] = 1.0f + z[2] - x[0] - y[1];
+		q[3] = x[1] - y[0];
+	}
+	RagQuatNormalize( q );
+}
+
+static void RagFrame( vec3_t pos[RS_COUNT], int left, int right, int top, quat_t q ) {
+	vec3_t	x, y, z, mid;
+
+	VectorSubtract( pos[right], pos[left], x );
+	VectorNormalize( x );
+	VectorAdd( pos[left], pos[right], mid );
+	VectorScale( mid, 0.5f, mid );
+	if ( top == RP_CHEST ) {
+		VectorSubtract( mid, pos[top], z );		// shoulders sit above the chest joint
+	} else {
+		VectorSubtract( pos[top], mid, z );		// the pelvis above the hips
+	}
+	VectorMA( z, -DotProduct( z, x ), x, z );
+	VectorNormalize( z );
+	CrossProduct( z, x, y );
+	RagQuatFromAxes( x, y, z, q );
+}
+
+/*
+===============
+CG_RagdollSkelTurn
+
+Reads the bone rotations back from the particles. Limb bones are carried along
+by the turn since last step instead of measured from the parent: that has no
+angle where the answer flips, and a limb can point anywhere on a dead body.
+===============
+*/
+static void CG_RagdollSkelTurn( cgRagdoll_t *rag ) {
+	quat_t	cur, arc, q;
+	vec3_t	was, now, d;
+	int		i, from;
+
+	RagFrame( rag->pos, RS_THIGH_L, RS_THIGH_R, RP_PELVIS, cur );
+	RagQuatTurn( rag->frameSeed[0], cur, rag->boneRot[RB_PELVIS] );
+	RagFrame( rag->pos, RS_ARM_L, RS_ARM_R, RP_CHEST, cur );
+	RagQuatTurn( rag->frameSeed[1], cur, rag->boneRot[RB_CHEST] );
+
+	for ( i = RB_NECK; i < RB_COUNT; i++ ) {
+		from = RagBoneFrom( rag, i );
+		VectorSubtract( rag->seed[ragBones[i].to], rag->seed[ragBones[i].from], d );
+		VectorNormalize( d );
+		RagQuatRotate( rag->boneRot[i], d, was );
+		VectorSubtract( rag->pos[ragBones[i].to], rag->pos[from], now );
+		if ( VectorNormalize( now ) < 0.001f ) {
+			continue;
+		}
+		CrossProduct( was, now, arc );
+		arc[3] = 1.0f + DotProduct( was, now );
+		if ( arc[3] < 0.001f ) {
+			continue;
+		}
+		RagQuatNormalize( arc );
+		RagQuatMul( arc, rag->boneRot[i], q );
+		RagQuatNormalize( q );
+		QuatCopy( q, rag->boneRot[i] );
+	}
+}
+
+/*
+===============
+CG_RagdollSkelLinks
+
+One relaxation pass. Links across a cut no longer hold. Knees only bend forward,
+which the links alone can't say: they'd fold either way.
+===============
+*/
+static void CG_RagdollSkelLink( vec3_t a, vec3_t b, float rest, qboolean fold ) {
+	vec3_t	delta;
+	float	dist, diff;
+
+	VectorSubtract( b, a, delta );
+	dist = VectorLength( delta );
+	if ( dist < 0.0001f || ( fold && dist >= rest ) ) {
+		return;
+	}
+	diff = ( dist - rest ) / dist * 0.5f;
+	VectorMA( a, diff, delta, a );
+	VectorMA( b, -diff, delta, b );
+}
+
+static void CG_RagdollSkelLinks( cgRagdoll_t *rag ) {
+	static const int	legs[2][3] = { { RS_THIGH_L, RS_KNEE_L, RS_FOOT_L }, { RS_THIGH_R, RS_KNEE_R, RS_FOOT_R } };
+	vec3_t	fwd, side;
+	float	diff;
+	int		i;
+
+	for ( i = 0; i < RAG_NUM_LINKS; i++ ) {
+		const ragLink_t	*l = &ragLinks[i];
+
+		if ( rag->group[l->a] == rag->group[l->b] ) {
+			CG_RagdollSkelLink( rag->pos[l->a], rag->pos[l->b], rag->linkRest[i], l->fold != 0 );
+		}
+	}
+	if ( rag->limb ) {
+		CG_RagdollSkelLink( rag->pos[RS_LIMB], rag->pos[ragLimbChain[rag->limb][0]], rag->limbRest, qfalse );
+	}
+
+	RagQuatRotate( rag->boneRot[RB_PELVIS], rag->seedAxis[0], fwd );
+	for ( i = 0; i < 2; i++ ) {
+		const int	*n = legs[i];
+		vec3_t		line, off;
+
+		if ( rag->group[n[1]] != rag->group[RP_PELVIS] ) {
+			continue;
+		}
+		VectorSubtract( rag->pos[n[2]], rag->pos[n[0]], line );
+		if ( VectorNormalize( line ) < 0.001f ) {
+			continue;
+		}
+		VectorSubtract( rag->pos[n[1]], rag->pos[n[0]], off );
+		CrossProduct( line, fwd, side );
+		CrossProduct( side, line, side );		// fwd, square to the hip-foot line
+		diff = DotProduct( off, side );
+		if ( diff < 0 ) {
+			VectorMA( rag->pos[n[1]], -0.5f * diff, side, rag->pos[n[1]] );
+		}
+	}
+}
+
+static void RagSeedAxes( const cgRagdoll_t *rag, const char *joint, vec3_t out[3] ) {
+	orientation_t	tag;
+	int				j, k;
+
+	trap_R_BoneTag( &tag, cgs.media.skelModel, rag->frame, rag->oldframe, rag->backlerp, 0, joint );
+	for ( k = 0; k < 3; k++ ) {
+		VectorClear( out[k] );
+		for ( j = 0; j < 3; j++ ) {
+			VectorMA( out[k], tag.axis[k][j], rag->seedAxis[j], out[k] );
+		}
+	}
+}
+
+/*
+===============
+CG_RagdollSeedSkel
+===============
+*/
+static void CG_RagdollSeedSkel( cgRagdoll_t *rag, centity_t *cent, int cut ) {
+	playerEntity_t	*pe = &cent->pe;
+	orientation_t	tag;
+	vec3_t			vel, fwd, d, centre, mins, maxs;
+	trace_t			tr;
+	float			dt = 0.015f, len;
+	int				i, k;
+
+	CG_RagdollSeed( rag, cent, RAG_CUT_NONE );
+	rag->skel = qtrue;
+	rag->cut = cut;
+	rag->limb = 0;
+
+	// the frame it was last drawn in. Nothing recent (a corpse joined late): stand
+	VectorSubtract( pe->skelLastOrigin, cent->lerpOrigin, d );
+	if ( pe->skelLastTime && cg.time - pe->skelLastTime < 500 && VectorLengthSquared( d ) < 128.0f * 128.0f ) {
+		rag->frame = pe->skelLastFrame;
+		rag->oldframe = pe->skelLastOld;
+		rag->backlerp = pe->skelLastBack;
+		VectorCopy( pe->skelLastOrigin, rag->seedOrigin );
+		AxisCopy( pe->skelLastAxis, rag->seedAxis );
+	} else {
+		vec3_t	angles;
+
+		rag->frame = rag->oldframe = 0;
+		rag->backlerp = 0;
+		VectorCopy( cent->lerpOrigin, rag->seedOrigin );
+		rag->seedOrigin[2] -= 24;
+		VectorSet( angles, 0, rag->yaw, 0 );
+		AnglesToAxis( angles, rag->seedAxis );
+	}
+	VectorCopy( rag->seedAxis[0], fwd );
+
+	for ( i = 0; i < RAG_NUM_JOINTS; i++ ) {
+		trap_R_BoneTag( &tag, cgs.media.skelModel, rag->frame, rag->oldframe, rag->backlerp, 0, ragJoints[i].joint );
+		VectorCopy( rag->seedOrigin, rag->seed[ragJoints[i].part] );
+		for ( k = 0; k < 3; k++ ) {
+			VectorMA( rag->seed[ragJoints[i].part], tag.origin[k], rag->seedAxis[k], rag->seed[ragJoints[i].part] );
+		}
+	}
+	// the crown of the head, not its joint, so the skull has a bone to swing on
+	VectorSubtract( rag->seed[RP_HEAD], rag->seed[RS_NECK], d );
+	VectorNormalize( d );
+	VectorMA( rag->seed[RP_HEAD], 9.0f, d, rag->seed[RP_HEAD] );
+
+	for ( i = 0; i < RB_COUNT; i++ ) {
+		RagSeedAxes( rag, ragBones[i].joint, rag->boneAxis[i] );
+		rag->boneRot[i][0] = rag->boneRot[i][1] = rag->boneRot[i][2] = 0;
+		rag->boneRot[i][3] = 1;
+	}
+	for ( i = 0; i < 3; i++ ) {
+		RagSeedAxes( rag, ragSpineJoints[i], rag->spineAxis[i] );
+	}
+
+	memset( rag->group, 0, sizeof( rag->group ) );
+	if ( cut == RAG_CUT_LIMB ) {
+		rag->limb = CG_RagdollPickLimb( cent );
+		VectorCopy( rag->seed[ragLimbRoot[rag->limb]], rag->seed[RS_LIMB] );
+		VectorSubtract( rag->seed[RS_LIMB], rag->seed[ragLimbChain[rag->limb][0]], d );
+		rag->limbRest = VectorLength( d );
+	} else {
+		VectorCopy( rag->seed[RP_PELVIS], rag->seed[RS_LIMB] );
+	}
+
+	// frames come from the true pose, so a joint clipped out of a wall below only
+	// bends its bone
+	RagFrame( rag->seed, RS_THIGH_L, RS_THIGH_R, RP_PELVIS, rag->frameSeed[0] );
+	RagFrame( rag->seed, RS_ARM_L, RS_ARM_R, RP_CHEST, rag->frameSeed[1] );
+
+	for ( i = 0; i < RAG_NUM_LINKS; i++ ) {
+		const ragLink_t	*l = &ragLinks[i];
+
+		if ( l->fold ) {
+			VectorSubtract( rag->seed[l->a], rag->seed[l->via], d );
+			len = VectorLength( d );
+			VectorSubtract( rag->seed[l->via], rag->seed[l->b], d );
+			rag->linkRest[i] = ( len + VectorLength( d ) ) * l->fold;
+		} else {
+			VectorSubtract( rag->seed[l->a], rag->seed[l->b], d );
+			rag->linkRest[i] = VectorLength( d );
+		}
+	}
+
+	// pull anything poking through a wall back to open air, along from the body
+	VectorCopy( cent->lerpOrigin, centre );
+	VectorSet( mins, -6, -6, -6 );
+	VectorSet( maxs, 6, 6, 6 );
+	CG_Trace( &tr, centre, mins, maxs, rag->seed[RP_PELVIS], -1, CONTENTS_SOLID );
+	if ( !tr.startsolid ) {
+		VectorCopy( tr.endpos, centre );
+	}
+	for ( i = 0; i < RS_COUNT; i++ ) {
+		VectorSet( mins, -ragSkelRadius[i], -ragSkelRadius[i], -ragSkelRadius[i] );
+		VectorSet( maxs, ragSkelRadius[i], ragSkelRadius[i], ragSkelRadius[i] );
+		CG_Trace( &tr, centre, mins, maxs, rag->seed[i], -1, CONTENTS_SOLID );
+		VectorCopy( tr.startsolid ? centre : tr.endpos, rag->pos[i] );
+	}
+
+	// the speed it died at: a player's trajectory is interpolated, so it's read
+	// directly. It always topples, and the knees give first
+	VectorCopy( cent->currentState.pos.trDelta, vel );
+	for ( i = 0; i < RS_COUNT; i++ ) {
+		float	h = rag->pos[i][2] - rag->seedOrigin[2];
+
+		VectorMA( rag->pos[i], -dt, vel, rag->prev[i] );
+		VectorMA( rag->prev[i], -h * 0.012f, fwd, rag->prev[i] );
+	}
+	VectorMA( rag->prev[RS_KNEE_L], -40.0f * dt, fwd, rag->prev[RS_KNEE_L] );
+	VectorMA( rag->prev[RS_KNEE_R], -40.0f * dt, fwd, rag->prev[RS_KNEE_R] );
+
+	if ( cut == RAG_CUT_BISECT ) {
+		static const int	upper[] = { RP_CHEST, RP_HEAD, RS_NECK, RS_ARM_L, RS_ELBOW_L, RS_HAND_L, RS_ARM_R, RS_ELBOW_R, RS_HAND_R };
+
+		for ( i = 0; i < 9; i++ ) {
+			rag->group[upper[i]] = 1;
+			VectorMA( rag->prev[upper[i]], -70.0f * dt, fwd, rag->prev[upper[i]] );
+			rag->prev[upper[i]][2] -= 90.0f * dt;
+		}
+		VectorMA( rag->prev[RP_PELVIS], 40.0f * dt, fwd, rag->prev[RP_PELVIS] );
+	} else if ( cut == RAG_CUT_DECAP ) {
+		rag->group[RS_NECK] = rag->group[RP_HEAD] = 1;
+		for ( i = 0; i < 2; i++ ) {
+			int		p = i ? RP_HEAD : RS_NECK;
+
+			VectorMA( rag->prev[p], -90.0f * dt, fwd, rag->prev[p] );
+			rag->prev[p][2] -= ( i ? 240.0f : 170.0f ) * dt;
+		}
+	} else if ( cut == RAG_CUT_LIMB ) {
+		float	kx = crandom() * 60.0f, ky = crandom() * 60.0f;
+
+		for ( i = 0; i < 3; i++ ) {
+			int		p = i ? ragLimbChain[rag->limb][i - 1] : RS_LIMB;
+			float	whip = 0.7f + i * 0.35f;	// the far end leads, so it tumbles
+
+			rag->group[p] = 1;
+			VectorMA( rag->prev[p], -170.0f * whip * dt, fwd, rag->prev[p] );
+			rag->prev[p][0] -= kx * whip * dt;
+			rag->prev[p][1] -= ky * whip * dt;
+			rag->prev[p][2] -= 260.0f * whip * dt;
+		}
 	}
 }
 
@@ -564,26 +1077,28 @@ One Verlet integration + constraint relaxation + collision pass. Uses a clamped
 dt so frame hitches can't explode the sim.
 ===============
 */
-static void CG_RagdollStep( cgRagdoll_t *rag ) {
-	int		i, k, n;
+static void CG_RagdollSubstep( cgRagdoll_t *rag ) {
+	int		i, k, n, count = rag->skel ? RS_COUNT : RP_COUNT;
 	float	dt, damp;
 	vec3_t	temp, delta;
 	float	dist, diff;
 	float	maxVel2;
+	float	carry, friction, stepScale;
 	qboolean	grounded;
 
-	dt = ( cg.time - rag->lastTime ) * 0.001f;
-	rag->lastTime = cg.time;
-	if ( dt <= 0 ) {
-		return;
-	}
-	if ( dt > 0.05f ) {
-		dt = 0.05f;			// clamp hitches to 50ms
-	}
+	dt = RAG_FIXED_DT;
 
 	damp = cg_ragdollDamp.value;
 	if ( damp < 0 ) damp = 0;
 	if ( damp > 1 ) damp = 1;
+
+	// everything per-step is scaled by this step's length: the world clock runs
+	// slow in bullet time, and at a tenth of the step a body would keep moving a
+	// full step's distance, ten times too fast
+	stepScale = dt / 0.015f;
+	carry = dt / rag->lastDt * pow( damp, stepScale );
+	friction = pow( 0.5f, stepScale );
+	rag->lastDt = dt;
 
 	n = cg_ragdollIterations.integer;
 	if ( n < 1 ) n = 1;
@@ -595,11 +1110,11 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 	rag->spin += RAG_SPIN_RATE * dt;
 
 	// integrate
-	for ( i = 0 ; i < RP_COUNT ; i++ ) {
+	for ( i = 0 ; i < count ; i++ ) {
 		VectorCopy( rag->pos[i], temp );
 		// x += (x - xprev) * damp + g*dt^2
 		VectorSubtract( rag->pos[i], rag->prev[i], delta );
-		VectorScale( delta, damp, delta );
+		VectorScale( delta, carry, delta );
 		VectorAdd( rag->pos[i], delta, rag->pos[i] );
 		rag->pos[i][2] -= RAG_GRAVITY * dt * dt;
 		VectorCopy( temp, rag->prev[i] );
@@ -609,8 +1124,8 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 		// make the model spasm
 		VectorSubtract( rag->pos[i], rag->prev[i], delta );
 		dist = VectorLength( delta );
-		if ( dist > RAG_MAXSTEP ) {
-			VectorScale( delta, RAG_MAXSTEP / dist, delta );
+		if ( dist > RAG_MAXSTEP * stepScale ) {
+			VectorScale( delta, RAG_MAXSTEP * stepScale / dist, delta );
 			VectorAdd( rag->prev[i], delta, rag->pos[i] );
 		}
 	}
@@ -620,6 +1135,10 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 	// grounded corpses jitter/explode)
 	for ( k = 0 ; k < n ; k++ ) {
 		const ragConstraint_t *c;
+		if ( rag->skel ) {
+			CG_RagdollSkelLinks( rag );
+			continue;
+		}
 		for ( i = 0 ; i < RAG_NUM_CONSTRAINTS ; i++ ) {
 			c = &ragConstraints[i];
 			if ( CG_RagdollConstraintSevered( rag->cut, c->a, c->b ) ) {
@@ -640,8 +1159,8 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 	// one collision pass after the constraints are satisfied, so particles
 	// end the frame resting out of solids
 	grounded = qfalse;
-	for ( i = 0 ; i < RP_COUNT ; i++ ) {
-		if ( CG_RagdollCollide( rag->pos[i], rag->prev[i] ) ) {
+	for ( i = 0 ; i < count ; i++ ) {
+		if ( CG_RagdollCollide( rag->pos[i], rag->prev[i], rag->skel ? ragSkelRadius[i] : RAG_HALFBOX, friction ) ) {
 			grounded = qtrue;
 		}
 	}
@@ -652,7 +1171,7 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 	// "settled" at the apex of a toss (vertical velocity passes through zero)
 	// and freezing in midair.
 	maxVel2 = 0;
-	for ( i = 0 ; i < RP_COUNT ; i++ ) {
+	for ( i = 0 ; i < count ; i++ ) {
 		float v2;
 		VectorSubtract( rag->pos[i], rag->prev[i], delta );
 		v2 = DotProduct( delta, delta );
@@ -665,6 +1184,7 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 	// -- a free fall is never quiet for long. Require the quiet to persist
 	// (tracked from airQuietTime) so a toss apex, where vertical velocity passes
 	// momentarily through zero, doesn't trip it. Then snap it down to the floor.
+	maxVel2 /= stepScale * stepScale;
 	if ( grounded || maxVel2 >= RAG_SETTLE_VEL2 ) {
 		rag->airQuietTime = 0;
 	} else if ( rag->airQuietTime == 0 ) {
@@ -675,9 +1195,68 @@ static void CG_RagdollStep( cgRagdoll_t *rag ) {
 		rag->airQuietTime = 0;
 	}
 
-	if ( grounded && maxVel2 < RAG_SETTLE_VEL2 && cg.time - rag->startTime > 400 ) {
+	// Sleep only after sustained low-energy support, never at a toss apex.
+	if ( grounded && maxVel2 < RAG_SETTLE_VEL2 ) {
+		rag->quietSeconds += dt;
+	} else {
+		rag->quietSeconds = 0;
+	}
+	if ( rag->quietSeconds >= 0.25f && cg.time - rag->startTime > 400 ) {
 		rag->settled = qtrue;
 	}
+	if ( rag->skel ) {
+		CG_RagdollSkelTurn( rag );
+		if ( grounded && cg.time - rag->startTime > RAG_SKEL_MAXMS ) {
+			rag->settled = qtrue;
+		}
+	}
+}
+
+
+// Fixed game-time physics is independent of rendering cadence/time-scale
+// changes. Preserve a previous state so slow motion still draws every frame.
+static void CG_RagdollStep( cgRagdoll_t *rag ) {
+	double elapsed = (cg.animTime - rag->lastTime) * 0.001;
+	rag->lastTime = cg.animTime;
+	if (!rag->historyValid || elapsed < 0) {
+		memcpy(rag->renderPrev, rag->pos, sizeof(rag->pos));
+		memcpy(rag->rotationPrev, rag->boneRot, sizeof(rag->boneRot));
+		rag->spinPrev = rag->spin;
+		rag->historyValid = qtrue;
+		if (elapsed < 0) rag->accumulator = 0;
+	}
+	if (elapsed <= 0) return;
+	// Bound catch-up work after a hitch; no giant unstable integration step.
+	rag->accumulator += elapsed > 0.064 ? 0.064 : elapsed;
+	while (rag->accumulator >= RAG_FIXED_DT && !rag->settled) {
+		memcpy(rag->renderPrev, rag->pos, sizeof(rag->pos));
+		memcpy(rag->rotationPrev, rag->boneRot, sizeof(rag->boneRot));
+		rag->spinPrev = rag->spin;
+		CG_RagdollSubstep(rag);
+		rag->accumulator -= RAG_FIXED_DT;
+	}
+}
+
+static void CG_RagdollRenderPose(const cgRagdoll_t *sim, cgRagdoll_t *out) {
+	int i, j;
+	float alpha = Com_Clamp(0, 1, sim->accumulator / RAG_FIXED_DT);
+	*out = *sim;
+	if (!sim->historyValid || sim->settled) return;
+	for (i = 0; i < RS_COUNT; i++) {
+		for (j = 0; j < 3; j++) {
+			out->pos[i][j] = sim->renderPrev[i][j] + alpha * (sim->pos[i][j] - sim->renderPrev[i][j]);
+			// Keep the simulated velocity for detached-piece orientation.
+			out->prev[i][j] += out->pos[i][j] - sim->pos[i][j];
+		}
+	}
+	for (i = 0; i < RB_COUNT; i++) {
+		float dot = 0, sign;
+		for (j = 0; j < 4; j++) dot += sim->rotationPrev[i][j] * sim->boneRot[i][j];
+		sign = dot < 0 ? -1 : 1;
+		for (j = 0; j < 4; j++) out->boneRot[i][j] = (1-alpha)*sim->rotationPrev[i][j] + alpha*sign*sim->boneRot[i][j];
+		if (sim->skel) RagQuatNormalize(out->boneRot[i]);
+	}
+	out->spin = sim->spinPrev + alpha * (sim->spin - sim->spinPrev);
 }
 
 /*
@@ -757,6 +1336,106 @@ static void CG_RagdollSegment( cgRagdoll_t *rag, qhandle_t model, qhandle_t skin
 	CG_AddRefEntityWithPowerups( &ent, &cent->currentState, cgs.clientinfo[ cent->currentState.clientNum ].team );
 }
 
+// a turn measured from the death pose, as the joint's local delta
+static int RagBoneDelta( qhandle_t model, int pose, const char *joint, const quat_t rel, vec3_t axis[3] ) {
+	quat_t	d;
+
+	d[0] = DotProduct( rel, axis[0] );
+	d[1] = DotProduct( rel, axis[1] );
+	d[2] = DotProduct( rel, axis[2] );
+	d[3] = rel[3];
+	return trap_R_BoneDelta( model, pose, joint, d );
+}
+
+/*
+===============
+CG_RagdollSkelPiece
+
+Draws the mannequin hung from one bone. The entity carries that bone's turn and
+puts it on its particle, so a severed piece needs nothing from the body it left;
+the bones below it are local deltas. mask is hidden, or with keep, all that shows.
+===============
+*/
+static void CG_RagdollSkelPiece( cgRagdoll_t *rag, centity_t *cent, int root, int rootPart, int group,
+		const char *mask, qboolean keep, int renderfx, float shadowPlane ) {
+	static const float	maskQuat[2][4] = { { 0, 0, 0, 0 }, { 0, 0, 0, 2 } };
+	qhandle_t	model = cgs.media.skelModel;
+	refEntity_t	ent;
+	const float	*rot = rag->boneRot[root];
+	vec3_t		d;
+	quat_t		rel;
+	int			i;
+
+	memset( &ent, 0, sizeof( ent ) );
+	ent.hModel = model;
+	ent.frame = rag->frame;
+	ent.oldframe = rag->oldframe;
+	ent.backlerp = rag->backlerp;
+	for ( i = 0; i < 3; i++ ) {
+		RagQuatRotate( rot, rag->seedAxis[i], ent.axis[i] );
+	}
+	VectorSubtract( rag->seed[rootPart], rag->seedOrigin, d );
+	RagQuatRotate( rot, d, d );
+	VectorSubtract( rag->pos[rootPart], d, ent.origin );
+	VectorCopy( ent.origin, ent.oldorigin );
+	VectorCopy( rag->pos[rootPart], ent.lightingOrigin );
+	ent.shadowPlane = shadowPlane;
+	ent.renderfx = renderfx;
+
+	if ( root == RB_PELVIS && rag->group[RP_CHEST] == group ) {
+		// the spine bends over its three joints, not at one
+		float	ang, s;
+		vec3_t	axis;
+
+		RagQuatRelative( rag->boneRot[RB_PELVIS], rag->boneRot[RB_CHEST], rel );
+		VectorCopy( rel, axis );
+		s = VectorNormalize( axis );
+		ang = atan2( s, rel[3] ) / 3.0f;
+		VectorScale( axis, sin( ang ), rel );
+		rel[3] = cos( ang );
+		for ( i = 0; i < 3; i++ ) {
+			ent.bonePose = RagBoneDelta( model, ent.bonePose, ragSpineJoints[i], rel, rag->spineAxis[i] );
+		}
+	}
+	for ( i = RB_NECK; i < RB_COUNT; i++ ) {
+		int		parent = ragBones[i].parent;
+
+		if ( i == root || rag->group[RagBoneFrom( rag, i )] != group || rag->group[RagBoneFrom( rag, parent )] != group ) {
+			continue;
+		}
+		RagQuatRelative( rag->boneRot[parent], rag->boneRot[i], rel );
+		ent.bonePose = RagBoneDelta( model, ent.bonePose, ragBones[i].joint, rel, rag->boneAxis[i] );
+	}
+	if ( mask ) {
+		ent.bonePose = trap_R_BoneDelta( model, ent.bonePose, mask, maskQuat[keep] );
+		if ( !ent.bonePose ) {
+			return;		// no bone poses on this renderer: no whole body for a piece
+		}
+	}
+	CG_AddRefEntityWithPowerups( &ent, &cent->currentState, cgs.clientinfo[ cent->currentState.clientNum ].team );
+}
+
+/*
+===============
+CG_RagdollAddSkeletal
+===============
+*/
+static void CG_RagdollAddSkeletal( cgRagdoll_t *rag, centity_t *cent, int renderfx, float shadowPlane ) {
+	const char	*off = NULL;
+
+	if ( rag->cut == RAG_CUT_BISECT ) {
+		off = "spine_01";
+		CG_RagdollSkelPiece( rag, cent, RB_CHEST, RP_CHEST, 1, off, qtrue, renderfx, shadowPlane );
+	} else if ( rag->cut == RAG_CUT_DECAP ) {
+		off = "neck_01";
+		CG_RagdollSkelPiece( rag, cent, RB_NECK, RS_NECK, 1, off, qtrue, renderfx, shadowPlane );
+	} else if ( rag->cut == RAG_CUT_LIMB ) {
+		off = ragBones[ragLimbBone[rag->limb]].joint;
+		CG_RagdollSkelPiece( rag, cent, ragLimbBone[rag->limb], RS_LIMB, 1, off, qtrue, renderfx, shadowPlane );
+	}
+	CG_RagdollSkelPiece( rag, cent, RB_PELVIS, RP_PELVIS, 0, off, qfalse, renderfx, shadowPlane );
+}
+
 /*
 ===============
 CG_RagdollAdd
@@ -767,7 +1446,7 @@ animated player. Returns qfalse to fall through to normal rendering.
 ===============
 */
 qboolean CG_RagdollAdd( centity_t *cent, int renderfx, float shadowPlane ) {
-	cgRagdoll_t		*rag;
+	cgRagdoll_t		*rag, rendered;
 	clientInfo_t	*ci;
 	int				num;
 	int				cut;
@@ -796,18 +1475,40 @@ qboolean CG_RagdollAdd( centity_t *cent, int renderfx, float shadowPlane ) {
 	// (re)seed on a fresh death, or if the slot was recycled for a body that
 	// teleported far from where we last simulated it
 	if ( !rag->active ) {
-		CG_RagdollSeed( rag, cent, cut );
+		// a body-queue corpse carries on from the ragdoll its owner left behind
+		const cgRagdoll_t	*from = &cg_ragdolls[ cent->currentState.clientNum ];
+
+		VectorSubtract( cent->lerpOrigin, from->pos[RP_PELVIS], d );
+		if ( num >= MAX_CLIENTS && from->startTime && from->cut == cut && VectorLengthSquared( d ) < 256.0f * 256.0f ) {
+			*rag = *from;
+			rag->active = qtrue;
+		} else if ( cg_skeletal.integer && cgs.media.skelModel ) {
+			CG_RagdollSeedSkel( rag, cent, cut );
+		} else {
+			CG_RagdollSeed( rag, cent, cut );
+		}
 	} else {
 		VectorSubtract( cent->lerpOrigin, rag->pos[RP_FEET], d );
 		if ( cg.time - rag->startTime < 50 && VectorLengthSquared( d ) > 200.0f * 200.0f ) {
-			CG_RagdollSeed( rag, cent, cut );
+			if ( cg_skeletal.integer && cgs.media.skelModel ) {
+				CG_RagdollSeedSkel( rag, cent, cut );
+			} else {
+				CG_RagdollSeed( rag, cent, cut );
+			}
 		}
 	}
 
 	if ( !rag->settled ) {
 		CG_RagdollStep( rag );
 	} else {
-		rag->lastTime = cg.time;	// keep dt sane if it wakes back up
+		rag->lastTime = cg.animTime;
+	}
+	CG_RagdollRenderPose(rag, &rendered);
+	rag = &rendered;
+
+	if ( rag->skel ) {
+		CG_RagdollAddSkeletal( rag, cent, renderfx, shadowPlane );
+		return qtrue;
 	}
 
 	// legs always ride the lower spine (never spun -- they stay the grounded half)
@@ -847,10 +1548,22 @@ qboolean CG_RagdollWound( int entnum, int part, vec3_t out ) {
 	if ( entnum < 0 || entnum >= MAX_GENTITIES ) {
 		return qfalse;
 	}
+	rag = &cg_ragdolls[ entnum ];
+	if ( part == RAG_PART_LIMB ) {			// the flying limb's own stump
+		if ( !rag->active || !rag->limb ) {
+			return qfalse;
+		}
+		VectorCopy( rag->pos[rag->skel ? RS_LIMB : RP_CHEST], out );
+		return qtrue;
+	}
+	if ( rag->skel && rag->cut == RAG_CUT_LIMB && part == RAG_PART_CHEST ) {
+		part = ragLimbRoot[rag->limb];		// the stump left on the body
+		VectorCopy( rag->pos[part], out );
+		return rag->active;
+	}
 	if ( part < 0 || part >= RP_COUNT ) {
 		return qfalse;
 	}
-	rag = &cg_ragdolls[ entnum ];
 	if ( !rag->active ) {
 		return qfalse;
 	}

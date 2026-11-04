@@ -546,6 +546,12 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 	es = &cent->currentState;
 	event = es->event & ~EV_EVENT_BITS;
 
+	// STRAFE 64: the skeletal body plays moves off these, not guessed from velocity
+	if ( event == EV_JUMP || event == EV_DOUBLE_JUMP || event == EV_WALLJUMP || event == EV_DASH || event == EV_VAULT ) {
+		cent->pe.skelEvent = event;
+		cent->pe.skelEventParm = es->eventParm;
+	}
+
 	if ( cg_debugEvents.integer ) {
 		CG_Printf( "ent:%3i  event:%3i ", es->number, event );
 	}
@@ -689,6 +695,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		trap_S_StartSound (NULL, es->number, CHAN_VOICE, CG_CustomSound( es->number, "*jump1.wav" ) );
 		break;
 
+	case EV_VAULT:
 	case EV_JUMP:
 		DEBUGNAME("EV_JUMP");
 		trap_S_StartSound (NULL, es->number, CHAN_VOICE, CG_CustomSound( es->number, "*jump1.wav" ) );

@@ -789,6 +789,10 @@ extern	vmCvar_t	g_grapple;
 extern	vmCvar_t	g_grappleInstant;
 extern	vmCvar_t	g_truckRamp;
 extern	vmCvar_t	g_truckBest;
+extern	vmCvar_t	g_truckBots;
+extern	vmCvar_t	g_truckMaxGap;
+extern	vmCvar_t	g_truckRiders;
+void G_TruckPlaceBot( gentity_t *bot );
 void G_TruckRunReset( gentity_t *player );
 extern	vmCvar_t	g_grappleRange;
 extern	vmCvar_t	g_grappleSpeed;
@@ -826,7 +830,7 @@ extern	vmCvar_t	g_swordRiposte;		// ms the clean-parry counter-buff window lasts
 extern	vmCvar_t	g_swordCounterHit;	// 1 = hitting a mid-swing enemy is a counter-hit (+dmg + pop)
 extern	vmCvar_t	g_swordJuggle;		// 1 = up-cut launches / down-cut spikes caught bodies (juggle enders)
 extern	vmCvar_t	g_swordGuardBreak;	// 1 = a slash right after dropping guard breaks a blocker's guard (P~S)
-extern	vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field)
+extern	vmCvar_t	g_botSwordOnly;		// 1 = bots spawn with only the katana (pure melee field), 2 = everyone
 extern	vmCvar_t	g_corpseTime;		// STRAFE 64: seconds a dead body lingers before removal
 extern	vmCvar_t	g_strafeAccel;		// live air-strafe tuning cvars
 extern	vmCvar_t	g_airWishClamp;

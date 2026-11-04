@@ -468,6 +468,23 @@ void Cmd_TeamTask_f( gentity_t *ent ) {
 
 /*
 =================
+Cmd_TestDie_f
+
+Cheat: a real death that doesn't gib, for looking at bodies. Any argument makes
+it a blade kill, which cuts the body the same way a sword does.
+=================
+*/
+static void Cmd_TestDie_f( gentity_t *ent ) {
+	if ( !CheatsOk( ent ) || ent->client->ps.stats[STAT_HEALTH] <= 0 ) {
+		return;
+	}
+	ent->flags &= ~FL_GODMODE;
+	ent->client->ps.stats[STAT_HEALTH] = ent->health = -1;
+	player_die( ent, ent, ent, 1, trap_Argc() > 1 ? MOD_SWORD : MOD_FALLING );
+}
+
+/*
+=================
 Cmd_Kill_f
 =================
 */
@@ -2054,6 +2071,8 @@ void ClientCommand( int clientNum ) {
 		Cmd_God_f (ent);
 	else if (Q_stricmp (cmd, "notarget") == 0)
 		Cmd_Notarget_f (ent);
+	else if (Q_stricmp (cmd, "testdie") == 0)
+		Cmd_TestDie_f (ent);
 	else if (Q_stricmp (cmd, "noclip") == 0)
 		Cmd_Noclip_f (ent);
 	else if (Q_stricmp (cmd, "kill") == 0)

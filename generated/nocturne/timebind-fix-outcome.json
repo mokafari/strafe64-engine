@@ -1,0 +1,6 @@
+{
+  "finding": "Time-bind ran after zero-delta movement rejection; walking input under-normalized; residual speed prevented intent-only stop behavior.",
+  "changes": "Update clock before movement gating; normalize walking; jump wakes clock; ignore residual speed for base intent; exponential real-time easing; cap hitch delta instead of discarding.",
+  "validation": "Controller regression suite and fractional clock suite passed; build passed. Live forward input reached 1.000; release settled to 0.050; walking retested.",
+  "prediction": "Ordinary movement will reliably leave near-freeze, and stopping will return to it without dash/slide intervention."
+}

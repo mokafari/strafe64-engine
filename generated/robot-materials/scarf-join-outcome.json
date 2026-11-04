@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-01",
+  "prediction": "A shared neck-local socket and folded cuff should hide the static-to-dynamic seam throughout animation; using the tail fabric shader should avoid the armour rim light on the cuff.",
+  "status": "complete",
+  "outcome": "Removed 620 additional rear-flap/shoulder-stub triangles, retained front neck wrap, and generated 26 neck-bound folded cloth faces sharing the tail socket. Build, seam-alignment and torso-collision tests passed. Four-angle standing and moving-bot captures show a continuous gold cloth join without the previous detached stump or cyan armour rim.",
+  "limitations": "The cuff is rigidly attached to the neck; the torn tail retains spring simulation and torso proxy collision."
+}

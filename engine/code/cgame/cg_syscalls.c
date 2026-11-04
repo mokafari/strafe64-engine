@@ -295,6 +295,30 @@ void	trap_R_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs ) {
 	syscall( CG_R_MODELBOUNDS, model, mins, maxs );
 }
 
+int		trap_R_BoneLayer( qhandle_t model, int pose, const char *root, int frame, int oldframe, float backlerp, float weight ) {
+	return syscall( CG_R_BONELAYER, model, pose, root, frame, oldframe, PASSFLOAT( backlerp ), PASSFLOAT( weight ) );
+}
+
+int		trap_R_BoneTag( orientation_t *tag, qhandle_t model, int frame, int oldframe, float backlerp, int pose, const char *joint ) {
+	return syscall( CG_R_BONETAG, tag, model, frame, oldframe, PASSFLOAT( backlerp ), pose, joint );
+}
+
+void	trap_R_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack, int fromNext, int toNext ) {
+	syscall( CG_R_BONEINERTIACAPTURE, model, slot, fromFrame, fromOld, PASSFLOAT( fromBack ), toFrame, toOld, PASSFLOAT( toBack ), fromNext, toNext );
+}
+
+int		trap_R_BoneInertia( qhandle_t model, int pose, int slot, float weight, float weightVel ) {
+	return syscall( CG_R_BONEINERTIA, model, pose, slot, PASSFLOAT( weight ), PASSFLOAT( weightVel ) );
+}
+
+int		trap_R_BoneCubic( qhandle_t model, int pose, int before, int after ) {
+	return syscall( CG_R_BONECUBIC, model, pose, before, after );
+}
+
+int		trap_R_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat ) {
+	return syscall( CG_R_BONEDELTA, model, pose, joint, quat );
+}
+
 int		trap_R_LerpTag( orientation_t *tag, clipHandle_t mod, int startFrame, int endFrame, 
 					   float frac, const char *tagName ) {
 	return syscall( CG_R_LERPTAG, tag, mod, startFrame, endFrame, PASSFLOAT(frac), tagName );

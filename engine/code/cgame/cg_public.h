@@ -182,7 +182,13 @@ typedef enum {
 	CG_CEIL,
 	CG_TESTPRINTINT,
 	CG_TESTPRINTFLOAT,
-	CG_ACOS
+	CG_ACOS,
+	CG_R_BONEDELTA,
+	CG_R_BONELAYER,
+	CG_R_BONETAG,
+	CG_R_BONEINERTIACAPTURE,
+	CG_R_BONEINERTIA,
+	CG_R_BONECUBIC
 } cgameImport_t;
 
 
@@ -216,7 +222,7 @@ typedef enum {
 	// command is not known to the game
 
 	CG_DRAW_ACTIVE_FRAME,
-//	void (*CG_DrawActiveFrame)( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback );
+//	void (*CG_DrawActiveFrame)( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback, int fraction );
 	// Generates and draws a game scene and status information at the given time.
 	// If demoPlayback is set, local movement prediction will not be enabled
 

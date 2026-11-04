@@ -181,6 +181,44 @@ typedef struct {
 	// system for the kung-fu tornado spin.
 	int				kickTime;		// cg.time the kick pose began (0 = none)
 	int				kickFlags;		// EV_KICK eventParm: 1 = airborne, 2 = hit, 4 = ninja launch
+	// STRAFE 64: skeletal player clip state
+	int				skelClip, skelStart, skelFrom;
+	int				skelGround;			// on the ground last frame
+	float			skelPhase;			// frames into the clip, advanced on the scaled clock
+	float			skelLean[2];		// smoothed pitch/roll
+	vec3_t			skelVel;
+	vec3_t			skelWallPt;			// where the feet go on a wall run
+	int				skelAirStart, skelFlipTime;
+	int				skelEvent, skelEventTime;	// last movement event, for one-shots
+	int				skelClipUp, skelFlipKind;
+	vec3_t			skelFootPt[2];		// planted foot positions
+	qboolean		skelFootOn[2];
+	float			skelYawF, skelBodyYaw, skelAim;
+	float			skelFootW[2];
+	vec3_t			skelVelF;
+	qboolean		skelBack;
+	int				skelUpStart;
+	float			skelWallOff, skelRate, skelLook, skelWallW, skelRollT;
+	float			skelWallPhase;
+	float			skelFloor;
+	int				skelWallSide;
+	int				skelSpinStart, skelSpinMs, skelSpinAxis;
+	float			skelSpinDir;
+	int				skelSpinNext, skelSpinCut, skelSpinSwing;
+	float			skelInertK;			// decay rate of the current transition
+	int				skelDashTime, skelEventParm, skelFromLen;
+	float			skelFromPhase;
+	vec3_t			skelVaultPt, skelVaultSide;
+	qboolean		skelVaultHit;
+	float			skelLeanV[2], skelLeanX[2];
+	vec3_t			skelScarf[8], skelScarfOld[8];
+	int				skelScarfTime;
+	float			skelDrop, skelDropV;	// landing compression spring
+	float			skelPhaseUp;
+	float			skelUpper;			// upper-body sword layer weight
+	int				skelLastTime, skelLastFrame, skelLastOld;
+	float			skelLastBack;
+	vec3_t			skelLastOrigin, skelLastAxis[3];
 } playerEntity_t;
 
 //=================================================
@@ -527,6 +565,10 @@ typedef struct {
 
 	int			time;			// this is the time value that the client
 								// is rendering at.
+	vec3_t          localRenderOrigin; // shared third-person body/camera anchor
+	qboolean        localRenderOriginValid;
+	double          animTime, oldAnimTime;
+	float           animDelta;
 	int			oldTime;		// time at last frame, used for missile trails and prediction checking
 
 	int			physicsTime;	// either cg.snap->time or cg.nextSnap->time
@@ -832,6 +874,7 @@ typedef struct {
 	qhandle_t	gibFist;
 	qhandle_t	gibFoot;
 	qhandle_t	gibForearm;
+	qhandle_t	skelModel;			// 0 when the mannequin isn't installed: falls back to MD3
 	qhandle_t	gibIntestine;
 	qhandle_t	gibLeg;
 	qhandle_t	gibSkull;
@@ -1351,6 +1394,12 @@ extern	vmCvar_t		cg_dofBulletTime;	// STRAFE 64: rack DoF focus as bullet-time s
 extern	vmCvar_t		cg_dofBase;
 extern	vmCvar_t		cg_dofMax;
 extern	vmCvar_t		cg_dofFocusTrace;
+extern	vmCvar_t		cg_skeletal;
+extern	vmCvar_t		cg_skelWallClip;
+extern	vmCvar_t		cg_skelFootLock;
+extern	vmCvar_t		cg_skelBody;
+extern	vmCvar_t		cg_skelScarf;
+extern	vmCvar_t		cg_skelSwingArc;
 extern	vmCvar_t		cg_ragdoll;
 extern	vmCvar_t		cg_ragdollDamp;
 extern	vmCvar_t		cg_ragdollIterations;
@@ -1456,6 +1505,7 @@ void CG_BuildSpectatorString( void );
 // cg_view.c
 //
 void CG_TestModel_f (void);
+void CG_TestCut_f (void);
 void CG_TestGun_f (void);
 void CG_TestModelNextFrame_f (void);
 void CG_TestModelPrevFrame_f (void);
@@ -1465,7 +1515,7 @@ void CG_ZoomDown_f( void );
 void CG_ZoomUp_f( void );
 void CG_AddBufferedSound( sfxHandle_t sfx);
 
-void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback );
+void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback, int fraction );
 
 // race layer (cg_view.c)
 void CG_RaceFrame( void );
@@ -1631,6 +1681,7 @@ qboolean CG_RagdollAdd( centity_t *cent, int renderfx, float shadowPlane );
 #define RAG_PART_PELVIS	1
 #define RAG_PART_CHEST	2
 #define RAG_PART_HEAD	3
+#define RAG_PART_LIMB	4
 qboolean CG_RagdollWound( int entnum, int part, vec3_t out );
 void CG_SpawnSwordCut( vec3_t origin, vec3_t normal, vec3_t fwd );
 void CG_AddSwordCuts( void );
@@ -1904,6 +1955,19 @@ void		trap_R_SetColor( const float *rgba );	// NULL = 1,1,1,1
 void		trap_R_DrawStretchPic( float x, float y, float w, float h, 
 			float s1, float t1, float s2, float t2, qhandle_t hShader );
 void		trap_R_ModelBounds( clipHandle_t model, vec3_t mins, vec3_t maxs );
+int			CG_PlantLimb( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end,
+				const vec3_t start, const vec3_t dir, float range, float standoff );
+void		CG_SkelWallStride( refEntity_t *ent, const vec3_t wallPt, const vec3_t moveLeft, const vec3_t vel, int wall, float a, float weight );
+int			CG_LimbToWorld( refEntity_t *ent, int pose, const char *upper, const char *lower, const char *end, const vec3_t pt );
+qboolean	CG_JointWorld( refEntity_t *ent, const char *joint, vec3_t out );
+int			CG_BoneRotation( refEntity_t *ent, int pose, const char *joint, const orientation_t *tag,
+				const vec3_t axis, float angle );
+int			trap_R_BoneLayer( qhandle_t model, int pose, const char *root, int frame, int oldframe, float backlerp, float weight );
+int			trap_R_BoneTag( orientation_t *tag, qhandle_t model, int frame, int oldframe, float backlerp, int pose, const char *joint );
+void		trap_R_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack, int fromNext, int toNext );
+int			trap_R_BoneInertia( qhandle_t model, int pose, int slot, float weight, float weightVel );
+int			trap_R_BoneCubic( qhandle_t model, int pose, int before, int after );
+int			trap_R_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat );
 int			trap_R_LerpTag( orientation_t *tag, clipHandle_t mod, int startFrame, int endFrame, 
 					   float frac, const char *tagName );
 void		trap_R_RemapShader( const char *oldShader, const char *newShader, const char *timeOffset );

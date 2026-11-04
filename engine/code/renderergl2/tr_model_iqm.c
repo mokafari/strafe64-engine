@@ -1340,8 +1340,296 @@ void R_AddIQMSurfaces( trRefEntity_t *ent ) {
 }
 
 
-static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
-			      float backlerp, float *poseMats ) {
+/*
+=================
+Runtime bone poses
+
+cgame submits per-joint rotation deltas each frame (IK, ragdoll); a refEntity
+references the set through bonePose. Sets live until the next RE_BeginFrame.
+=================
+*/
+#define	MAX_BONE_POSES	64
+#define	MAX_BONE_DELTAS	24
+
+// a delta with zero xyz and w 0 hides that joint's subtree, w 2 keeps only it
+#define	BONE_IS_MASK( q )	( (q)[0] == 0 && (q)[1] == 0 && (q)[2] == 0 && ( (q)[3] == 0 || (q)[3] == 2 ) )
+
+typedef struct {
+	qhandle_t	model;
+	int			num;
+	int			joint[MAX_BONE_DELTAS];
+	quat_t		rot[MAX_BONE_DELTAS];
+	int			layerRoot;			// joint a second clip plays from, -1 for none
+	int			layerFrame, layerOldframe;
+	float		layerBacklerp, layerWeight;
+	int			inertSlot;			// transition offset to add, -1 for none
+	float		inertWeight, inertWeightVel;
+	int			cubicBefore, cubicAfter;	// frames either side of the pair, -1 for linear
+	int			upperSlot;			// same, for the upper-body layer only
+	float		upperWeight;
+} bonePose_t;
+
+static bonePose_t	bonePoses[MAX_BONE_POSES];
+static int			numBonePoses;
+
+void R_ClearBonePoses( void ) {
+	numBonePoses = 0;
+}
+
+static int R_FindJoint( qhandle_t model, const char *joint ) {
+	model_t		*mod = R_GetModelByHandle( model );
+	iqmData_t	*data;
+	const char	*names;
+	int			i;
+
+	if ( mod->type != MOD_IQM ) {
+		return -1;
+	}
+	data = mod->modelData;
+	names = data->jointNames;
+	for ( i = 0; i < data->num_joints; i++ ) {
+		if ( !strcmp( joint, names ) ) {
+			return i;
+		}
+		names += strlen( names ) + 1;
+	}
+	return -1;
+}
+
+static bonePose_t *R_BonePoseForEdit( qhandle_t model, int *pose ) {
+	bonePose_t	*bp;
+
+	if ( *pose <= 0 ) {
+		if ( numBonePoses >= MAX_BONE_POSES ) {
+			return NULL;
+		}
+		bp = &bonePoses[numBonePoses++];
+		bp->model = model;
+		bp->num = 0;
+		bp->layerRoot = -1;
+		bp->inertSlot = -1;
+		bp->upperSlot = -1;
+		bp->cubicBefore = -1;
+		*pose = numBonePoses;
+		return bp;
+	}
+	return *pose > numBonePoses ? NULL : &bonePoses[*pose - 1];
+}
+
+/*
+=================
+Inertial transitions
+
+At a clip change we store how far each joint sits from the new clip (old pose
+relative to new). The new clip plays at once and that offset decays to nothing,
+so motion never stalls the way a crossfade between two poses does.
+=================
+*/
+#define	MAX_INERTIA_SLOTS	128		// MAX_CLIENTS full body, then MAX_CLIENTS upper layers
+
+typedef struct {
+	vec3_t	rot[IQM_MAX_JOINTS];	// rotation offset, scaled angle-axis
+	vec3_t	rotVel[IQM_MAX_JOINTS];	// its rate per second
+	vec3_t	trans[IQM_MAX_JOINTS];
+	float	weight, weightVel;		// what was showing last frame, for chained changes
+} boneInertia_t;
+
+static boneInertia_t	boneInertia[MAX_INERTIA_SLOTS];
+
+static void R_QuatMul( const float *a, const float *b, float *q ) {
+	q[0] = a[3]*b[0] + a[0]*b[3] + a[1]*b[2] - a[2]*b[1];
+	q[1] = a[3]*b[1] - a[0]*b[2] + a[1]*b[3] + a[2]*b[0];
+	q[2] = a[3]*b[2] + a[0]*b[1] - a[1]*b[0] + a[2]*b[3];
+	q[3] = a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2];
+}
+
+static void R_QuatLog( const float *q, vec3_t out ) {
+	float	s = sqrt( q[0]*q[0] + q[1]*q[1] + q[2]*q[2] );
+	float	w = q[3] < 0 ? -q[3] : q[3], sign = q[3] < 0 ? -1.0f : 1.0f;
+	float	k = s > 0.0001f ? 2.0f * atan2( s, w ) / s : 2.0f;
+
+	out[0] = q[0] * k * sign;
+	out[1] = q[1] * k * sign;
+	out[2] = q[2] * k * sign;
+}
+
+static void R_QuatExp( const vec3_t v, float *q ) {
+	float	a = VectorLength( v ) * 0.5f;
+	float	k = a > 0.0001f ? sin( a ) / ( a * 2.0f ) : 0.5f;
+
+	q[0] = v[0] * k;
+	q[1] = v[1] * k;
+	q[2] = v[2] * k;
+	q[3] = cos( a );
+}
+
+static void R_LerpJoint( const iqmData_t *data, int frame, int oldframe, float back, int j, vec3_t t, quat_t q ) {
+	const iqmTransform_t	*a = &data->poses[oldframe * data->num_poses + j];
+	const iqmTransform_t	*b = &data->poses[frame * data->num_poses + j];
+
+	t[0] = a->translate[0] * back + b->translate[0] * ( 1.0f - back );
+	t[1] = a->translate[1] * back + b->translate[1] * ( 1.0f - back );
+	t[2] = a->translate[2] * back + b->translate[2] * ( 1.0f - back );
+	QuatSlerp( a->rotate, b->rotate, 1.0f - back, q );
+}
+
+static void R_InertiaRot( const boneInertia_t *in, int j, float w, float wv, quat_t out ) {
+	vec3_t	v;
+
+	VectorScale( in->rot[j], w, v );
+	VectorMA( v, wv, in->rotVel[j], v );
+	R_QuatExp( v, out );
+}
+
+void RE_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack, int fromNext, int toNext ) {
+	model_t			*mod = R_GetModelByHandle( model );
+	iqmData_t		*data;
+	boneInertia_t	*in;
+	int				j;
+
+	if ( mod->type != MOD_IQM || slot < 0 || slot >= MAX_INERTIA_SLOTS ) {
+		return;
+	}
+	data = mod->modelData;
+	if ( !data->num_frames || data->num_poses > IQM_MAX_JOINTS ) {
+		return;
+	}
+	in = &boneInertia[slot];
+	fromFrame %= data->num_frames;
+	fromOld %= data->num_frames;
+	toFrame %= data->num_frames;
+	toOld %= data->num_frames;
+	fromNext %= data->num_frames;
+	toNext %= data->num_frames;
+	for ( j = 0; j < data->num_poses; j++ ) {
+		vec3_t	ft, tt, ft2, tt2, log2;
+		quat_t	fq, tq, fq2, tq2, shown, tmp, inv;
+
+		R_LerpJoint( data, fromFrame, fromOld, fromBack, j, ft, fq );
+		R_LerpJoint( data, toFrame, toOld, toBack, j, tt, tq );
+		R_LerpJoint( data, fromNext, fromNext, 0, j, ft2, fq2 );
+		R_LerpJoint( data, toNext, toNext, 0, j, tt2, tq2 );
+
+		// start from what's on screen, including any offset still decaying
+		if ( in->weight > 0.001f ) {
+			R_InertiaRot( in, j, in->weight, in->weightVel, shown );
+			R_QuatMul( shown, fq, tmp );
+			QuatCopy( tmp, fq );
+			R_QuatMul( shown, fq2, tmp );
+			QuatCopy( tmp, fq2 );
+			VectorMA( ft, in->weight, in->trans[j], ft );
+		}
+		inv[0] = -tq[0];
+		inv[1] = -tq[1];
+		inv[2] = -tq[2];
+		inv[3] = tq[3];
+		R_QuatMul( fq, inv, tmp );
+		R_QuatLog( tmp, in->rot[j] );
+		inv[0] = -tq2[0];
+		inv[1] = -tq2[1];
+		inv[2] = -tq2[2];
+		inv[3] = tq2[3];
+		R_QuatMul( fq2, inv, tmp );
+		R_QuatLog( tmp, log2 );
+		// one key apart at the bake rate; capped so a clip's big swing can't fling a limb
+		VectorSubtract( log2, in->rot[j], in->rotVel[j] );
+		VectorScale( in->rotVel[j], 30.0f, in->rotVel[j] );
+		if ( VectorLength( in->rotVel[j] ) > 12.0f ) {
+			VectorNormalize( in->rotVel[j] );
+			VectorScale( in->rotVel[j], 12.0f, in->rotVel[j] );
+		}
+		VectorSubtract( ft, tt, in->trans[j] );
+	}
+	in->weight = 1.0f;
+	in->weightVel = 0;
+}
+
+int RE_BoneInertia( qhandle_t model, int pose, int slot, float weight, float weightVel ) {
+	bonePose_t	*bp;
+
+	if ( slot < 0 || slot >= MAX_INERTIA_SLOTS ) {
+		return pose;
+	}
+	boneInertia[slot].weight = weight;
+	boneInertia[slot].weightVel = weightVel;
+	bp = R_BonePoseForEdit( model, &pose );
+	if ( bp ) {
+		if ( slot >= MAX_INERTIA_SLOTS / 2 ) {
+			bp->upperSlot = slot;
+			bp->upperWeight = weight;
+		} else {
+			bp->inertSlot = slot;
+			bp->inertWeight = weight;
+			bp->inertWeightVel = weightVel;
+		}
+	}
+	return pose;
+}
+
+// Catmull-Rom through four frames instead of linear between two. Linear keeps
+// velocity constant between keys and steps it at each one, which reads as judder
+// once a clip plays faster than its key rate
+int RE_BoneCubic( qhandle_t model, int pose, int before, int after ) {
+	bonePose_t	*bp = R_BonePoseForEdit( model, &pose );
+
+	if ( bp ) {
+		bp->cubicBefore = before;
+		bp->cubicAfter = after;
+	}
+	return pose;
+}
+
+// plays another clip from root down (arms over legs), blended by weight
+int RE_BoneLayer( qhandle_t model, int pose, const char *root, int frame, int oldframe, float backlerp, float weight ) {
+	bonePose_t	*bp;
+	int			i = R_FindJoint( model, root );
+
+	if ( i < 0 ) {
+		return pose;
+	}
+	bp = R_BonePoseForEdit( model, &pose );
+	if ( !bp ) {
+		return 0;
+	}
+	bp->layerRoot = i;
+	bp->layerFrame = frame;
+	bp->layerOldframe = oldframe;
+	bp->layerBacklerp = backlerp;
+	bp->layerWeight = weight;
+	return pose;
+}
+
+// creates a set when pose is 0; returns the handle to pass on, 0 on failure
+int RE_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat ) {
+	bonePose_t	*bp;
+	int			i = R_FindJoint( model, joint );
+
+	if ( i < 0 ) {
+		return pose;
+	}
+	bp = R_BonePoseForEdit( model, &pose );
+	if ( !bp ) {
+		return 0;
+	}
+	if ( bp->num < MAX_BONE_DELTAS ) {
+		bp->joint[bp->num] = i;
+		QuatCopy( quat, bp->rot[bp->num] );
+		bp->num++;
+	}
+	return pose;
+}
+
+static const bonePose_t *R_BonePoseForEntity( const refEntity_t *e ) {
+	if ( e->bonePose <= 0 || e->bonePose > numBonePoses || bonePoses[e->bonePose - 1].model != e->hModel ) {
+		return NULL;
+	}
+	return &bonePoses[e->bonePose - 1];
+}
+
+#define DotProduct4(a,b)	( (a)[0]*(b)[0] + (a)[1]*(b)[1] + (a)[2]*(b)[2] + (a)[3]*(b)[3] )
+
+static void ComputePoseMatsUncached( iqmData_t *data, int frame, int oldframe,
+			      float backlerp, float *poseMats, const bonePose_t *bonePose ) {
 	iqmTransform_t relativeJoints[IQM_MAX_JOINTS];
 	iqmTransform_t *relativeJoint;
 	const iqmTransform_t *pose;
@@ -1378,6 +1666,112 @@ static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
 		}
 	}
 
+	if ( bonePose && bonePose->cubicBefore >= 0 && oldframe != frame && data->num_frames ) {
+		float		t = 1.0f - backlerp, t2 = t * t, t3 = t2 * t;
+		const float	c0 = -0.5f * t + t2 - 0.5f * t3;
+		const float	c1 = 1.0f - 2.5f * t2 + 1.5f * t3;
+		const float	c2 = 0.5f * t + 2.0f * t2 - 1.5f * t3;
+		const float	c3 = -0.5f * t2 + 0.5f * t3;
+		const iqmTransform_t	*p0 = &data->poses[( bonePose->cubicBefore % data->num_frames ) * data->num_poses];
+		const iqmTransform_t	*p1 = &data->poses[oldframe * data->num_poses];
+		const iqmTransform_t	*p2 = &data->poses[frame * data->num_poses];
+		const iqmTransform_t	*p3 = &data->poses[( bonePose->cubicAfter % data->num_frames ) * data->num_poses];
+
+		for ( i = 0; i < data->num_poses; i++ ) {
+			float	s0 = DotProduct4( p1[i].rotate, p0[i].rotate ) < 0 ? -1.0f : 1.0f;
+			float	s2 = DotProduct4( p1[i].rotate, p2[i].rotate ) < 0 ? -1.0f : 1.0f;
+			float	s3 = DotProduct4( p1[i].rotate, p3[i].rotate ) < 0 ? -1.0f : 1.0f;
+			float	*q = relativeJoints[i].rotate;
+			float	len;
+			int		k;
+
+			for ( k = 0; k < 4; k++ ) {
+				q[k] = c0 * s0 * p0[i].rotate[k] + c1 * p1[i].rotate[k] + c2 * s2 * p2[i].rotate[k] + c3 * s3 * p3[i].rotate[k];
+			}
+			len = sqrt( q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3] );
+			if ( len > 0.0001f ) {
+				q[0] /= len;
+				q[1] /= len;
+				q[2] /= len;
+				q[3] /= len;
+			}
+			for ( k = 0; k < 3; k++ ) {
+				relativeJoints[i].translate[k] = c0 * p0[i].translate[k] + c1 * p1[i].translate[k]
+					+ c2 * p2[i].translate[k] + c3 * p3[i].translate[k];
+			}
+		}
+	}
+
+	// upper-body layer: blend a second clip from the root joint down
+	if ( bonePose && bonePose->layerRoot >= 0 && data->num_frames ) {
+		qboolean	inLayer[IQM_MAX_JOINTS];
+		const iqmTransform_t	*a = &data->poses[( bonePose->layerOldframe % data->num_frames ) * data->num_poses];
+		const iqmTransform_t	*b = &data->poses[( bonePose->layerFrame % data->num_frames ) * data->num_poses];
+
+		for ( i = 0; i < data->num_poses; i++ ) {
+			quat_t	q;
+			int		parent = data->jointParents[i];
+
+			inLayer[i] = i == bonePose->layerRoot || ( parent >= 0 && inLayer[parent] );
+			if ( inLayer[i] ) {
+				QuatSlerp( a[i].rotate, b[i].rotate, 1.0f - bonePose->layerBacklerp, q );
+				QuatSlerp( relativeJoints[i].rotate, q, bonePose->layerWeight, relativeJoints[i].rotate );
+			}
+		}
+	}
+
+	// the upper layer's own transition, on just the layer's joints
+	if ( bonePose && bonePose->upperSlot >= 0 && bonePose->upperWeight > 0.001f && bonePose->layerRoot >= 0 ) {
+		const boneInertia_t	*in = &boneInertia[bonePose->upperSlot];
+		qboolean	inLayer[IQM_MAX_JOINTS];
+
+		for ( i = 0; i < data->num_poses; i++ ) {
+			int		parent = data->jointParents[i];
+
+			inLayer[i] = i == bonePose->layerRoot || ( parent >= 0 && inLayer[parent] );
+			if ( inLayer[i] ) {
+				quat_t	off, q;
+
+				R_InertiaRot( in, i, bonePose->upperWeight, 0, off );
+				R_QuatMul( off, relativeJoints[i].rotate, q );
+				QuatCopy( q, relativeJoints[i].rotate );
+			}
+		}
+	}
+
+	// the transition offset, decaying
+	if ( bonePose && bonePose->inertSlot >= 0 && bonePose->inertWeight > 0.001f ) {
+		const boneInertia_t	*in = &boneInertia[bonePose->inertSlot];
+
+		for ( i = 0; i < data->num_poses; i++ ) {
+			quat_t	off, q;
+
+			R_InertiaRot( in, i, bonePose->inertWeight, bonePose->inertWeightVel, off );
+			R_QuatMul( off, relativeJoints[i].rotate, q );
+			QuatCopy( q, relativeJoints[i].rotate );
+			VectorMA( relativeJoints[i].translate, bonePose->inertWeight, in->trans[i], relativeJoints[i].translate );
+		}
+	}
+
+	// runtime deltas post-multiply the joint's local rotation
+	if ( bonePose ) {
+		for ( i = 0; i < bonePose->num; i++ ) {
+			float	*a = relativeJoints[bonePose->joint[i]].rotate;
+			const float	*b = bonePose->rot[i];
+			quat_t	q;
+
+			if ( BONE_IS_MASK( b ) ) {
+				continue;
+			}
+
+			q[0] = a[3]*b[0] + a[0]*b[3] + a[1]*b[2] - a[2]*b[1];
+			q[1] = a[3]*b[1] - a[0]*b[2] + a[1]*b[3] + a[2]*b[0];
+			q[2] = a[3]*b[2] + a[0]*b[1] - a[1]*b[0] + a[2]*b[3];
+			q[3] = a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2];
+			QuatCopy( q, a );
+		}
+	}
+
 	// multiply by inverse of bind pose and parent 'pose mat' (bind pose transform matrix)
 	relativeJoint = relativeJoints;
 	jointParent = data->jointParents;
@@ -1396,6 +1790,124 @@ static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
 			Matrix34Multiply( mat1, invBindMat, poseMat );
 		}
 	}
+
+	// masked joints all collapse their vertices onto the cut joint, which removes
+	// the section from the mesh and leaves the rest of the skeleton alone. One
+	// point for the whole section: a point per joint leaves thin triangles
+	// stretched between them
+	if ( bonePose ) {
+		int			into[IQM_MAX_JOINTS];
+		qboolean	sub[IQM_MAX_JOINTS];
+		int			m;
+
+		Com_Memset( into, -1, sizeof( into ) );
+		for ( m = 0; m < bonePose->num; m++ ) {
+			if ( !BONE_IS_MASK( bonePose->rot[m] ) ) {
+				continue;
+			}
+			for ( i = 0; i < data->num_poses; i++ ) {
+				int	parent = data->jointParents[i];
+
+				sub[i] = i == bonePose->joint[m] || ( parent >= 0 && sub[parent] );
+				if ( bonePose->rot[m][3] == 0 ? sub[i] : !sub[i] ) {
+					into[i] = bonePose->joint[m];
+				}
+			}
+		}
+		for ( m = 0; m < bonePose->num; m++ ) {
+			int			j = bonePose->joint[m];
+			const float	*m34 = &poseMats[j * 12];
+			const float	*b = &data->bindJoints[j * 12];
+			vec3_t		p;
+
+			if ( !BONE_IS_MASK( bonePose->rot[m] ) ) {
+				continue;
+			}
+			p[0] = m34[0] * b[3] + m34[1] * b[7] + m34[2] * b[11] + m34[3];
+			p[1] = m34[4] * b[3] + m34[5] * b[7] + m34[6] * b[11] + m34[7];
+			p[2] = m34[8] * b[3] + m34[9] * b[7] + m34[10] * b[11] + m34[11];
+			for ( i = 0; i < data->num_poses; i++ ) {
+				if ( into[i] == j ) {
+					float	*out = &poseMats[i * 12];
+
+					if ( out != m34 ) {
+						Com_Memset( out, 0, 12 * sizeof( float ) );
+						out[3] = p[0];
+						out[7] = p[1];
+						out[11] = p[2];
+					}
+				}
+			}
+			if ( into[j] == j ) {
+				float	*out = &poseMats[j * 12];
+
+				Com_Memset( out, 0, 12 * sizeof( float ) );
+				out[3] = p[0];
+				out[7] = p[1];
+				out[11] = p[2];
+			}
+		}
+	}
+}
+
+/*
+=================
+ComputePoseMats
+
+IK asks for joints many times between pose changes, and the renderer again for
+every surface of the same body. A pose costs far more than a copy, so the last
+few results are kept, keyed on everything that decides the pose.
+=================
+*/
+#define	POSE_CACHE	4
+
+typedef struct {
+	const iqmData_t	*data;
+	int			frame, oldframe;
+	float		backlerp;
+	const bonePose_t	*bonePose;
+	int			numDeltas, layerRoot, layerFrame;
+	float		layerBack, layerWeight, inertWeight, inertVel, upperWeight;
+	int			frameCount;
+} poseKey_t;
+
+static poseKey_t	poseCacheKey[POSE_CACHE];
+static float		poseCache[POSE_CACHE][IQM_MAX_JOINTS * 12];
+static int			poseCacheNext;
+
+static void ComputePoseMats( iqmData_t *data, int frame, int oldframe,
+			      float backlerp, float *poseMats, const bonePose_t *bonePose ) {
+	poseKey_t	key;
+	int			i;
+
+	Com_Memset( &key, 0, sizeof( key ) );
+	key.data = data;
+	key.frame = frame;
+	key.oldframe = oldframe;
+	key.backlerp = backlerp;
+	key.bonePose = bonePose;
+	key.frameCount = tr.frameCount;
+	if ( bonePose ) {
+		key.numDeltas = bonePose->num;
+		key.layerRoot = bonePose->layerRoot;
+		key.layerFrame = bonePose->layerFrame;
+		key.layerBack = bonePose->layerBacklerp;
+		key.layerWeight = bonePose->layerWeight;
+		key.inertWeight = bonePose->inertWeight;
+		key.inertVel = bonePose->inertWeightVel;
+		key.upperWeight = bonePose->upperWeight;
+	}
+	for ( i = 0; i < POSE_CACHE; i++ ) {
+		if ( !memcmp( &key, &poseCacheKey[i], sizeof( key ) ) ) {
+			Com_Memcpy( poseMats, poseCache[i], data->num_poses * 12 * sizeof( float ) );
+			return;
+		}
+	}
+	ComputePoseMatsUncached( data, frame, oldframe, backlerp, poseMats, bonePose );
+	i = poseCacheNext;
+	poseCacheNext = ( poseCacheNext + 1 ) % POSE_CACHE;
+	poseCacheKey[i] = key;
+	Com_Memcpy( poseCache[i], poseMats, data->num_poses * 12 * sizeof( float ) );
 }
 
 static void ComputeJointMats( iqmData_t *data, int frame, int oldframe,
@@ -1408,7 +1920,7 @@ static void ComputeJointMats( iqmData_t *data, int frame, int oldframe,
 		return;
 	}
 
-	ComputePoseMats( data, frame, oldframe, backlerp, mat );
+	ComputePoseMats( data, frame, oldframe, backlerp, mat, NULL );
 
 	for( i = 0; i < data->num_joints; i++ ) {
 		float outmat[12];
@@ -1476,7 +1988,7 @@ void RB_IQMSurfaceAnim( surfaceType_t *surface ) {
 
 	if ( data->num_poses > 0 ) {
 		// compute interpolated joint matrices
-		ComputePoseMats( data, frame, oldframe, backlerp, poseMats );
+		ComputePoseMats( data, frame, oldframe, backlerp, poseMats, R_BonePoseForEntity( &backEnd.currentEntity->e ) );
 
 		// compute vertex blend influence matricies
 		for( i = 0; i < surf->num_influences; i++ ) {
@@ -1692,7 +2204,7 @@ void RB_IQMSurfaceAnimVao(srfVaoIQModel_t * surface)
 		int i;
 
 		// compute interpolated joint matrices
-		ComputePoseMats( surface->iqmData, frame, oldframe, backlerp, jointMats );
+		ComputePoseMats( surface->iqmData, frame, oldframe, backlerp, jointMats, R_BonePoseForEntity( &backEnd.currentEntity->e ) );
 
 		// convert row-major order 3x4 matrix to column-major order 4x4 matrix
 		for ( i = 0; i < data->num_poses; i++ ) {
@@ -1718,6 +2230,31 @@ void RB_IQMSurfaceAnimVao(srfVaoIQModel_t * surface)
 	RB_EndSurface();
 
 	glState.boneAnimation = 0;
+}
+
+// a joint's final transform, with the entity's layers and deltas applied
+int RE_BoneTag( orientation_t *tag, qhandle_t model, int frame, int oldframe, float backlerp, int pose, const char *joint ) {
+	model_t		*mod = R_GetModelByHandle( model );
+	iqmData_t	*data;
+	float		mats[IQM_MAX_JOINTS * 12], out[12];
+	const float	*m;
+	int			j = R_FindJoint( model, joint ), i;
+
+	if ( j < 0 ) {
+		return qfalse;
+	}
+	data = mod->modelData;
+	ComputePoseMats( data, data->num_frames ? frame % data->num_frames : 0, data->num_frames ? oldframe % data->num_frames : 0,
+		backlerp, mats, pose > 0 && pose <= numBonePoses ? &bonePoses[pose - 1] : NULL );
+	Matrix34Multiply( &mats[j * 12], data->bindJoints + 12 * j, out );
+	m = out;
+	for ( i = 0; i < 3; i++ ) {
+		tag->axis[i][0] = m[i];
+		tag->axis[i][1] = m[i + 4];
+		tag->axis[i][2] = m[i + 8];
+		tag->origin[i] = m[i * 4 + 3];
+	}
+	return qtrue;
 }
 
 int R_IQMLerpTag( orientation_t *tag, iqmData_t *data,

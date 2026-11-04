@@ -1226,7 +1226,10 @@ The main player will have this called for BOTH cases, so effects like light and
 sound should only be done on the world model case.
 =============
 */
+#define CG_SKEL_SWORD_SCALE	1.45f	// the model is 24u: about a real katana on a 64u body
+
 void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent, int team ) {
+	qboolean	skeletal;
 	refEntity_t	gun;
 	refEntity_t	barrel;
 	refEntity_t	flash;
@@ -1279,8 +1282,33 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 		}
 	}
 
-	trap_R_LerpTag(&lerped, parent->hModel, parent->oldframe, parent->frame,
+	// skeletal bodies have no tag_weapon: hold it in the hand bone, posed by the clip
+	skeletal = !trap_R_LerpTag(&lerped, parent->hModel, parent->oldframe, parent->frame,
 		1.0 - parent->backlerp, "tag_weapon");
+	if ( skeletal ) {
+		orientation_t	knuckle, index, pinky;
+		vec3_t			across, fingers;
+
+		// a handle lies across the knuckles, so the grip is read off the posed fist:
+		// handle along pinky->index, cutting edge out over the fingers
+		trap_R_BoneTag(&lerped, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "hand_r");
+		if ( trap_R_BoneTag(&knuckle, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "middle_01_r")
+			&& trap_R_BoneTag(&index, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "index_01_r")
+			&& trap_R_BoneTag(&pinky, parent->hModel, parent->frame, parent->oldframe, parent->backlerp, parent->bonePose, "pinky_01_r") ) {
+			VectorSubtract( index.origin, pinky.origin, across );
+			VectorNormalize( across );
+			VectorSubtract( knuckle.origin, lerped.origin, fingers );
+			VectorMA( fingers, -DotProduct( fingers, across ), across, fingers );
+			VectorNormalize( fingers );
+			VectorMA( lerped.origin, 3.0f, fingers, lerped.origin );		// inside the curled fingers
+			VectorCopy( across, lerped.axis[0] );
+			VectorScale( fingers, -1.0f, lerped.axis[2] );	// the model's +Z is the spine: edge outward
+			CrossProduct( lerped.axis[2], lerped.axis[0], lerped.axis[1] );
+			// seat the handle's centre (model 3, 0, -2.3) on that point
+			VectorMA( lerped.origin, -3.0f * CG_SKEL_SWORD_SCALE, lerped.axis[0], lerped.origin );
+			VectorMA( lerped.origin, 2.3f * CG_SKEL_SWORD_SCALE, lerped.axis[2], lerped.origin );
+		}
+	}
 	VectorCopy(parent->origin, gun.origin);
 
 	VectorMA(gun.origin, lerped.origin[0], parent->axis[0], gun.origin);
@@ -1295,6 +1323,12 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 	MatrixMultiply(lerped.axis, ((refEntity_t *)parent)->axis, gun.axis);
 	gun.backlerp = parent->backlerp;
+	if ( skeletal && weaponNum == WP_SWORD ) {
+		VectorScale( gun.axis[0], CG_SKEL_SWORD_SCALE, gun.axis[0] );
+		VectorScale( gun.axis[1], CG_SKEL_SWORD_SCALE, gun.axis[1] );
+		VectorScale( gun.axis[2], CG_SKEL_SWORD_SCALE, gun.axis[2] );
+		gun.nonNormalizedAxes = qtrue;
+	}
 
 	// STRAFE 64: third-person blade pose for OTHER players/bots. The stock
 	// TORSO_ATTACK md3 frames only thrust the arm forward — a flat "poke" that
@@ -1306,7 +1340,7 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	// Rotations are applied in the weapon's model space (rot * gun.axis), the same
 	// way the guard pose was, and BEFORE the model + slash trail are emitted so both
 	// follow the arc.
-	if ( !ps && weaponNum == WP_SWORD ) {
+	if ( !ps && weaponNum == WP_SWORD && !skeletal ) {
 		vec3_t	rot[3], posed[3];
 
 		if ( cent->currentState.eFlags & EF_BLOCKING ) {

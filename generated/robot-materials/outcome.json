@@ -1,0 +1,10 @@
+{
+  "date": "2026-11-01",
+  "prediction": "Metal masks should preserve rough cloth, isolate amber eye emission, and replacing the static tail should remove double scarf rendering.",
+  "outcome": "Built and deployed cgame with robot-aware spring scarf and PBR material selection. Rebuilt IQM excluding 1610 scarf-tail triangles (see bake log for exact count), emitted eye map from 42 selected face triangles. Live screenshots show metal highlights and small amber eye emission, scarf motion observed. Final cloth texture and anchor adjustment compiled and deployed.",
+  "limitations": [
+    "Spring ribbon, no full cloth/body collision",
+    "Physics belongs to game runtime, not standalone GLB"
+  ],
+  "daemon": "No daemon tools exposed; configured source path absent and local endpoint unavailable."
+}

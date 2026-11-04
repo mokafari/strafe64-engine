@@ -576,6 +576,19 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_MODELBOUNDS:
 		re.ModelBounds( args[1], VMA(2), VMA(3) );
 		return 0;
+	case CG_R_BONELAYER:
+		return re.BoneLayer( args[1], args[2], VMA(3), args[4], args[5], VMF(6), VMF(7) );
+	case CG_R_BONETAG:
+		return re.BoneTag( VMA(1), args[2], args[3], args[4], VMF(5), args[6], VMA(7) );
+	case CG_R_BONEINERTIACAPTURE:
+		re.BoneInertiaCapture( args[1], args[2], args[3], args[4], VMF(5), args[6], args[7], VMF(8), args[9], args[10] );
+		return 0;
+	case CG_R_BONEINERTIA:
+		return re.BoneInertia( args[1], args[2], args[3], VMF(4), VMF(5) );
+	case CG_R_BONECUBIC:
+		return re.BoneCubic( args[1], args[2], args[3], args[4] );
+	case CG_R_BONEDELTA:
+		return re.BoneDelta( args[1], args[2], VMA(3), VMA(4) );
 	case CG_R_LERPTAG:
 		return re.LerpTag( VMA(1), args[2], args[3], args[4], VMF(5), VMA(6) );
 	case CG_GETGLCONFIG:
@@ -795,7 +808,7 @@ CL_CGameRendering
 =====================
 */
 void CL_CGameRendering( stereoFrame_t stereo ) {
-	VM_Call( cgvm, CG_DRAW_ACTIVE_FRAME, cl.serverTime, stereo, clc.demoplaying );
+	VM_Call( cgvm, CG_DRAW_ACTIVE_FRAME, cl.serverTime, stereo, clc.demoplaying, (int)(com_frameFraction * 1000000.0) );
 	VM_Debug( 0 );
 }
 

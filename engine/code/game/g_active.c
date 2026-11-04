@@ -1054,10 +1054,12 @@ static void G_ClientKick( gentity_t *ent, usercmd_t *ucmd ) {
 	G_AddPredictableEvent( ent, EV_KICK, parm );
 }
 
-static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
+static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd ) {
 	static float	cur = -1.0f;		// last applied timescale (one human assumed)
 	static qboolean	active = qfalse;	// did we take over the timescale cvar?
 	static int		lastReal = 0;		// trap_Milliseconds at the previous update
+	static float	published = -1.0f;	// timescale value last sent to clients
+	static int		lastPublish = 0;	// trap_Milliseconds of that send
 	static int		savedPmoveFixed = 0;	// pmove_fixed to restore when slow-mo ends
 	static int		clockOwner = -1;
 	int				now, realMsec;
@@ -1066,6 +1068,15 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 
 	// bots never drive the clock — keeps headless playtest runs untouched
 	if ( ent->r.svFlags & SVF_BOT ) {
+		return;
+	}
+
+	// dead: the cgame killcam owns the clock (and pmove_fixed) until respawn.
+	// Writing here too made both fight over the SYSTEMINFO cvars every frame,
+	// flooding reliable commands. Republish fresh once alive again.
+	if ( ucmd && ent->client->ps.stats[STAT_HEALTH] <= 0 ) {
+		lastReal = 0;
+		published = -1.0f;
 		return;
 	}
 
@@ -1078,6 +1089,7 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 			cur = -1.0f;
 			lastReal = 0;
 			clockOwner = -1;
+			published = -1.0f;
 		}
 		return;
 	}
@@ -1102,7 +1114,8 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 	curve = g_timeBindCurve.value;
 	if ( ref < 1.0f )    ref = 1.0f;
 	if ( curve < 0.1f )  curve = 0.1f;
-	if ( tmin < 0.01f )  tmin = 0.01f;	// keep the log map well-defined
+	if ( tmin < 0.01f )  tmin = 0.01f;
+	if ( tmax < tmin ) tmax = tmin;	// keep the log map well-defined
 
 	// speed component: how fast we're actually moving on the floor plane
 	hspeed = sqrt( ent->client->ps.velocity[0] * ent->client->ps.velocity[0]
@@ -1112,10 +1125,14 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 
 	// input component: SUPERHOT keys on *wanting* to move, not just moving
 	inputMag = sqrt( (float)( ucmd->forwardmove * ucmd->forwardmove
-							+ ucmd->rightmove   * ucmd->rightmove ) ) / 127.0f;
+							+ ucmd->rightmove   * ucmd->rightmove ) )
+		/ ( ( ucmd->buttons & BUTTON_WALKING ) ? 64.0f : 127.0f );
 	if ( inputMag > 1.0f ) inputMag = 1.0f;
 
-	intent = ( speedFrac > inputMag ) ? speedFrac : inputMag;
+	// SUPERHOT follows deliberate input. Residual velocity after releasing
+	// a key must not keep time running; jump alone should also wake it.
+	intent = inputMag;
+	if ( ucmd->upmove > 0 ) intent = 1.0f;
 
 	// firing nudges time forward even when stationary (tunable, 0 = off)
 	if ( ( ucmd->buttons & BUTTON_ATTACK ) && g_timeBindFire.value > intent ) {
@@ -1175,9 +1192,8 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 	now = trap_Milliseconds();
 	realMsec = lastReal ? ( now - lastReal ) : 0;
 	lastReal = now;
-	if ( realMsec < 0 || realMsec > 250 ) {
-		realMsec = 0;		// first frame / hitch: don't lurch the clock
-	}
+	if ( realMsec < 0 ) realMsec = 0;
+	if ( realMsec > 250 ) realMsec = 250;
 	if ( cur < 0.0f ) {
 		cur = target;
 	} else {
@@ -1189,13 +1205,50 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 		// back into near-freeze. (Time only pumps up quick, never down, so no
 		// jitter.)
 		rate = ( target > cur ) ? g_timeBindRise.value : g_timeBindSmooth.value;
-		t = rate * ( realMsec * 0.001f );
+		t = 1.0f - exp( -rate * ( realMsec * 0.001f ) );
 		if ( t > 1.0f ) t = 1.0f;
 		if ( t < 0.0f ) t = 0.0f;
 		cur += ( target - cur ) * t;
 	}
 
-	trap_Cvar_Set( "timescale", va( "%.3f", cur ) );
+	// timescale is a SYSTEMINFO cvar: every distinct value is a reliable
+	// configstring to every client. Publishing each 0.001 creep of a slow ramp
+	// (dead runner in the killcam, near-frozen truck road) overflowed the 64
+	// reliable-command window -> "reliable command was cycled out". Keep `cur`
+	// smooth internally; publish only meaningful steps, rate-limited, plus the
+	// exact settle on target.
+	{
+		float			diff = cur - published;
+		float actual = trap_Cvar_VariableValue( "timescale" );
+		qboolean lostClock = published >= 0 && fabs( actual - published ) > 0.003f;
+		qboolean		settle = fabs( target - cur ) < 0.002f && published != target;
+		float			step;
+
+		if ( diff < 0 ) {
+			diff = -diff;
+		}
+		// publish threshold is RELATIVE (~8% of the current speed, floor 0.004):
+		// the clock is perceived logarithmically, so a fixed 0.02 step was a 40%
+		// jump of world speed near the 0.05 floor -> a visible 20Hz staircase.
+		step = 0.08f * ( published > 0.05f ? published : 0.05f );
+		if ( step < 0.004f ) step = 0.004f;
+		if ( published < 0.0f || (lostClock && now - lastPublish >= 50) || diff >= 0.1f
+				|| ( ( diff >= step || settle ) && now - lastPublish >= 50 ) ) {
+			published = settle ? target : cur;
+			lastPublish = now;
+			trap_Cvar_Set( "timescale", va( "%.3f", published ) );
+		}
+	}
+	// Opt-in real-time trace distinguishes missing input from clock ownership.
+	if ( trap_Cvar_VariableIntegerValue( "g_timeBindDebug" ) ) {
+		static int lastDebug;
+		if (now - lastDebug >= 100) {
+			lastDebug = now;
+			G_Printf("TIMEBIND real=%d input=%d,%d,%d buttons=%d target=%.3f eased=%.3f actual=%.3f\n",
+				now, ucmd->forwardmove, ucmd->rightmove, ucmd->upmove, ucmd->buttons,
+				target, cur, trap_Cvar_VariableValue("timescale"));
+		}
+	}
 	active = qtrue;
 	clockOwner = ent->s.number;
 }
@@ -1205,7 +1258,7 @@ static void G_UpdateTimeBind( gentity_t *ent, usercmd_t *ucmd, int msec ) {
 // must not override a still-playing human's movement-controlled time.
 void G_ReleaseTimeBind( int clientNum ) {
 	if ( clientNum >= 0 && clientNum < level.maxclients )
-		G_UpdateTimeBind( &g_entities[clientNum], NULL, 0 );
+		G_UpdateTimeBind( &g_entities[clientNum], NULL );
 }
 
 /*
@@ -1234,6 +1287,12 @@ void ClientThink_real( gentity_t *ent ) {
 	}
 	// mark the time, so the connection sprite can be removed
 	ucmd = &ent->client->pers.cmd;
+
+	// Clock intent must see every fresh command, even while fixed-step
+	// movement is ahead of the integer game clock and skips this command.
+	if ( !level.intermissiontime && client->sess.sessionTeam != TEAM_SPECTATOR ) {
+		G_UpdateTimeBind( ent, ucmd );
+	}
 
 	// sanity check the command time to prevent speedup cheating
 	if ( ucmd->serverTime > level.time + 200 ) {
@@ -1468,9 +1527,6 @@ void ClientThink_real( gentity_t *ent ) {
 		ent->client->wasBlocking = qfalse;
 		ent->client->guardRaiseTime = 0;
 	}
-
-	// SUPERHOT-style time dilation: drive the world clock from movement intent
-	G_UpdateTimeBind( ent, ucmd, msec );
 
 	// SHIFT dash that revectors toward enemies (after pmove so it sets the
 	// resulting velocity; lands in the predicted playerState)

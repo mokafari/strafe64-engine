@@ -363,6 +363,15 @@ void R_SetupEntityLighting( const trRefdef_t *refdef, trRefEntity_t *ent ) {
 		ent->ambientLight[2] += tr.identityLight * 32;
 	}
 
+	// STRAFE 64: skeletal bodies must read in deep wall shade
+	if ( ent->e.bonePose ) {
+		const float	floorLight = tr.identityLight * 105;
+
+		ent->ambientLight[0] = MAX( ent->ambientLight[0], floorLight );
+		ent->ambientLight[1] = MAX( ent->ambientLight[1], floorLight );
+		ent->ambientLight[2] = MAX( ent->ambientLight[2], floorLight );
+	}
+
 	//
 	// modify the light by dynamic lights
 	//

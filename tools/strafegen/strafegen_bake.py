@@ -281,7 +281,13 @@ def bake_bsp(name, course, map_path, bake_pk3_path, dest_bsp, bounce=3):
         boa = os.path.join(tmp, "baseoa")
         maps = os.path.join(boa, "maps")
         os.makedirs(maps)
-        shutil.copy(bake_pk3_path, os.path.join(boa, os.path.basename(bake_pk3_path)))
+        # Both temporary trees normally share a volume; avoid duplicating the
+        # large immutable texture archive while baking.
+        asset_target = os.path.join(boa, os.path.basename(bake_pk3_path))
+        try:
+            os.link(bake_pk3_path, asset_target)
+        except OSError:
+            shutil.copy(bake_pk3_path, asset_target)
         bm = os.path.join(maps, name + ".map")
         shutil.copy(map_path, bm)
         common = ["-fs_basepath", tmp, "-fs_game", "baseoa"]
@@ -323,8 +329,9 @@ def bake_bsp(name, course, map_path, bake_pk3_path, dest_bsp, bounce=3):
 # driver: generate -> bake -> re-inject -> AAS -> standalone pk3
 # ---------------------------------------------------------------------------
 def build_baked_pk3(name, course, out_dir, bounce=3):
-    """Full Layer-3 bake for a built course. Emits a STANDALONE pk3
-    (baked BSP + AAS + lightmapped shader + textures) at out_dir/<name>.pk3 and
+    """Full Layer-3 bake for a built course. Emits a map pk3 (needs the shared pak)
+    (baked BSP + AAS + baked-shader stub; textures live in the shared pak) at
+    out_dir/<name>.pk3 and
     returns its path. Requires q3map2 (build-q3map2.sh)."""
     if not have_q3map2():
         raise RuntimeError("q3map2 not found at %s — run build-q3map2.sh" % Q3MAP2)
@@ -383,8 +390,9 @@ def build_baked_pk3(name, course, out_dir, bounce=3):
                 z.write(aas, "maps/%s.aas" % name)
             z.writestr("scripts/%s.arena" % name, arena)
             z.writestr("scripts/%s_baked.shader" % name, ship_shader)
-            for arc, data in tex.items():
-                z.writestr(arc, data)
+            # no textures: they ship ONCE in the shared zzz_strafe64_shader.pk3
+            # (which baked maps need anyway for their *_lm/*_bk variants).
+            # Bundling them made every map pk3 ~80 MB with the 2048 material set.
         stats["pk3"] = pk3
         stats["aas"] = bool(aas)
         return stats

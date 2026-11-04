@@ -173,7 +173,16 @@ class Marble(Showcase):
             self.neon((cx - w / 2 + e, cy + w / 2 - e - 3, z0), (cx + w / 2 - e, cy + w / 2 - e, z - 24))
             self.neon((cx - w / 2 + e, cy - w / 2 + e + 3, z0), (cx - w / 2 + e + 3, cy + w / 2 - e - 3, z - 24))
             self.neon((cx + w / 2 - e - 3, cy - w / 2 + e + 3, z0), (cx + w / 2 - e, cy + w / 2 - e - 3, z - 24))
-        # top of the spiral steps onto the ring (at 576 -> ring 640 via jump)
+        # top of the spiral hops onto the ring: 88u up is past any jump, so a
+        # small pad on the last step lobs you onto the west walkway -- the
+        # bots' road to the roof (the outer pads' arcs are too long for AAS)
+        a = math.radians(225 + (steps - 1) * 62)
+        tx, ty, tz = 300.0 * math.cos(a), 300.0 * math.sin(a), 96.0 * steps
+        self.neon((tx - 40, ty - 40, tz), (tx + 40, ty + 40, tz + 1), floor=True)
+        tb = make_box((tx - 52, ty - 52, tz + 1), (tx + 52, ty + 52, tz + 64),
+                      tex=TEX_TRIGGER, contents=CONTENTS_TRIGGER, draw=set())
+        self.triggers.append((tb, {"classname": "trigger_push", "target": "mb_spiral_hop"}))
+        self.place("target_position", -(A - 152), ty, AH + 64, targetname="mb_spiral_hop")
         self.place("item_health_large", 0, 0, 24)
 
         # ---- wall-run gallery: two flat white marble walls, a gap between ------
@@ -181,7 +190,8 @@ class Marble(Showcase):
         for side in (-1, 1):
             y0 = gy + side * 96
             y1 = y0 + side * 32
-            self.box((gx0, min(y0, y1), 64), (gx1, max(y0, y1), 448), "marble_white")
+            # grounded: raised at z 64 you could walk (and bots path) under it
+            self.box((gx0, min(y0, y1), 0), (gx1, max(y0, y1), 448), "marble_white")
         # the run's purpose: launch decks at each end, 64u up, a void between
         self.box((gx0 - 80, gy - 96, 0), (gx0, gy + 96, 64), "granite_grey",
                  faces={"+z": "granite_flamed"})
@@ -213,8 +223,8 @@ class Marble(Showcase):
             # arc clears the wall top, and the inward drift on the way down lands
             # you ON the ring (sweep-tested by dropping onto a pad and tracing).
             ta = a + math.radians(30)
-            ar = A + 40
-            self.pad(k, px, py, ar * math.cos(ta), ar * math.sin(ta), AH + 160)
+            ar = A + 40      # apex 40u outside the edge, 360u up: clears the wall on the way up, drifts ~70u in onto the walkway (drop-traced)
+            self.pad(k, px, py, ar * math.cos(ta), ar * math.sin(ta), AH + 360)
             blockers.append((px, py, 70))
 
         # ---- floating stair-jump route up the south face to the ring ----------
@@ -252,10 +262,18 @@ class Marble(Showcase):
             x, y = avoid_footprints(x, y, blockers, clearance=48.0, ring_r=r)
             yaw = math.degrees(math.atan2(-y, -x)) % 360
             self.place("info_player_deathmatch", x, y, 40, angle=f"{yaw:.0f}")
+        # two high spawns on the ring walkway (NE/SW, between the rocket and
+        # quad corners): bots never climbed to the roof, so start some fights there
+        for sx2, sy2, yaw in ((A - 64, A - 64, 225), (-(A - 64), -(A - 64), 45)):
+            self.place("info_player_deathmatch", sx2, sy2, AH + 64, angle=str(yaw))
         self.place("info_player_intermission", -700, 700, 820, angle="315")
-        for cls, x, y, z in (("weapon_rocketlauncher", 0, -A - 140, 24),
+        for cls, x, y, z in (("weapon_grenadelauncher", 0, -A - 140, 24),
+                             ("weapon_rocketlauncher", -(A - 64), -160, AH + 48),   # west walkway, just past the spiral hop landing
                              ("item_armor_combat", 0, A + 140, 24),
-                             ("item_quad", 0, 0, AH + 48)):
+                             ("item_quad", -(A - 64), A - 64, AH + 48),   # NW ring corner, opposite the rocket
+                             # E/W counterweights so the rocket isn't the only gun
+                             ("weapon_plasmagun", A + 140, 0, 24),
+                             ("weapon_lightning", -A - 140, 120, 24)):
             self.place(cls, x, y, z)
 
         hull = __import__("strafegen_geom").make_skybox(-2560, -2560, -420, 2560, 2560, 2600)

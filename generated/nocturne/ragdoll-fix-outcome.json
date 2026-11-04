@@ -1,0 +1,6 @@
+{
+  "changes": "Fixed 8ms ragdoll substeps, fractional pose interpolation, shortest-path quaternion blend, bounded hitch catch-up, sustained quiet supported sleep, airborne timeout protection.",
+  "validation": "Build passed; scheduler/interpolation regression at 30-240 FPS and 0.05x passed. Live non-gib testdie capture showed body collapse onto floor and remain visually stable across subsequent frames.",
+  "prediction": "Fixed integration removes slow-motion time-step amplification and reduces contact twitching.",
+  "limits": "No exhaustive stair, slope, severed-limb or many-body stress test."
+}

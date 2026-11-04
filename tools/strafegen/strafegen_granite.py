@@ -58,7 +58,9 @@ class Granite(Marble):
             h = base - i * step
             z1 = rise * (i + 1)
             # polished sides, flamed (grippy-looking) walking top
-            self.box((-h, -h, rise * i), (h, h, z1), "granite_grey",
+            # polished Absolute Black faces (the salt-and-pepper grey read as
+            # noise at this scale), flamed charcoal walking top
+            self.box((-h, -h, rise * i), (h, h, z1), "granite_black",
                      faces={"+z": "granite_flamed"})
             # brass nosing on the edge + neon under the lip on the shade sides
             for (mn, mx) in (((-h, -h, z1), (h, -h + 6, z1 + 2)), ((-h, h - 6, z1), (h, h, z1 + 2)),
@@ -69,29 +71,32 @@ class Granite(Marble):
             self.neon((-h, -h - 3, z1 - 14), (h, -h, z1 - 10))
         blockers.append((0.0, 0.0, base * 1.4142 + 24))
         top = rise * tiers
-        # ziggurat stairways: a straight flight of 16u steps (walkable -- no
-        # jump needed) up the middle of each face to the summit, white marble
-        # with brass nosings. Bots path the tiers via these (playtest tracking:
-        # only 2 of 24 bot samples were on the ziggurat before), and 96u tier
-        # hops stay the fast route for players.
-        nst = int(top // 16)
-        run = (base - (base - step * (tiers - 1))) / nst
-        for k in range(4):
-            for j in range(nst):
-                r0 = base - j * run
-                z1 = 16.0 * (j + 1)
-                if k == 0:
-                    mn, mx = (r0 - run, -64, 0), (r0 + 20, 64, z1)
-                elif k == 1:
-                    mn, mx = (-64, r0 - run, 0), (64, r0 + 20, z1)
-                elif k == 2:
-                    mn, mx = (-r0 - 20, -64, 0), (-r0 + run, 64, z1)
-                else:
-                    mn, mx = (-64, -r0 - 20, 0), (64, -r0 + run, z1)
-                self.box(mn, mx, "marble_white")
+        # ziggurat stairways, one flight per tier: six 16u risers on 24u treads
+        # (34deg) against each tier face, centred on every side. The single
+        # summit-length flight had 13.9u treads (49deg) -- tracking showed bots
+        # barely used the tiers (2/24 samples), consistent with AAS not
+        # building walkable areas on treads that shallow.
+        for i in range(tiers):
+            h = base - i * step                    # tier i outer face
+            z0 = rise * i
+            for j in range(6):
+                zt = z0 + 16.0 * (j + 1)
+                o1 = h + 144.0 - 24.0 * j          # outer edge of step j
+                o0 = o1 - 24.0
+                for k in range(4):
+                    if k == 0:
+                        mn, mx = (o0, -64, 0), (o1, 64, zt)
+                    elif k == 1:
+                        mn, mx = (-64, o0, 0), (64, o1, zt)
+                    elif k == 2:
+                        mn, mx = (-o1, -64, 0), (-o0, 64, zt)
+                    else:
+                        mn, mx = (-64, -o1, 0), (64, -o0, zt)
+                    self.box(mn, mx, "marble_white")
         self.place("item_quad", 0, 0, top + 24)
-        self.place("item_armor_combat", 0, -(base - step) - 40, rise * 2 + 24)
-        self.place("item_health_large", 0, (base - step) + 40, rise * 2 + 24)
+        # off-axis: the per-tier stair flights now occupy the centre lines
+        self.place("item_armor_combat", 180, -(base - step) - 40, rise * 2 + 24)
+        self.place("item_health_large", -180, (base - step) + 40, rise * 2 + 24)
 
         # summit crown: a black marble ring of four posts with neon caps
         for (x, y) in ((-80, -80), (80, -80), (-80, 80), (80, 80)):
@@ -113,7 +118,17 @@ class Granite(Marble):
                 else:
                     y0, y1 = sorted((sa * r0, sa * r1))
                     x0, x1 = sorted((off, off + side * 24))
-                self.box((x0, y0, 48), (x1, y1, 368), "granite_grey")
+                # down to the floor: at z 48 a crouching player (40u) fit UNDER
+                # the wall, so AAS offered crawl paths bots wedged in (tracking)
+                self.box((x0, y0, 0), (x1, y1, 368), "granite_black")
+                # neon reveal 28u under the top on both faces: at night the
+                # black granite crushed to flat silhouettes (spectate pass)
+                if k % 2 == 0:
+                    self.neon((x0, y0 - 3, 336), (x1, y0, 340))
+                    self.neon((x0, y1, 336), (x1, y1 + 3, 340))
+                else:
+                    self.neon((x0 - 3, y0, 336), (x0, y1, 340))
+                    self.neon((x1, y0, 336), (x1 + 3, y1, 340))
             # launch block at the inner end: 96u up, reaches tier 2 (192) with an air jump
             lr = 612.0
             # offset 140u to the side so it doesn't block the stairway's foot
@@ -122,6 +137,14 @@ class Granite(Marble):
                      faces={"+z": "granite_flamed"})
             for rr in range(680, 901, 80):        # a line of discs along the run
                 blockers.append((ca * rr, sa * rr, 150))
+
+        # ---- diagonal jump pads onto tier 3 (bots reliably use pads) ----------
+        for k in range(4):
+            a = math.radians(45 + 90 * k)
+            px, py = 860 * math.cos(a), 860 * math.sin(a)   # 608/axis: outside the 560 base corner
+            tz = rise * 3 + 120
+            self.pad(k, px, py, 330 * math.cos(a), 330 * math.sin(a), tz)
+            blockers.append((px, py, 80))
 
         # ---- corner wall-jump shafts, railgun on top ---------------------------
         for (sx, sy) in ((-800, -800), (800, -800), (-800, 800), (800, 800)):
@@ -151,7 +174,13 @@ class Granite(Marble):
             self.place("info_player_deathmatch", x, y, 40, angle=f"{yaw:.0f}")
         self.place("info_player_intermission", -760, 0, 700, angle="0")
         # (r 620 put it INSIDE the south launch block -- "in solid, not reachable")
-        self.place("weapon_rocketlauncher", 160, -(base) - 80, 24)
+        self.place("weapon_rocketlauncher", -240, -(base) - 80, 24)   # clear of the launch block
+        # a strong weapon at every corridor mouth: the choke where corridor
+        # runs meet the stair feet (playtests were all machinegun/gauntlet --
+        # bots weren't holding anything that finishes a fight)
+        for cls, x, y in (("weapon_shotgun", 160, base + 80), ("weapon_plasmagun", base + 80, -160),
+                          ("weapon_lightning", -(base + 80), 160), ("weapon_rocketlauncher", 240, base + 80)):
+            self.place(cls, x, y, 24)
         # weapons + health ON the tiers: bots go where the items are, and the
         # tiers are where the vertical fights should happen (playtest 1: they
         # loitered at the plaza edge instead)
@@ -160,8 +189,9 @@ class Granite(Marble):
                              ("weapon_plasmagun", -h1, -h1, rise * 1),
                              ("weapon_lightning", h2, -h2, rise * 2),
                              ("weapon_grenadelauncher", -h2, h2, rise * 2),
-                             ("item_health", h3, 0, rise * 3), ("item_health", -h3, 0, rise * 3),
-                             ("item_armor_shard", 0, h3, rise * 3), ("item_armor_shard", 0, -h3, rise * 3),
+                             # off the centre axes (the stair flights live there)
+                             ("item_health", h3, 140, rise * 3), ("item_health", -h3, -140, rise * 3),
+                             ("item_armor_shard", -140, h3, rise * 3), ("item_armor_shard", 140, -h3, rise * 3),
                              ("weapon_railgun", h3 - step, h3 - step, rise * 4)):
             self.place(cls, x, y, z + 24)
 

@@ -117,6 +117,9 @@ typedef struct {
 	// extra sprite information
 	float		radius;
 	float		rotation;
+
+	// STRAFE 64: handle from trap_R_BoneDelta (0 = plain animation)
+	int			bonePose;
 } refEntity_t;
 
 

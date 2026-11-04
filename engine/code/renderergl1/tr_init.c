@@ -23,6 +23,31 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 
+// skeletal pose overrides are a renderergl2 feature; animation plays unmodified here
+static int RE_BoneLayer( qhandle_t model, int pose, const char *root, int frame, int oldframe, float backlerp, float weight ) {
+	return 0;
+}
+
+static int RE_BoneTag( orientation_t *tag, qhandle_t model, int frame, int oldframe, float backlerp, int pose, const char *joint ) {
+	return R_LerpTag( tag, model, frame, oldframe, backlerp, joint );
+}
+
+static void RE_BoneInertiaCapture( qhandle_t model, int slot, int fromFrame, int fromOld, float fromBack, int toFrame, int toOld, float toBack, int fromNext, int toNext ) {
+}
+
+static int RE_BoneInertia( qhandle_t model, int pose, int slot, float weight, float weightVel ) {
+	return pose;
+}
+
+static int RE_BoneCubic( qhandle_t model, int pose, int before, int after ) {
+	return pose;
+}
+
+static int RE_BoneDelta( qhandle_t model, int pose, const char *joint, const float *quat ) {
+	return 0;
+}
+
+
 glconfig_t  glConfig;
 qboolean    textureFilterAnisotropic = qfalse;
 int         maxAnisotropy = 0;
@@ -1363,6 +1388,12 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.EndFrame = RE_EndFrame;
 
 	re.MarkFragments = R_MarkFragments;
+	re.BoneLayer = RE_BoneLayer;
+	re.BoneTag = RE_BoneTag;
+	re.BoneInertiaCapture = RE_BoneInertiaCapture;
+	re.BoneInertia = RE_BoneInertia;
+	re.BoneCubic = RE_BoneCubic;
+	re.BoneDelta = RE_BoneDelta;
 	re.LerpTag = R_LerpTag;
 	re.ModelBounds = R_ModelBounds;
 

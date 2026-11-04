@@ -753,8 +753,9 @@ void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, vec3_t cutNormal, int 
 		CG_LaunchBloodSpurt( wound, fwd, cg_bloodSpurtTime.integer, entityNum, RAG_PART_CHEST );
 		CG_LaunchBloodSpurt( wound, fwd, cg_bloodSpurtTime.integer / 2, entityNum, RAG_PART_HEAD );
 	} else {
-		// single limb: the body stays whole, bleeding from the torso
+		// a limb off: the stump pumps and the limb sprays as it tumbles away
 		CG_LaunchBloodSpurt( wound, fwd, cg_bloodSpurtTime.integer, entityNum, RAG_PART_CHEST );
+		CG_LaunchBloodSpurt( wound, fwd, cg_bloodSpurtTime.integer / 2, entityNum, RAG_PART_LIMB );
 	}
 	CG_BloodPoolTrace( wound, 400, 12, 36, 16000 );
 
@@ -764,7 +765,9 @@ void CG_DismemberPlayer( vec3_t playerOrigin, vec3_t dir, vec3_t cutNormal, int 
 
 	// viscera flung along the cut
 	CG_LaunchSeveredLimb( wound, cut, cgs.media.gibIntestine );
-	CG_LaunchSeveredLimb( wound, cut, cgs.media.gibForearm );
+	if ( !( cg_skeletal.integer && cgs.media.skelModel ) ) {
+		CG_LaunchSeveredLimb( wound, cut, cgs.media.gibForearm );	// the mannequin throws its real limb
+	}
 
 	if ( cutType >= 1 ) {
 		// decapitation: brain matter sprays off the neck

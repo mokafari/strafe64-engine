@@ -1,0 +1,5 @@
+{
+  "outcome": "Engine and cgame rebuilt. Fractional clock regression passes six rates 0.01 through 1, conservation, ramp and fixed-time reset. Live client confirms timescale 0.050; movement input and pose capture completed. Original max time-bind 1 and first-person restored.",
+  "prediction": "Fractional pose clock and sub-millisecond solver updates remove timing-induced stepping at deep slow motion.",
+  "limits": "No quantitative before/after video frame-pacing comparison; capture does not prove all animation transitions artifact-free."
+}
