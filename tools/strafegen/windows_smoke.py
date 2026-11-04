@@ -16,6 +16,16 @@ import subprocess
 import time
 
 
+def smoke_errors(content):
+    """Fatal/rendering defects, excluding harmless optional extension probes."""
+    content = re.sub(r'\^[0-9]', '', content)
+    pattern = re.compile(
+        r'^ERROR:|GLSL.*(?:failed|failure)|shader.*failed to compile|'
+        r'R_FindImageFile could not find|shader.*has a stage with no image',
+        re.IGNORECASE)
+    return [line for line in content.splitlines() if pattern.search(line)]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--tag', default='smoke')
@@ -118,8 +128,8 @@ def main():
             if process.returncode or not capture.is_file():
                 raise RuntimeError('main menu capture failed')
             content = log.read_text(errors='replace')
-            if re.search(r'^ERROR:', content, re.MULTILINE):
-                raise RuntimeError('main menu reported an engine error')
+            if smoke_errors(content):
+                raise RuntimeError(smoke_errors(content)[0])
             print(f'Finished: main menu captured; exit {process.returncode}', flush=True)
             return
         deadline = time.monotonic() + 60
@@ -143,7 +153,7 @@ def main():
             if process.poll() is not None:
                 raise RuntimeError(f'game exited during smoke run: {process.returncode}')
             content = log.read_text(errors='replace')
-            errors = re.findall(r'^ERROR:.*$', content, re.MULTILINE)
+            errors = smoke_errors(content)
             if errors:
                 raise RuntimeError(errors[-1])
             elapsed = time.monotonic() - started
@@ -162,6 +172,12 @@ def main():
         print(f'Finished: exit {process.returncode}', flush=True)
         if process.returncode:
             raise RuntimeError('nonzero game exit')
+        content = log.read_text(errors='replace')
+        if smoke_errors(content):
+            raise RuntimeError(smoke_errors(content)[0])
+        capture = baseoa / 'screenshots' / f'{args.tag}-final.jpg'
+        if not capture.is_file() or capture.stat().st_size == 0:
+            raise RuntimeError('final rendered frame was not captured')
     finally:
         if process.poll() is None:
             process.kill()

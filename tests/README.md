@@ -1,5 +1,58 @@
 # Focused Windows regression checks
 
+Run the repeatable suite from the repository root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
+# Also build/stage the engine, then exercise menu, Nocturne GL2 and GL1 fallback:
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1 -Smoke
+```
+
+The fast suite runs 10 native CTest cases and 49 Python asset/API/smoke checks.
+Native results are saved to `engine/build/regressions/results.xml` (JUnit).
+Requirements: Visual Studio 2022 C++ tools and Python 3.13 with Pillow/NumPy.
+Each timebind case runs in a separate process, with a deterministic real-time
+clock and the actual production functions extracted at configure time:
+
+| Case | Behavior protected |
+| --- | --- |
+| ownership | Pilot release, unrelated spectators, disable/reentry, focus ownership |
+| bot-exclusion | Bots and invalid client IDs cannot drive or release the clock |
+| movement-intent | Residual velocity stays slow; jumping wakes time; release settles |
+| guard-brake | Guard slows a moving pilot; releasing it restores speed |
+| focus-recharge | Focus expires, stays exhausted while held, recharges on release |
+| clock-recovery | Living pilot recovers an overridden clock; settled state stops writes |
+| death-respawn | Killcam owns time during death; respawn resumes and cleanup restores |
+| fixed-movement | A preexisting fixed-movement setting survives timebind release |
+
+The other native cases cover menu/map availability, bot rosters, and audio codec
+fallback/stream handling. Smoke checks require playable local assets and a GPU;
+they check map readiness, process survival, engine/shader errors, screenshot
+creation, and clean exit. They use isolated profiles and local-only console
+control. They do not establish water/lighting visual quality, combat balance,
+network multiplayer correctness, or physical input responsiveness.
+
+Nocturne requires the external `nocturne_reservoir.pk3` material pack installed
+in `assets/openarena/baseoa/`. It is not included in Git (upstream kept it on a
+Mac external drive). The smoke suite deliberately fails on missing shader
+images rather than accepting a checkerboard-rendered map as a pass.
+
+Integration verification on Windows, 2026-11-04 (`ethereal-grade` tip `1250438`):
+
+- Release engine build and asset staging passed (existing compiler warnings remain).
+- All 10 native cases and 49 Python checks passed.
+- Main menu and Marble GL2 runtime/capture/clean-exit checks passed.
+- Nocturne runs, but strict smoke fails on missing reservoir material images.
+  Restore the external pack before treating its visuals as validated.
+- Marble GL1 strict smoke fails: the renderer rejects `stage normalMap` in
+  `models/s64/robot`, then reports a shader stage without an image. This is a
+  separate upstream fallback-renderer compatibility issue; GL2 loads that shader.
+
+Local logs and screenshots are under `engine/build/polish-regression-*`;
+`engine/build/ethereal-tests.log` records the fast suite and `windows-build.log`
+records compilation. These runtime defects are not waived by the passing unit
+tests. Combat damage, movement collision, and multiplayer remain future coverage.
+
 Build the engine with `scripts/build.ps1` first. These small native harnesses
 exercise production code with mocked engine services; they do not replace a
 live renderer or gameplay test. Checks remain enabled in Release builds.

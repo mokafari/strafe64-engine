@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.25)
 project(timebind_regression C)
+enable_testing()
+foreach(case ownership bot-exclusion movement-intent guard-brake focus-recharge clock-recovery death-respawn fixed-movement)
+  add_test(NAME timebind.${case} COMMAND timebind_regression ${case})
+endforeach()
 add_executable(timebind_regression timebind_regression.c ../../engine/code/qcommon/q_shared.c)
 target_compile_definitions(timebind_regression PRIVATE _CRT_SECURE_NO_WARNINGS)
 # Compile the actual two clock functions without linking every gameplay system.

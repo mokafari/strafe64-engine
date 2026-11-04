@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.25)
+project(strafe64_regressions C)
+enable_testing()
+add_subdirectory(arena_menu)
+add_subdirectory(sound_codec)
+add_subdirectory(timebind)
+add_test(NAME menu.arena_availability_and_bot_roster COMMAND arena_menu_regression)
+add_test(NAME audio.codec_fallback_and_streams COMMAND codec_regression)
