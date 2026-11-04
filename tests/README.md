@@ -8,7 +8,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1 -Smoke
 ```
 
-The fast suite runs 10 native CTest cases and 49 Python asset/API/smoke checks.
+The fast suite runs 11 native CTest cases and 49 Python asset/API/smoke checks.
 Native results are saved to `engine/build/regressions/results.xml` (JUnit).
 Requirements: Visual Studio 2022 C++ tools and Python 3.13 with Pillow/NumPy.
 Each timebind case runs in a separate process, with a deterministic real-time
@@ -26,7 +26,10 @@ clock and the actual production functions extracted at configure time:
 | fixed-movement | A preexisting fixed-movement setting survives timebind release |
 
 The other native cases cover menu/map availability, bot rosters, and audio codec
-fallback/stream handling. Smoke checks require playable local assets and a GPU;
+fallback/stream handling. `video.resolution_selection` exercises the production
+video-mode enumeration and mapping: missing SDL modes, modern and ultrawide sizes,
+legacy indices, invalid stored modes, duplicates, list capacity, and reopening
+the menu after resolution changes. Smoke checks require playable local assets and a GPU;
 they check map readiness, process survival, engine/shader errors, screenshot
 creation, and clean exit. They use isolated profiles and local-only console
 control. They do not establish water/lighting visual quality, combat balance,

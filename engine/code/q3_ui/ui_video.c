@@ -350,10 +350,21 @@ static const char *knownRatios[ ][2] =
 	{ "1.60:1", "16:10" },
 	{ "1.67:1", "5:3"   },
 	{ "1.78:1", "16:9"  },
+	{ "2.33:1", "21:9"  },
+	{ "2.39:1", "21:9"  },
+	{ "3.56:1", "32:9"  },
 	{ NULL    , NULL    }
 };
 
-#define MAX_RESOLUTIONS	32
+#define MAX_RESOLUTIONS	128
+
+// Custom modes keep the renderer's legacy r_mode indices stable.
+static const char *modernResolutions[] = {
+	"1280x720", "1280x800", "1366x768", "1600x900",
+	"1920x1080", "1920x1200", "2560x1080", "2560x1440",
+	"2560x1600", "3440x1440", "3840x1600", "3840x2160",
+	"5120x1440", "5120x2160", "5120x2880", "7680x4320", NULL
+};
 
 static const char* ratios[ MAX_RESOLUTIONS ];
 static char ratioBuf[ MAX_RESOLUTIONS ][ 8 ];
@@ -379,7 +390,7 @@ static int GraphicsOptions_FindBuiltinResolution( int mode )
 	if( !resolutionsDetected )
 		return mode;
 
-	if( mode < 0 )
+	if( mode < 0 || mode >= MAX_RESOLUTIONS || !detectedResolutions[mode] )
 		return -1;
 
 	for( i = 0; builtinResolutions[ i ]; i++ )
@@ -403,7 +414,7 @@ static int GraphicsOptions_FindDetectedResolution( int mode )
 	if( !resolutionsDetected )
 		return mode;
 
-	if( mode < 0 )
+	if( mode < 0 || mode >= ARRAY_LEN(builtinResolutions)-1 )
 		return -1;
 
 	for( i = 0; detectedResolutions[ i ]; i++ )
@@ -423,6 +434,10 @@ GraphicsOptions_GetAspectRatios
 static void GraphicsOptions_GetAspectRatios( void )
 {
 	int i, r;
+	memset( ratioBuf, 0, sizeof(ratioBuf) );
+	memset( ratios, 0, sizeof(ratios) );
+	memset( ratioToRes, 0, sizeof(ratioToRes) );
+	memset( resToRatio, 0, sizeof(resToRatio) );
 
 	// build ratio list from resolutions
 	for( r = 0; resolutions[r]; r++ )
@@ -494,41 +509,37 @@ GraphicsOptions_GetResolutions
 */
 static void GraphicsOptions_GetResolutions( void )
 {
+	int count = 0, i, j;
+	char *s;
+	memset( detectedResolutions, 0, sizeof(detectedResolutions) );
 	trap_Cvar_VariableStringBuffer("r_availableModes", resbuf, sizeof(resbuf));
-	if(*resbuf)
-	{
-		char* s = resbuf;
-		unsigned int i = 0;
-		while( s && i < ARRAY_LEN(detectedResolutions)-1 )
-		{
-			detectedResolutions[i++] = s;
-			s = strchr(s, ' ');
-			if( s )
-				*s++ = '\0';
+	// Always include the running size, even if SDL reports no modes or a full list.
+	Com_sprintf( currentResolution, sizeof(currentResolution), "%dx%d",
+		uis.glconfig.vidWidth, uis.glconfig.vidHeight );
+	detectedResolutions[count++] = currentResolution;
+	for ( s = resbuf; s && *s && count < MAX_RESOLUTIONS-1; ) {
+		char *next = strchr(s, ' ');
+		char *x;
+		if ( next ) *next++ = '\0';
+		x = strchr(s, 'x');
+		if ( x && atoi(s) > 0 && atoi(x+1) > 0 ) {
+			for ( j = 0; j < count && strcmp(s, detectedResolutions[j]); j++ ) {}
+			if ( j == count ) detectedResolutions[count++] = s;
 		}
-		detectedResolutions[ i ] = NULL;
-
-		// add custom resolution if not in mode list
-		if ( i < ARRAY_LEN(detectedResolutions)-1 )
-		{
-			Com_sprintf( currentResolution, sizeof ( currentResolution ), "%dx%d", uis.glconfig.vidWidth, uis.glconfig.vidHeight );
-
-			for( i = 0; detectedResolutions[ i ]; i++ )
-			{
-				if ( strcmp( detectedResolutions[ i ], currentResolution ) == 0 )
-					break;
-			}
-
-			if ( detectedResolutions[ i ] == NULL )
-			{
-				detectedResolutions[ i++ ] = currentResolution;
-				detectedResolutions[ i ] = NULL;
-			}
-		}
-
-		resolutions = detectedResolutions;
-		resolutionsDetected = qtrue;
+		s = next;
 	}
+	// Windowed presets remain available even when the monitor lists only native modes.
+	for ( i = 0; modernResolutions[i] && count < MAX_RESOLUTIONS-1; i++ ) {
+		for ( j = 0; j < count && strcmp(modernResolutions[i], detectedResolutions[j]); j++ ) {}
+		if ( j == count ) detectedResolutions[count++] = modernResolutions[i];
+	}
+	for ( i = 0; builtinResolutions[i] && count < MAX_RESOLUTIONS-1; i++ ) {
+		for ( j = 0; j < count && strcmp(builtinResolutions[i], detectedResolutions[j]); j++ ) {}
+		if ( j == count ) detectedResolutions[count++] = builtinResolutions[i];
+	}
+	detectedResolutions[count] = NULL;
+	resolutions = detectedResolutions;
+	resolutionsDetected = qtrue;
 }
 
 /*
@@ -687,8 +698,9 @@ static void GraphicsOptions_ApplyChanges( void *unused, int notification )
 	{
 		// search for builtin mode that matches the detected mode
 		int mode;
-		if ( s_graphicsoptions.mode.curvalue == -1
-			|| s_graphicsoptions.mode.curvalue >= ARRAY_LEN( detectedResolutions ) )
+		if ( s_graphicsoptions.mode.curvalue < 0
+			|| s_graphicsoptions.mode.curvalue >= ARRAY_LEN( detectedResolutions )
+			|| !detectedResolutions[s_graphicsoptions.mode.curvalue] )
 			s_graphicsoptions.mode.curvalue = 0;
 
 		mode = GraphicsOptions_FindBuiltinResolution( s_graphicsoptions.mode.curvalue );
@@ -701,7 +713,12 @@ static void GraphicsOptions_ApplyChanges( void *unused, int notification )
 					strchr( detectedResolutions[ s_graphicsoptions.mode.curvalue ], 'x' ) + 1, sizeof( h ) );
 			trap_Cvar_Set( "r_customwidth", w );
 			trap_Cvar_Set( "r_customheight", h );
+			trap_Cvar_SetValue( "r_customPixelAspect", 1 );
 		}
+		// Preserve native-desktop mode when only unrelated graphics settings change.
+		if ( trap_Cvar_VariableValue("r_mode") == -2 &&
+			!strcmp(detectedResolutions[s_graphicsoptions.mode.curvalue], currentResolution) )
+			mode = -2;
 
 		trap_Cvar_SetValue( "r_mode", mode );
 	}
@@ -877,10 +894,7 @@ static void GraphicsOptions_SetMenuItems( void )
 		{
 			int i;
 			char buf[MAX_STRING_CHARS];
-			trap_Cvar_VariableStringBuffer("r_customwidth", buf, sizeof(buf)-2);
-			buf[strlen(buf)+1] = 0;
-			buf[strlen(buf)] = 'x';
-			trap_Cvar_VariableStringBuffer("r_customheight", buf+strlen(buf), sizeof(buf)-strlen(buf));
+			Q_strncpyz(buf, currentResolution, sizeof(buf));
 
 			for(i = 0; detectedResolutions[i]; ++i)
 			{

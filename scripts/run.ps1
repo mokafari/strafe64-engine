@@ -3,6 +3,8 @@
 #
 #   scripts\run.ps1                windowed, main menu
 #   scripts\run.ps1 -Fullscreen    fullscreen, main menu
+#   scripts\run.ps1 -Fullscreen -NativeResolution  match the current display
+#   scripts\run.ps1 -Resolution 2560x1440          explicit window size
 #   scripts\run.ps1 -Bots 4        bot match: 4 bots on aggressor
 #   scripts\run.ps1 -Bots 4 -Map q3dm6
 #   scripts\run.ps1 -Dedicated     dedicated server (aggressor)
@@ -14,6 +16,9 @@
 # reskinned main menu. Override the asset location with -OA <path> or $env:OA.
 param(
     [switch]$Fullscreen,
+    [ValidatePattern('^[1-9][0-9]{2,4}x[1-9][0-9]{2,4}$')]
+    [string]$Resolution,
+    [switch]$NativeResolution,
     [int]$Bots = 0,
     [string]$Map = 'aggressor',
     [switch]$Dedicated,
@@ -22,6 +27,17 @@ param(
     [string]$OA = $env:OA
 )
 $ErrorActionPreference = 'Stop'
+if ($Resolution -and $NativeResolution) { throw 'Choose either -Resolution or -NativeResolution.' }
+$videoArgs = @()
+if ($Resolution) {
+    $width, $height = $Resolution.Split('x')
+    if ([int]$width -lt 320 -or [int]$height -lt 240 -or [int]$width -gt 16384 -or [int]$height -gt 16384) {
+        throw 'Resolution must be between 320x240 and 16384x16384.'
+    }
+    $videoArgs = @('+set','r_mode','-1','+set','r_customwidth',$width,'+set','r_customheight',$height,'+set','r_customPixelAspect','1')
+} elseif ($NativeResolution -or $Fullscreen) {
+    $videoArgs = @('+set','r_mode','-2')
+}
 $root = Split-Path -Parent $PSScriptRoot
 $rel  = Join-Path $root 'engine\build\Release'
 $sg   = Join-Path $root 'tools\strafegen'
@@ -104,4 +120,4 @@ if ($Bots -gt 0) { $extra = @('+set','bot_minplayers',"$Bots",'+set','g_spSkill'
 elseif ($PSBoundParameters.ContainsKey('Map')) { $extra = @('+map', $Map) }
 
 $client = @('+set','vm_cgame','0','+set','vm_ui','0','+set','r_fullscreen',$fs)
-& (Join-Path $rel 'ioquake3.exe') @common @client @psxArgs @extra
+& (Join-Path $rel 'ioquake3.exe') @common @client @psxArgs @videoArgs @extra
