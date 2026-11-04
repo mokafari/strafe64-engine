@@ -8,7 +8,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1 -Smoke
 ```
 
-The fast suite runs 11 native CTest cases and 49 Python asset/API/smoke checks.
+The fast suite runs 16 native CTest cases and 49 Python asset/API/smoke checks.
 Native results are saved to `engine/build/regressions/results.xml` (JUnit).
 Requirements: Visual Studio 2022 C++ tools and Python 3.13 with Pillow/NumPy.
 Each timebind case runs in a separate process, with a deterministic real-time
@@ -34,6 +34,14 @@ they check map readiness, process survival, engine/shader errors, screenshot
 creation, and clean exit. They use isolated profiles and local-only console
 control. They do not establish water/lighting visual quality, combat balance,
 network multiplayer correctness, or physical input responsiveness.
+
+Five `motion.*` cases compile the actual entity smoothing and player-reset
+functions. They cover normal-to-slow transitions, nearby teleport/reappearance,
+stale history after a long render gap, monotonic steady movement without
+overshooting the authoritative position, and exclusion of the predicted player.
+The first three reproduced failures before the 2026-11-04 smoothing fix and pass
+after it. The harness supplies deterministic position samples and a real-time
+clock; it does not establish that every observed live bot hitch is fixed.
 
 Nocturne requires the external `nocturne_reservoir.pk3` material pack installed
 in `assets/openarena/baseoa/`. It is not included in Git (upstream kept it on a

@@ -1061,12 +1061,14 @@ static void CG_SmoothEntityMotion( centity_t *cent ) {
 	if ( cent->currentState.number >= MAX_CLIENTS || cent == &cg.predictedPlayerEntity ) {
 		return;		// only other players/bots; our own body is predicted
 	}
+	nowReal = trap_Milliseconds();
 	ts = cg.timeScaleNow;	// per-frame read (listen server shares the cvar)
 	// how much to smooth: 1 at/below 0.5x, fading to 0 at/above 0.95x (no lag at speed)
 	blend = ( 0.95f - ts ) / 0.45f;
 	if ( blend <= 0.0f ) {
 		VectorCopy( cent->lerpOrigin, cent->smoothOrigin );	// near-normal speed: pass through
 		cent->smoothTime = cg.time;
+		cent->smoothRealMs = nowReal;
 		return;
 	}
 	if ( blend > 1.0f ) {
@@ -1075,21 +1077,19 @@ static void CG_SmoothEntityMotion( centity_t *cent ) {
 	VectorCopy( cent->lerpOrigin, raw );
 	VectorSubtract( raw, cent->smoothOrigin, delta );
 	dist = VectorLength( delta );
-	if ( cent->smoothTime == 0 || dist > 120.0f ) {
+	if ( cent->smoothTime == 0 || dist > 120.0f || cent->smoothRealMs == 0
+			|| nowReal < cent->smoothRealMs || nowReal - cent->smoothRealMs > 250 ) {
 		VectorCopy( raw, cent->smoothOrigin );		// seed / snap on a teleport
 		cent->smoothTime = cg.time;
+		cent->smoothRealMs = nowReal;
 		return;
 	}
 	// REAL frame time (~90ms time-constant). cg.frametime is integer scaled ms
 	// (0 or 1 deep in slow-mo), so dividing it by ts made the step swing between
 	// 0 and ~20ms frame to frame = uneven smoothing. Same clock as the view smoother.
-	nowReal = trap_Milliseconds();
-	if ( cent->smoothRealMs == 0 || nowReal < cent->smoothRealMs
-			|| nowReal - cent->smoothRealMs > 250 ) {
-		realFrame = 0.0f;		// stale / first update: don't lurch
-	} else {
-		realFrame = (float)( nowReal - cent->smoothRealMs );
-	}
+	// Every path refreshes this clock; returning from normal speed must consume
+	// only this frame's time. Stale histories above are reseeded, not frozen.
+	realFrame = (float)( nowReal - cent->smoothRealMs );
 	cent->smoothRealMs = nowReal;
 	{
 		// DEAD-RECKON on the entity's velocity between physics steps, like the

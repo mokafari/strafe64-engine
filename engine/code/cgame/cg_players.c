@@ -4477,6 +4477,10 @@ A player just came into view or teleported, so reset all animation info
 void CG_ResetPlayerEntity( centity_t *cent ) {
 	cent->errorTime = -99999;		// guarantee no error decay added
 	cent->extrapolated = qfalse;	
+	// Visibility/teleport resets invalidate render smoothing too, even when
+	// the new position is less than the distance-based snap threshold away.
+	cent->smoothTime = 0;
+	cent->smoothRealMs = 0;
 
 	CG_ClearLerpFrame( &cgs.clientinfo[ cent->currentState.clientNum ], &cent->pe.legs, cent->currentState.legsAnim );
 	CG_ClearLerpFrame( &cgs.clientinfo[ cent->currentState.clientNum ], &cent->pe.torso, cent->currentState.torsoAnim );
