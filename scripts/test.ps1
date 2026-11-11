@@ -19,7 +19,7 @@ try {
     if ($LASTEXITCODE) { throw 'Regression build failed' }
     & $ctest --test-dir engine/build/regressions -C Release --output-on-failure --output-junit results.xml
     if ($LASTEXITCODE) { throw 'Native regression tests failed' }
-    foreach ($test in 'test_asset_packaging.py', 'test_spawn_decoration.py', 'test_smoke_validation.py') {
+    foreach ($test in 'test_asset_packaging.py', 'test_spawn_decoration.py', 'test_smoke_validation.py', 'test_nocturne_flow.py') {
         & py -3.13 -m unittest discover -s tools/strafegen -p $test
         if ($LASTEXITCODE) { throw "Python regression failed: $test" }
     }

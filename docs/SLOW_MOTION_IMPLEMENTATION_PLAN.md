@@ -175,9 +175,13 @@ constant. No production simulation code was changed during this research.
 
 ## Implemented local prototype (2026-11-04)
 
-`com_slowmo 1` now selects the native local path on map load/restart. Default is
-0. The Windows launcher exposes `-ExperimentalSlowmo`; ordinary launches select
-0 explicitly. Keep all three native modules and the engine from the same build.
+`com_slowmo 1` selects the native local path on map load/restart. Promoted to
+the local default on 2026-11-09 after human playtesting. Both launchers select it
+for local play. Windows `-LegacyTiming` (or macOS `S64_LEGACY_TIMING=1`) selects
+the old path for network hosting/demo recording; dedicated launches use it too.
+`-ExperimentalSlowmo` remains a compatible Windows alias. Direct engine launches
+respect an existing archived setting; fresh profiles default to 1.
+Keep all three native modules and the engine from the same build.
 
 Implemented:
 

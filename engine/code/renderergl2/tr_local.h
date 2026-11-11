@@ -1880,6 +1880,7 @@ extern  cvar_t  *r_gradeContrast;	// S-curve contrast (1 = neutral)
 extern  cvar_t  *r_gradeSaturation;	// saturation (1 = neutral)
 extern  cvar_t  *r_gradeTemp;		// white balance (+ = warmer)
 extern  cvar_t  *r_gradeLiveSat;	// game-driven saturation multiplier (time-grade)
+extern cvar_t *r_adrenaline, *r_gameplayClarity;
 extern  cvar_t  *r_gradeLiveTemp;	// game-driven white-balance offset (time-grade)
 extern  cvar_t  *r_vignette;		// edge darkening strength
 extern  cvar_t  *r_filmGrain;		// animated film grain strength

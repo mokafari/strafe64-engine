@@ -3773,6 +3773,22 @@ void CG_DrawMissionReport( void ) {
 	}
 }
 
+static void CG_DrawBotRoutes(void) {
+ int i,row=0;
+ vec4_t panel={0,0,0,0.8f};
+ if(!cg.snap) return;
+ for(i=0;i<cg.snap->numEntities;i++) {
+  entityState_t *e=&cg.snap->entities[i];
+  if(e->eType!=ET_BOT_ROUTE) continue;
+  if(!row) { CG_FillRect(8,66,460,20,panel); CG_DrawStringExt(12,70,"ROUTES: cyan untried / yellow active / green completed / red failed",
+   colorWhite,qfalse,qtrue,6,10,0); }
+  CG_FillRect(8,82+row*11,330,11,panel);
+  CG_DrawStringExt(12,84+row*11,va("%02d  tries %d  completed %d  failed %d  active %d",
+   e->modelindex,e->time,e->time2,e->apos.trDuration,e->frame),colorWhite,qfalse,qtrue,6,10,0);
+  if(++row>=24) break;
+ }
+}
+
 static void CG_Draw2D(stereoFrame_t stereoFrame)
 {
 #ifdef MISSIONPACK
@@ -3784,6 +3800,8 @@ static void CG_Draw2D(stereoFrame_t stereoFrame)
 	if ( cg.levelShot ) {
 		return;
 	}
+
+	CG_DrawBotRoutes();
 
 	// FLOW combo: advance the multiplier, run score and juice every frame
 	CG_UpdateCombo();
@@ -3809,6 +3827,20 @@ static void CG_Draw2D(stereoFrame_t stereoFrame)
 		return;
 	}
 */
+	if (cg_minimalHud.integer) {
+		if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR) CG_DrawSpectator();
+		else if (cg.snap->ps.stats[STAT_HEALTH] > 0 && !cg.showScores) {
+			if (stereoFrame == STEREO_CENTER) CG_DrawCrosshair();
+			CG_DrawDamageDirection();
+#ifndef MISSIONPACK
+			// Fallback when the sword indicator cannot be seen.
+			if (!cg_drawGun.integer || cg.renderingThirdPerson || cg.predictedPlayerState.weapon != WP_SWORD) CG_DrawVitals();
+#endif
+		} else if (cg.snap->ps.stats[STAT_HEALTH] <= 0) CG_DrawMissionReport();
+		cg.scoreBoardShowing = CG_DrawScoreboard();
+		if (!cg.scoreBoardShowing) CG_DrawCenterString();
+		return;
+	}
 	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR ) {
 		CG_DrawSpectator();
 

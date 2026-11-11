@@ -160,6 +160,7 @@ void SP_light (gentity_t *self);
 void SP_info_null (gentity_t *self);
 void SP_info_notnull (gentity_t *self);
 void SP_info_camp (gentity_t *self);
+void SP_info_bot_route (gentity_t *self);
 void SP_path_corner (gentity_t *self);
 
 void SP_misc_teleporter_dest (gentity_t *self);
@@ -194,6 +195,7 @@ spawn_t	spawns[] = {
 	{"info_null", SP_info_null},
 	{"info_notnull", SP_info_notnull},		// use target_position instead
 	{"info_camp", SP_info_camp},
+	{"info_bot_route", SP_info_bot_route},
 
 	{"func_plat", SP_func_plat},
 	{"func_button", SP_func_button},

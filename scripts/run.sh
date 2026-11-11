@@ -53,6 +53,10 @@ fi
 # available in-game (to reset cvars after experimenting). The arena
 # presets ship too, so "/exec arena", "/exec sword_arena" and
 # "/exec arena_vg" work from any session.
+cp "$STRAFEGEN/nocturne_flow_tdm.cfg" "$OA/baseoa/nocturne_flow_tdm.cfg" 2>/dev/null
+cp "$STRAFEGEN/nocturne_flow_routes.cfg" "$OA/baseoa/nocturne_flow_routes.cfg" 2>/dev/null
+cp "$STRAFEGEN/immersive.cfg" "$OA/baseoa/immersive.cfg" 2>/dev/null
+cp "$STRAFEGEN/immersive_off.cfg" "$OA/baseoa/immersive_off.cfg" 2>/dev/null
 cp "$STRAFEGEN/strafe64.cfg"    "$OA/baseoa/strafe64.cfg"    2>/dev/null
 cp "$STRAFEGEN/arena.cfg"       "$OA/baseoa/arena.cfg"       2>/dev/null
 cp "$STRAFEGEN/sword_arena.cfg" "$OA/baseoa/sword_arena.cfg" 2>/dev/null
@@ -67,13 +71,16 @@ if [ "$1" = "-p" ]; then
 fi
 
 COMMON="+set com_basegame baseoa +set fs_basepath $OA +set sv_pure 0 +set vm_game 0"
+# Local smooth timing is standard; S64_LEGACY_TIMING=1 opts out for demos/network hosting.
+SLOWMO=1
+if [ "${S64_LEGACY_TIMING:-0}" = "1" ]; then SLOWMO=0; fi
 FULLSCREEN=0
 EXTRA=""
 
 case "$1" in
 -d)
 	shift
-	exec "$ENGINE/ioq3ded" $COMMON +map "${1:-aggressor}"
+	exec "$ENGINE/ioq3ded" $COMMON +set com_slowmo 0 +map "${1:-aggressor}"
 	;;
 -f)
 	FULLSCREEN=1
@@ -99,5 +106,5 @@ case "$1" in
 	;;
 esac
 
-exec "$ENGINE/ioquake3.app/Contents/MacOS/ioquake3" $COMMON \
+exec "$ENGINE/ioquake3.app/Contents/MacOS/ioquake3" $COMMON +set com_slowmo "$SLOWMO" \
 	+set vm_cgame 0 +set vm_ui 0 +set r_fullscreen "$FULLSCREEN" $PSX $EXTRA

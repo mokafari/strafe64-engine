@@ -324,6 +324,7 @@ int Pickup_Health (gentity_t *ent, gentity_t *other) {
 //======================================================================
 
 int Pickup_Armor( gentity_t *ent, gentity_t *other ) {
+	if (g_noArmor.integer) return 0;
 #ifdef MISSIONPACK
 	int		upperBound;
 

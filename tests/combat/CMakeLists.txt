@@ -24,7 +24,7 @@ target_compile_definitions(combat_regression PRIVATE _CRT_SECURE_NO_WARNINGS)
 if(NOT MSVC)
  target_link_libraries(combat_regression PRIVATE m)
 endif()
-foreach(case IN ITEMS clean-parry raise-boundary raise-early rear-hit glancing wrong-guard guard-break armor armor-bypass friendly-fire lethal armor-limited guard-break-boundary guard-break-expired protection-bypass knockback)
+foreach(case IN ITEMS no-armor clean-parry raise-boundary raise-early rear-hit glancing wrong-guard guard-break armor armor-bypass friendly-fire lethal armor-limited guard-break-boundary guard-break-expired protection-bypass knockback)
  add_test(NAME combat.${case} COMMAND combat_regression ${case})
 endforeach()
 

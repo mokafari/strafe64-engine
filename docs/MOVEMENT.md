@@ -259,3 +259,16 @@ STRAFE 64 menu) instead of OpenArena's stock QVMs.
 
 After tuning movement constants just rerun `./scripts/build.sh`; `run.sh`
 re-deploys the rebuilt dylibs on the next launch.
+
+
+### Front-wall catch and kick (2026-11-09)
+
+Jump toward a wall while holding forward. Within 8 units of a near-vertical
+face that reaches head height, you briefly catch instead of immediately falling.
+Release jump and press it again to kick away; keep forward held to retain the
+catch, or release forward to drop. Holding jump does not auto-kick.
+
+The catch allowance is 350 ms of world time, so it stretches naturally in slow
+motion. It shares consumed wall-run time and refills only on grounding; kicking
+spends the remaining catch allowance. Low ledges still vault, sideways wall runs
+still work, and the catch itself does not refund jump resources.

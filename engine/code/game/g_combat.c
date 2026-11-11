@@ -776,7 +776,7 @@ int CheckArmor (gentity_t *ent, int damage, int dflags)
 	if (!client)
 		return 0;
 
-	if (dflags & DAMAGE_NO_ARMOR)
+	if (g_noArmor.integer || (dflags & DAMAGE_NO_ARMOR))
 		return 0;
 
 	// armor

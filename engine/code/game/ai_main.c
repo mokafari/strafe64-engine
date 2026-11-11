@@ -1547,6 +1547,8 @@ static void BotApplyDefense(bot_state_t *bs) {
 BotUpdateInput
 ==============
 */
+#include "ai_traversal.h"
+
 void BotUpdateInput(bot_state_t *bs, int time, int elapsed_time) {
 	bot_input_t bi;
 	int j;
@@ -1571,15 +1573,17 @@ void BotUpdateInput(bot_state_t *bs, int time, int elapsed_time) {
 	//convert the bot input to a usercmd
 	BotInputToUserCommand(&bi, &bs->lastucmd, bs->cur_ps.delta_angles, time);
 	//STRAFE 64: augment the command so bots use the new moveset
-	BotApplyMoveset(bs);
-	//STRAFE 64: weave crouch-slidehops into the hop chain on fast, straight runs
-	BotApplySlide(bs);
-	//STRAFE 64: tap the SHIFT dash to close on enemies / extend gap-leaps
-	BotApplyDash(bs);
-	//STRAFE 64: raise the katana guard to parry an incoming swing
-	BotApplyDefense(bs);
-	//STRAFE 64: break out of wall grinding/circling — runs last (final say on the feet)
-	BotApplyUnstick(bs);
+	if (!BotApplyTraversal(bs)) {
+		BotApplyMoveset(bs);
+		//STRAFE 64: weave crouch-slidehops into the hop chain on fast, straight runs
+		BotApplySlide(bs);
+		//STRAFE 64: tap the SHIFT dash to close on enemies / extend gap-leaps
+		BotApplyDash(bs);
+		//STRAFE 64: raise the katana guard to parry an incoming swing
+		BotApplyDefense(bs);
+		//STRAFE 64: break out of wall grinding/circling — runs last (final say on the feet)
+		BotApplyUnstick(bs);
+	}
 	//subtract the delta angles
 	for (j = 0; j < 3; j++) {
 		bs->viewangles[j] = AngleMod(bs->viewangles[j] - SHORT2ANGLE(bs->cur_ps.delta_angles[j]));
@@ -1850,6 +1854,9 @@ int BotAISetupClient(int client, struct bot_settings_s *settings, qboolean resta
 		return qfalse;
 	}
 
+	BotRouteFinish(client,BOT_ROUTE_FAILED);
+	memset(&botRouteClients[client],0,sizeof(botRouteClients[client]));
+	botRouteClients[client].route=-1;
 	//load the bot character
 	bs->character = trap_BotLoadCharacter(settings->characterfile, settings->skill);
 	if (!bs->character) {
@@ -2043,6 +2050,7 @@ int BotAILoadMap( int restart ) {
 		}
 	}
 
+	BotRoutesLoad();
 	BotSetupDeathmatchAI();
 
 	return qtrue;
@@ -2086,6 +2094,7 @@ int BotAIStartFrame(int time) {
 	trap_Cvar_Update(&bot_unstick);
 	trap_Cvar_Update(&bot_airStrafe);
 	trap_Cvar_Update(&bot_brake);
+	BotRoutesFrame();
 
 	if (bot_report.integer) {
 //		BotTeamplayReport();
@@ -2159,7 +2168,7 @@ int BotAIStartFrame(int time) {
 				trap_BotLibUpdateEntity(i, NULL);
 				continue;
 			}
-			if (ent->r.svFlags & SVF_NOCLIENT) {
+			if ((ent->r.svFlags & SVF_NOCLIENT) || ent->s.eType==ET_BOT_ROUTE) {
 				trap_BotLibUpdateEntity(i, NULL);
 				continue;
 			}
@@ -2343,6 +2352,9 @@ int BotAISetup( int restart ) {
 	trap_Cvar_Register(&bot_interbreedbots, "bot_interbreedbots", "10", 0);
 	trap_Cvar_Register(&bot_interbreedcycle, "bot_interbreedcycle", "20", 0);
 	trap_Cvar_Register(&bot_interbreedwrite, "bot_interbreedwrite", "", 0);
+	trap_Cvar_Register(&bot_traversal,"bot_traversal","1",0);
+	trap_Cvar_Register(&bot_traversalDebug,"bot_traversalDebug","0",0);
+	trap_Cvar_Register(&bot_traversalReport,"bot_traversalReport","0",0);
 	trap_Cvar_Register(&bot_moveset, "bot_moveset", "1", 0);
 	trap_Cvar_Register(&bot_combatBhop, "bot_combatBhop", "1", 0);
 	trap_Cvar_Register(&bot_swordBlock, "bot_swordBlock", "1", 0);

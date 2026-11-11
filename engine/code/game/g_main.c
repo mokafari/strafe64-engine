@@ -46,6 +46,7 @@ vmCvar_t	g_capturelimit;
 vmCvar_t	g_friendlyFire;
 vmCvar_t	g_speedDamage;
 vmCvar_t	g_speedDamageMax;
+vmCvar_t g_noArmor;
 vmCvar_t	g_selfDamageScale;
 vmCvar_t	g_killReward;
 vmCvar_t	g_ammoRegen;
@@ -202,6 +203,7 @@ static cvarTable_t		gameCvarTable[] = {
 	// movement mod combat cvars
 	{ &g_speedDamage, "g_speedDamage", "1", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_speedDamageMax, "g_speedDamageMax", "2.0", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_noArmor, "g_noArmor", "0", CVAR_SERVERINFO, 0, qtrue },
 	{ &g_selfDamageScale, "g_selfDamageScale", "0.25", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_killReward, "g_killReward", "1", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_ammoRegen, "g_ammoRegen", "1", CVAR_ARCHIVE, 0, qtrue  },

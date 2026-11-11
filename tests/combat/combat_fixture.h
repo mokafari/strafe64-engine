@@ -2,6 +2,7 @@
 level_locals_t level;
 gentity_t g_entities[MAX_GENTITIES];
 vmCvar_t g_speedDamage,g_speed,g_speedDamageMax,g_speedKnockback,g_swordGuardRaise,g_swordGuardBreak,g_swordRiposte;
+vmCvar_t g_noArmor;
 vmCvar_t g_knockback,g_friendlyFire,g_gametype,g_selfDamageScale,g_debugDamage;
 static gclient_t clients[2];static gentity_t spark;static int failures, deaths;
 #define CHECK(c) do {if(!(c)){printf("FAIL %d: %s (health %d)\n",__LINE__,#c,g_entities[1].health);failures++;}}while(0)

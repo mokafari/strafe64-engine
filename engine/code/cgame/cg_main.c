@@ -117,6 +117,7 @@ vmCvar_t	cg_crosshairSize;
 vmCvar_t	cg_crosshairX;
 vmCvar_t	cg_crosshairY;
 vmCvar_t	cg_crosshairHealth;
+vmCvar_t cg_minimalHud, cg_adrenaline;
 vmCvar_t	cg_draw2D;
 vmCvar_t	cg_drawStatus;
 vmCvar_t	cg_animSpeed;
@@ -346,6 +347,8 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_viewsize, "cg_viewsize", "100", CVAR_ARCHIVE },
 	{ &cg_shadows, "cg_shadows", "1", CVAR_ARCHIVE  },
 	{ &cg_gibs, "cg_gibs", "1", CVAR_ARCHIVE  },
+	{ &cg_minimalHud, "cg_minimalHud", "0", CVAR_ARCHIVE },
+	{ &cg_adrenaline, "cg_adrenaline", "0", CVAR_ARCHIVE },
 	{ &cg_draw2D, "cg_draw2D", "1", CVAR_ARCHIVE  },
 	{ &cg_drawStatus, "cg_drawStatus", "1", CVAR_ARCHIVE  },
 	{ &cg_drawTimer, "cg_drawTimer", "0", CVAR_ARCHIVE  },
@@ -2278,6 +2281,8 @@ Called before every level change or subsystem restart
 =================
 */
 void CG_Shutdown( void ) {
+	trap_Cvar_Set("r_adrenaline", "0");
+	trap_Cvar_Set("r_gameplayClarity", "0");
 	// if we're quitting / changing level mid-killcam, hand the world clock and
 	// the grade/DoF/rim overrides back BEFORE the engine archives cvars --
 	// otherwise the killcam's temporary CVAR_ARCHIVE values get baked into the

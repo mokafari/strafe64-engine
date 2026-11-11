@@ -8,7 +8,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1 -Smoke
 ```
 
-The fast suite runs 168 native CTest cases and 49 Python asset/API/smoke checks.
+The fast suite runs 195 native CTest cases and 54 Python asset/API/smoke checks.
 See [the coverage audit](../docs/TEST_COVERAGE_AUDIT.md) for current coverage,
 limits and prioritised gaps, and [sword coverage](../docs/SWORD_COMBAT_TESTS.md)
 for the combat fixtures. The movement suite runs production pmove against

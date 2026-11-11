@@ -340,7 +340,7 @@ void SV_DirectConnect( netadr_t from ) {
 
 	Com_DPrintf ("SVC_DirectConnect ()\n");
 	if (SV_SlowmoActive() && from.type != NA_LOOPBACK) {
-		NET_OutOfBandPrint(NS_SERVER, from, "print\nExperimental slow motion supports local play only.\n");
+		NET_OutOfBandPrint(NS_SERVER, from, "print\nSmooth local timing supports local play only; host with com_slowmo 0 for multiplayer.\n");
 		return;
 	}
 

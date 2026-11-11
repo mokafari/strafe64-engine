@@ -10,7 +10,7 @@ qboolean SV_SlowmoActive(void) {
 }
 void SV_SlowmoInit(void) {
     int i;
-    cvar_t *mode = Cvar_Get("com_slowmo", "0", CVAR_ARCHIVE | CVAR_LATCH);
+    cvar_t *mode = Cvar_Get("com_slowmo", "1", CVAR_ARCHIVE | CVAR_LATCH);
     smEnabled = mode->integer && !com_dedicated->integer
         && Cvar_VariableIntegerValue("vm_game") == 0
         && Cvar_VariableIntegerValue("vm_cgame") == 0;
@@ -30,7 +30,7 @@ void SV_SlowmoInit(void) {
         CL_PrepareSlowmo();
 #endif
         Cvar_Set("timescale", "1");
-        Com_Printf("SLOWMO experimental: local native 125Hz, fractional movement; remote clients/demos disabled\n");
+        Com_Printf("SLOWMO: local native 125Hz, fractional movement; remote clients/demos disabled\n");
     } else if (mode->integer) {
         Com_Printf("SLOWMO unavailable: requires a local server and native game/cgame\n");
     }

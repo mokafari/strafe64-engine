@@ -601,7 +601,7 @@ void RB_DepthOfField(FBO_t *srcFbo, ivec4_t srcBox)
 	mat4_t mvp;
 	float  zmax, zmin, width, height;
 
-	if (!r_dof->integer || r_dofAmount->value <= 0.0f)
+	if (r_gameplayClarity->integer || !r_dof->integer || r_dofAmount->value <= 0.0f)
 		return;
 
 	// the gather samples the linear depth texture (allocated when r_dof is set at
@@ -674,7 +674,7 @@ vid_restart, no depth texture needed).
 */
 void RB_ColorGrade(FBO_t *srcFbo, FBO_t *dstFbo)
 {
-	vec4_t viewInfo, grade, gradeFx;
+	vec4_t viewInfo, grade, gradeFx, adrenaline;
 	vec4_t quadVerts[4];
 	vec2_t texCoords[4];
 	mat4_t mvp;
@@ -738,6 +738,8 @@ void RB_ColorGrade(FBO_t *srcFbo, FBO_t *dstFbo)
 	GLSL_SetUniformMat4(&tr.colorGradeShader, UNIFORM_MODELVIEWPROJECTIONMATRIX, mvp);
 	GL_BindToTMU(srcFbo->colorImage[0], TB_COLORMAP);
 	GLSL_SetUniformVec4(&tr.colorGradeShader, UNIFORM_VIEWINFO,     viewInfo);
+	VectorSet4(adrenaline, Com_Clamp(0, 1, r_adrenaline->value), 0, 0, 0);
+	GLSL_SetUniformVec4(&tr.colorGradeShader, UNIFORM_COLOR, adrenaline);
 	GLSL_SetUniformVec4(&tr.colorGradeShader, UNIFORM_COLORGRADE,   grade);
 	GLSL_SetUniformVec4(&tr.colorGradeShader, UNIFORM_COLORGRADEFX, gradeFx);
 	RB_InstantQuad2(quadVerts, texCoords);

@@ -783,6 +783,7 @@ extern	vmCvar_t	g_friendlyFire;
 // movement mod combat cvars
 extern	vmCvar_t	g_speedDamage;
 extern	vmCvar_t	g_speedDamageMax;
+extern vmCvar_t g_noArmor;
 extern	vmCvar_t	g_selfDamageScale;
 extern	vmCvar_t	g_killReward;
 extern	vmCvar_t	g_ammoRegen;
@@ -1104,3 +1105,5 @@ int		trap_GeneticParentsAndChildSelection(int numranks, float *ranks, int *paren
 
 void	trap_SnapVector( float *v );
 
+
+void BotRouteTest(int client, int route);

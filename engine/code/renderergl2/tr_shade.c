@@ -1419,9 +1419,9 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input )
 				&& backEnd.currentEntity != &tr.worldEntity
 				&& backEnd.currentEntity != &backEnd.entity2D )
 			{
-				rimLight[0] = r_rimColorR->value * r_rimScale->value;
-				rimLight[1] = r_rimColorG->value * r_rimScale->value;
-				rimLight[2] = r_rimColorB->value * r_rimScale->value;
+				rimLight[0] = r_rimColorR->value * r_rimScale->value * (1.0f + 0.65f * Com_Clamp(0, 1, r_adrenaline->value));
+				rimLight[1] = r_rimColorG->value * r_rimScale->value * (1.0f + 0.65f * Com_Clamp(0, 1, r_adrenaline->value));
+				rimLight[2] = r_rimColorB->value * r_rimScale->value * (1.0f + 0.65f * Com_Clamp(0, 1, r_adrenaline->value));
 				rimLight[3] = r_rimExp->value;
 			}
 

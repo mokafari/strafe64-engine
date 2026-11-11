@@ -128,7 +128,7 @@ float	pm_grappleDamp = 6.0f;			// damps outward bounce so the spring settles ins
 // wall run (Titanfall-style: hold forward and ride a wall at speed with
 // greatly reduced gravity; jump to kick off, refunded each ride)
 int		pm_wallRunDurationMs = 1600;	// max ride time before the wall lets go
-#define WALLRUN_ATTACH_GRACE_MS	(150)	// early-ride window where a held jump can still attach
+#define WALL_CATCH_MS (350) // world-time allowance shared with the wall-run budget
 float	pm_wallRunGravityScale = 0.22f;	// gravity multiplier while running
 float	pm_wallRunMinSpeed = 280.0f;	// horizontal speed needed to stick
 float	pm_wallRunSlideSpeed = 60.0f;	// max downward speed while running (gentle slide)
@@ -811,15 +811,10 @@ static qboolean PM_CheckWallJump( void ) {
 	if ( pm->cmd.upmove < 10 ) {
 		return qfalse;
 	}
-	// unlike the ground hop, walljumps need a fresh press -- EXCEPT off an active
-	// wall run that's been riding briefly: you reach the wall HOLDING jump, so
-	// forcing a release to detach feels stuck. After ~150ms of ride a held jump
-	// pops you off; before that it doesn't, so jumping to reach the wall doesn't
-	// instantly bounce you straight back off.
+	// The approach jump may stay held while catching/running against a wall.
+	// Only a second press kicks away; holding must never auto-launch the player.
 	if ( pm->ps->pm_flags & PMF_JUMP_HELD ) {
-		if ( !BG_WallRunSide(pm->ps->stats[STAT_WALLRUN]) || BG_WallRunElapsed(pm->ps->stats[STAT_WALLRUN]) < WALLRUN_ATTACH_GRACE_MS ) {
-			return qfalse;
-		}
+		return qfalse;
 	}
 	if ( pm->ps->groundEntityNum != ENTITYNUM_NONE ) {
 		return qfalse;
@@ -866,6 +861,12 @@ static qboolean PM_CheckWallJump( void ) {
 
 		pm->ps->pm_flags |= PMF_JUMP_HELD;
 		pm->ps->stats[STAT_WALLJUMP_COUNT]++;
+		// A kick spends the remaining face-catch allowance for this airtime.
+		// Preserve any larger wall-run expenditure and prevent immediate recatch.
+		{
+			int spent = BG_WallRunElapsed(pm->ps->stats[STAT_WALLRUN]);
+			pm->ps->stats[STAT_WALLRUN] = BG_WallRunEncode(spent < WALL_CATCH_MS ? WALL_CATCH_MS : spent, 0);
+		}
 
 		// dedicated event so the kick-off sounds/reads distinct from a ground
 		// hop — the parm carries the wall normal for the contact dust puff
@@ -1236,6 +1237,40 @@ PM_AirMove
 
 ===================
 */
+// A short front-wall catch gives the player time to release the approach jump
+// and press again to kick away. Use retained wall budget, without a side-roll
+// presentation flag or extra network fields. Only grounding refills the budget.
+static qboolean PM_CheckWallCatch( void ) {
+	vec3_t forward, end, head;
+	trace_t trace, upper;
+	int elapsed = BG_WallRunElapsed(pm->ps->stats[STAT_WALLRUN]);
+	if (pm->ps->pm_flags & (PMF_RESPAWNED | PMF_GRAPPLE_PULL)
+		|| pm->ps->groundEntityNum != ENTITYNUM_NONE || pm->waterlevel > 1
+		|| pm->cmd.forwardmove <= 0 || elapsed >= WALL_CATCH_MS
+		|| pm->ps->stats[STAT_WALLJUMP_COUNT] >= pm_wallJumpMax) return qfalse;
+	VectorSet(forward, pml.forward[0], pml.forward[1], 0);
+	if (VectorNormalize(forward) < .1f) return qfalse;
+	VectorMA(pm->ps->origin, 8, forward, end);
+	pm->trace(&trace, pm->ps->origin, pm->mins, pm->maxs, end,
+		pm->ps->clientNum, pm->tracemask);
+	if (trace.fraction == 1 || trace.startsolid || trace.allsolid
+		|| fabsf(trace.plane.normal[2]) > .2f || trace.surfaceFlags & SURF_NOIMPACT
+		|| DotProduct(forward, trace.plane.normal) > -.7f
+		|| DotProduct(pm->ps->velocity, trace.plane.normal) > 1) return qfalse;
+	// Low lips belong to the vault path. Catch only a face that continues to
+	// head height, so catching cannot cancel a mantle's upward launch.
+	VectorCopy(pm->ps->origin, head);
+	head[2] += pm->maxs[2];
+	VectorMA(head, 8 + fabsf(forward[0])*pm->maxs[0] + fabsf(forward[1])*pm->maxs[1], forward, end);
+	pm->trace(&upper, head, NULL, NULL, end, pm->ps->clientNum, pm->tracemask);
+	if (upper.fraction == 1 || upper.startsolid || upper.allsolid
+		|| DotProduct(upper.plane.normal, trace.plane.normal) < .9f) return qfalse;
+	PM_ClipVelocity(pm->ps->velocity, trace.plane.normal, pm->ps->velocity, OVERCLIP);
+	pm->ps->velocity[2] = 0;
+	pm->ps->stats[STAT_WALLRUN] = BG_WallRunEncode(elapsed + pml.msec, 0);
+	return qtrue;
+}
+
 static void PM_AirMove( void ) {
 	int			i;
 	vec3_t		wishvel;
@@ -1343,7 +1378,9 @@ static void PM_AirMove( void ) {
 	// Titanfall-style wall run: while hugging a wall, fall under greatly
 	// reduced gravity for the slide move, then restore it (networked
 	// ps->gravity is unchanged at frame end, so prediction stays exact)
-	if ( PM_CheckWallRun() ) {
+	if ( PM_CheckWallCatch() ) {
+		PM_StepSlideMove(qfalse);
+	} else if ( PM_CheckWallRun() ) {
 		int savedGravity = pm->ps->gravity;
 		pm->ps->gravity = (int)( pm->ps->gravity * pm_wallRunGravityScale );
 		PM_StepSlideMove ( qtrue );

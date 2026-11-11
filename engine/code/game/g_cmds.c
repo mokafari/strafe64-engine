@@ -248,6 +248,18 @@ void Cmd_Give_f (gentity_t *ent)
 		return;
 	}
 
+	// Cheat-only health value for reproducible HUD/damage-cue playtests.
+	if (trap_Argc() == 3) {
+		char kind[MAX_TOKEN_CHARS], value[MAX_TOKEN_CHARS];
+		trap_Argv(1, kind, sizeof(kind));
+		if (!Q_stricmp(kind, "health")) {
+			trap_Argv(2, value, sizeof(value));
+			ent->health = (int)Com_Clamp(1, ent->client->ps.stats[STAT_MAX_HEALTH], atoi(value));
+			ent->client->ps.stats[STAT_HEALTH] = ent->health;
+			return;
+		}
+	}
+
 	name = ConcatArgs( 1 );
 
 	if (Q_stricmp(name, "all") == 0)
@@ -1954,6 +1966,10 @@ void Cmd_StrafeBuy_f( gentity_t *ent ) {
 			va( "cp \"ALREADY OWN %s\"", s->name ) );
 		return;
 	}
+	if (g_noArmor.integer && s->armor) {
+		trap_SendServerCommand(ent - g_entities, "print \"Armor is disabled in this ruleset.\n\"");
+		return;
+	}
 	if ( score < s->cost ) {
 		trap_SendServerCommand( ent - g_entities,
 			va( "cp \"NEED %i  (have %i)\"", s->cost, score ) );
@@ -2107,6 +2123,13 @@ void ClientCommand( int clientNum ) {
 		Cmd_TeamVote_f (ent);
 	else if (Q_stricmp (cmd, "gc") == 0)
 		Cmd_GameCommand_f( ent );
+	else if (Q_stricmp(cmd,"bot_route_test")==0) {
+        char slot[32],route[32];
+        if (!CheatsOk(ent)) return;
+        if(trap_Argc()!=3) {trap_SendServerCommand(ent-g_entities,"print \"usage: bot_route_test <bot slot> <route id>\\n\"");return;}
+        trap_Argv(1,slot,sizeof(slot));trap_Argv(2,route,sizeof(route));
+        BotRouteTest(atoi(slot),atoi(route));
+    }
 	else if (Q_stricmp (cmd, "setviewpos") == 0)
 		Cmd_SetViewpos_f( ent );
 	else if (Q_stricmp (cmd, "stats") == 0)

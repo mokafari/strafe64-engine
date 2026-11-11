@@ -861,6 +861,35 @@ CG_Beam
 Also called as an event
 ===============
 */
+/* World-space directed graph; normal depth testing preserves occlusion. */
+static void CG_RouteLine(const vec3_t a,const vec3_t b,const byte *color) {
+ refEntity_t e;
+ memset(&e,0,sizeof(e));e.reType=RT_RAIL_CORE;
+ e.customShader=trap_R_RegisterShader("railCore");
+ VectorCopy(a,e.origin);VectorCopy(b,e.oldorigin);AxisClear(e.axis);
+ memcpy(e.shaderRGBA,color,4);e.renderfx=RF_NOSHADOW;
+ trap_R_AddRefEntityToScene(&e);
+}
+static void CG_BotRoute(centity_t *cent) {
+ entityState_t *s=&cent->currentState;
+ byte color[4]={60,190,255,255};
+ vec3_t points[3],a,b,d,side;
+ int i,j;
+ if(s->apos.trDuration) {color[0]=255;color[1]=80;color[2]=70;}
+ if(s->time2) {color[0]=70;color[1]=255;color[2]=110;}
+ if(s->frame) {color[0]=255;color[1]=220;color[2]=40;}
+ VectorCopy(s->pos.trBase,points[0]);VectorCopy(s->origin2,points[1]);VectorCopy(s->angles2,points[2]);
+ for(i=0;i<3;i++) {
+  for(j=0;j<3;j++) {VectorCopy(points[i],a);VectorCopy(a,b);a[j]-=10;b[j]+=10;CG_RouteLine(a,b,color);}
+  if(!i) continue;
+  CG_RouteLine(points[i-1],points[i],color);
+  VectorSubtract(points[i],points[i-1],d);VectorNormalize(d);
+  VectorSet(side,-d[1],d[0],0);VectorMA(points[i],-24,d,a);
+  VectorMA(a,12,side,b);CG_RouteLine(points[i],b,color);
+  VectorMA(a,-12,side,b);CG_RouteLine(points[i],b,color);
+ }
+}
+
 void CG_Beam( centity_t *cent ) {
 	refEntity_t			ent;
 	entityState_t		*s1;
@@ -1381,6 +1410,9 @@ static void CG_AddCEntity( centity_t *cent ) {
 		break;
 	case ET_MOVER:
 		CG_Mover( cent );
+		break;
+	case ET_BOT_ROUTE:
+		CG_BotRoute(cent);
 		break;
 	case ET_BEAM:
 		CG_Beam( cent );

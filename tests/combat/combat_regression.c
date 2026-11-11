@@ -15,6 +15,7 @@ int main(int argc,char **argv){
  else if(!strcmp(test,"glancing"))clients[0].swordSwingParm=SWORD_PACK_QUADS(SQ_L,SQ_R);
  else if(!strcmp(test,"wrong-guard"))clients[0].swordSwingParm=SWORD_PACK_QUADS(SQ_T,SQ_B);
  else if(!strcmp(test,"guard-break")){g_swordGuardBreak.integer=1;clients[0].guardReleaseTime=900;}
+ else if(!strcmp(test,"no-armor")){g_noArmor.integer=1;clients[1].ps.eFlags=0;clients[1].ps.stats[STAT_ARMOR]=50;}
  else if(!strcmp(test,"armor") || !strcmp(test,"armor-bypass")){clients[1].ps.eFlags=0;clients[1].ps.stats[STAT_ARMOR]=50;if(!strcmp(test,"armor-bypass"))flags|=DAMAGE_NO_ARMOR;}
  else if(!strcmp(test,"friendly-fire")){clients[1].ps.eFlags=0;clients[0].sess.sessionTeam=clients[1].sess.sessionTeam=TEAM_RED;}
  else if(!strcmp(test,"lethal")){clients[1].ps.eFlags=0;damage=120;}
@@ -24,6 +25,7 @@ int main(int argc,char **argv){
  else if(!strcmp(test,"glancing"))CHECK(g_entities[1].health==84);
  else if(!strcmp(test,"wrong-guard"))CHECK(g_entities[1].health==66);
  else if(!strcmp(test,"guard-break"))CHECK(g_entities[1].health==70 && clients[1].riposteTime==0);
+ else if(!strcmp(test,"no-armor"))CHECK(g_entities[1].health==60);
  else if(!strcmp(test,"armor"))CHECK(g_entities[1].health==87 && clients[1].ps.stats[STAT_ARMOR]==23);
  else if(!strcmp(test,"armor-bypass"))CHECK(g_entities[1].health==60 && clients[1].ps.stats[STAT_ARMOR]==50);
  else if(!strcmp(test,"friendly-fire"))CHECK(g_entities[1].health==100);

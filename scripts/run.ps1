@@ -9,6 +9,7 @@
 #   scripts\run.ps1 -Bots 4 -Map q3dm6
 #   scripts\run.ps1 -Dedicated     dedicated server (aggressor)
 #   scripts\run.ps1 -Psx           STRAFE 64 PSX low-fi preset (combine with above)
+#   scripts\run.ps1 -LegacyTiming  legacy timing for network hosting / demo recording
 #   scripts\run.ps1 -StageOnly     rebuild/stage assets without starting the game
 #
 # vm_game/vm_cgame/vm_ui 0 load the modded native DLLs from baseoa\ (requires
@@ -20,6 +21,7 @@ param(
     [string]$Resolution,
     [switch]$NativeResolution,
     [switch]$ExperimentalSlowmo,
+    [switch]$LegacyTiming,
     [int]$Bots = 0,
     [string]$Map = 'aggressor',
     [switch]$Dedicated,
@@ -55,7 +57,7 @@ if (Test-Path (Join-Path $rel 'baseq3\qagame.dll')) {
     foreach ($d in 'qagame','cgame','ui') { Copy-Item (Join-Path $rel "baseq3\$d.dll") (Join-Path $baseoa "$d.dll") -Force }
 }
 # stage the canonical rulesets so "/exec strafe64|arena|sword_arena|arena_vg" work in-game
-foreach ($c in 'strafe64','arena','sword_arena','arena_vg','autoexec') {
+foreach ($c in 'strafe64','arena','sword_arena','arena_vg','autoexec','immersive','immersive_off','nocturne_flow_tdm','nocturne_flow_routes') {
     $src = Join-Path $sg "$c.cfg"; if (Test-Path $src) { Copy-Item $src (Join-Path $baseoa "$c.cfg") -Force }
 }
 # Deploy the shared strafe64 shader+texture pak (speed-trail glow, skybox, console
@@ -104,8 +106,9 @@ if (Test-Path $genDir) {
 
 $common = @('+set','com_basegame','baseoa','+set','fs_basepath',$OA,'+set','sv_pure','0','+set','vm_game','0')
 
-$common += @('+set','com_slowmo',$(if ($ExperimentalSlowmo) {'1'} else {'0'}))
-if ($ExperimentalSlowmo -and $Dedicated) { throw 'Experimental slow motion requires local play.' }
+if ($ExperimentalSlowmo -and ($LegacyTiming -or $Dedicated)) { throw 'Choose local smooth motion or legacy/dedicated timing.' }
+# Smooth local simulation is standard. Keep the former switch as an alias.
+$common += @('+set','com_slowmo',$(if ($LegacyTiming -or $Dedicated) {'0'} else {'1'}))
 
 if ($StageOnly) { Write-Host "Staged Windows assets -> $baseoa"; return }
 

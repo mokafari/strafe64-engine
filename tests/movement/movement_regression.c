@@ -3,6 +3,7 @@
 #include "../../engine/code/qcommon/q_shared.h"
 #include "../../engine/code/game/bg_public.h"
 #include "../../engine/code/game/bg_local.h"
+#include "../../engine/code/game/bg_bot_traversal.h"
 extern int pm_wallRunDurationMs;
 static pmove_t move;
 static playerState_t state;
@@ -10,7 +11,7 @@ static double world,dt;
 static float bob;
 static int failures, floorOn=1, wallOn, sideOn, ceilingOn, slopeOn;
 static int jumpEvents, airEvents, wallEvents;
-static float ceilingHeight=50, obstacleHeight;
+static float ceilingHeight=50, obstacleHeight, blockFar=200;
 static int vaultEvents, ledgeOn, canopyOn;
 static float waterSurface=-10000;
 #define CHECK(c) do {if(!(c)){printf("FAIL line %d: %s (xyz %.3f %.3f %.3f vel %.3f %.3f %.3f)\n",__LINE__,#c,state.origin[0],state.origin[1],state.origin[2],state.velocity[0],state.velocity[1],state.velocity[2]);failures++;}}while(0)
@@ -18,7 +19,7 @@ void QDECL Com_Printf(const char *fmt,...) {}
 void QDECL Com_Error(int level,const char *fmt,...) {abort();}
 void trap_SnapVector(float *v) {int i;for(i=0;i<3;i++)v[i]=(float)(int)v[i];}
 static int contents(const vec3_t p,int pass) {
- if(obstacleHeight>0 && p[0]>=40 && p[0]<=200 && fabsf(p[1])<=100 && p[2]>=0 && p[2]<obstacleHeight)return CONTENTS_SOLID;
+ if(obstacleHeight>0 && p[0]>=40 && p[0]<=blockFar && fabsf(p[1])<=100 && p[2]>=0 && p[2]<obstacleHeight)return CONTENTS_SOLID;
  return p[2]<waterSurface?CONTENTS_WATER:0;
 }
 /* Finite solid block for actual step-slide/vault traversal. Minkowski-expand
@@ -26,7 +27,7 @@ static int contents(const vec3_t p,int pass) {
 static void blockTrace(trace_t *t,const vec3_t start,const vec3_t mins,const vec3_t maxs,const vec3_t end) {
  float lo[3]={40,-100,0},hi[3]={200,100,0},enter=-1e20f,leave=1e20f;
  int j,axis=-1,sign=0,inside=1,endInside=1;
- hi[2]=obstacleHeight;
+ hi[2]=obstacleHeight;hi[0]=blockFar;
  for(j=0;j<3;j++) {
   float delta=end[j]-start[j],a,b;int face=-1;
   lo[j]-=maxs?maxs[j]:0;hi[j]-=mins?mins[j]:0;
@@ -92,7 +93,44 @@ static float horizontal(void) {return sqrtf(state.velocity[0]*state.velocity[0]+
 int main(int argc,char **argv) {
  const char *name=argc>1?argv[1]:"";float straight,diagonal;
  dt=(argc>2 && !strcmp(argv[2],"slow"))?.32:8;setup();
- if(!strcmp(name,"acceleration")) {
+ if(!strncmp(name,"route-",6)) {
+  botRoute_t r;botRouteRun_t st;vec3_t target,angles;int result=0,jump=0,i;
+  memset(&r,0,sizeof(r));memset(&st,0,sizeof(st));state.gravity=1000;
+  if(!strcmp(name,"route-wallkick") || !strcmp(name,"route-no-wall")) {
+   wallOn=1;r.wallkick=1;VectorSet(r.entry,-30,0,24);
+   VectorSet(r.contact,83,0,80);VectorSet(r.exit,-30,160,24);
+  } else {
+   obstacleHeight=64;VectorSet(r.entry,-80,0,24);
+   VectorSet(r.contact,20,0,110);VectorSet(r.exit,120,0,88);
+  }
+  if(!strcmp(name,"route-cover")) {
+   obstacleHeight=40;blockFar=104;r.speed=260;r.airjump=1;
+   VectorSet(r.entry,-60,0,24);VectorSet(r.contact,72,0,88);VectorSet(r.exit,180,0,24);
+  }
+  VectorCopy(r.entry,state.origin);
+  if(!strcmp(name,"route-no-wall")) wallOn=0;
+  if(!strcmp(name,"route-held")) state.pm_flags|=PMF_JUMP_HELD;
+  if(!strcmp(name,"route-timeout")) {
+   result=BotRouteStep(&r,&st,&state,4501,qfalse,target,&jump);
+   CHECK(result==BOT_ROUTE_FAILED);return failures?1:0;
+  }
+  if(!strcmp(name,"route-death")) {
+   state.pm_type=PM_DEAD;
+   CHECK(BotRouteStep(&r,&st,&state,0,qfalse,target,&jump)==BOT_ROUTE_FAILED);
+   return failures?1:0;
+  }
+  for(i=0;i<(int)(4600/dt);i++) {
+   qboolean nearWall=wallOn && state.origin[0]>59;
+   result=BotRouteStep(&r,&st,&state,(int)world,nearWall,target,&jump);
+   if(result!=BOT_ROUTE_RUNNING) break;
+   BotRouteSteer(&r,&st,&state,target,jump,&move.cmd,angles);
+   tick();
+  }
+  if(!strcmp(name,"route-no-wall")) {CHECK(result==BOT_ROUTE_FAILED);CHECK(wallEvents==0);return failures?1:0;}
+  CHECK(result==BOT_ROUTE_SUCCESS);CHECK(jumpEvents==1);
+  if(r.wallkick) CHECK(wallEvents==1);
+  if(r.airjump) CHECK(airEvents==1);
+ } else if(!strcmp(name,"acceleration")) {
   move.cmd.forwardmove=127;run(500);CHECK(state.velocity[0]>300 && state.velocity[0]<=320.01f);
   CHECK(fabsf(state.origin[2]-24)<.01 && state.groundEntityNum==ENTITYNUM_WORLD);
  } else if(!strcmp(name,"braking")) {
@@ -160,6 +198,34 @@ int main(int argc,char **argv) {
   move.cmd.upmove=127;tick();
   if(!strcmp(name,"wall-jump-held"))CHECK(wallEvents==0 && airEvents==0);
   else {CHECK(wallEvents==1 && state.velocity[0]<-100 && state.velocity[2]>200);run(32);CHECK(wallEvents==1);}
+ } else if(!strcmp(name,"wall-catch") || !strcmp(name,"wall-catch-kick") || !strcmp(name,"wall-catch-expire") || !strcmp(name,"wall-catch-release")) {
+  floorOn=0;wallOn=1;state.origin[0]=84;state.origin[2]=200;
+  state.groundEntityNum=ENTITYNUM_NONE;state.stats[STAT_GROUND_MS]=-9000;
+  state.velocity[2]=-200;state.pm_flags|=PMF_JUMP_HELD;
+  move.cmd.forwardmove=127;move.cmd.upmove=127;
+  run(160);CHECK(fabsf(state.origin[2]-200)<.1 && wallEvents==0 && airEvents==0);
+  if(!strcmp(name,"wall-catch-kick")) {
+   move.cmd.upmove=0;tick();move.cmd.upmove=127;tick();
+   CHECK(wallEvents==1 && airEvents==0 && state.velocity[0]<-100 && state.velocity[2]>200);
+   run(32);CHECK(wallEvents==1);
+  } else if(!strcmp(name,"wall-catch-expire")) {
+   run(300);CHECK(state.origin[2]<198 && state.velocity[2]<-50 && wallEvents==0);
+   move.cmd.forwardmove=0;tick();move.cmd.forwardmove=127;tick();
+   CHECK(state.velocity[2]<-50);
+  } else if(!strcmp(name,"wall-catch-release")) {
+   move.cmd.forwardmove=0;run(80);CHECK(state.origin[2]<199 && state.velocity[2]<-40);
+  }
+ } else if(!strcmp(name,"wall-catch-approach")) {
+  wallOn=1;state.origin[0]=60;state.velocity[0]=320;
+  move.cmd.forwardmove=127;move.cmd.upmove=127;run(120);
+  CHECK(jumpEvents==1 && wallEvents==0 && airEvents==0 && state.origin[2]>30);
+  CHECK(fabsf(state.velocity[2])<.1 && state.origin[0]>75);
+  move.cmd.upmove=0;tick();move.cmd.upmove=127;tick();
+  CHECK(wallEvents==1 && state.velocity[0]<-100);
+ } else if(!strcmp(name,"wall-catch-no-input")) {
+  floorOn=0;wallOn=1;state.origin[0]=84;state.origin[2]=200;
+  state.groundEntityNum=ENTITYNUM_NONE;state.velocity[2]=-200;
+  run(80);CHECK(state.velocity[2]<-250 && state.origin[2]<184 && wallEvents==0);
  } else if(!strcmp(name,"wall-run-detach")) {
   floorOn=0;wallOn=1;state.origin[0]=80;state.origin[2]=200;
   state.groundEntityNum=ENTITYNUM_NONE;state.stats[STAT_GROUND_MS]=-9000;

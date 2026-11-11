@@ -783,6 +783,7 @@ typedef enum {
 	ET_SLICE_DRONE,			// STRAFE 64: sliceable enemy NPC — cgame draws it as
 							// a humanoid player-model gate on the line
 
+	ET_BOT_ROUTE,            // optional authored traversal debug graph
 	ET_EVENTS				// any of the EV_* events can be added freestanding
 							// by setting eType to ET_EVENTS + eventNum
 							// this avoids having to set eFlags and eventNum

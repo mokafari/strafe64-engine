@@ -5,13 +5,14 @@ code, not a measured line/branch coverage percentage.
 
 ## Current automated baseline
 
-`scripts/test.ps1`: **168 native CTest cases + 49 Python checks**.
+`scripts/test.ps1`: **195 native CTest cases + 54 Python checks**.
 The Python engine-API checks exercise parsing/configuration logic without a
 running game. They are not 40 additional live gameplay scenarios.
 
 | Area | Covered | Important limits |
 | --- | --- | --- |
-| Movement (82 cases) | Acceleration, braking, diagonal speed, held jump, air-jump limit, landing/refunds, blocked standing, wall sliding, corners, coyote window/expiry, slide entry/exit, terminal velocity, slope walking, coyote head-bump/held-input/spawn/rearm cases, finite ledge walk-off/idle, held bunnyhops, wall jumps/limits, wall-run detach, low/high steps and clear/blocked vaults, water depth/swimming/sinking/exit, water-jump clear/blocked lip and falling release, wall-run exhaustion/reattachment and encoded presentation state; each at 1x and 0.04x | Full production pmove and slide-move with synthetic swept-box/plane traces; experimental fractional path, not BSP collision or legacy prediction replay |
+| Movement (94 cases) | Acceleration, braking, diagonal speed, held jump, air-jump limit, landing/refunds, blocked standing, wall sliding, corners, coyote window/expiry, slide entry/exit, terminal velocity, slope walking, coyote head-bump/held-input/spawn/rearm cases, finite ledge walk-off/idle, held bunnyhops, wall jumps/limits, wall-run detach, low/high steps and clear/blocked vaults, water depth/swimming/sinking/exit, water-jump clear/blocked lip and falling release, wall-run exhaustion/reattachment and encoded presentation state; each at 1x and 0.04x | Full production pmove and slide-move with synthetic swept-box/plane traces; experimental fractional path, not BSP collision or legacy prediction replay |
+| Bot traversal (14 cases) | Production route controller and steering through pmove: jump, wall kick, held input, timeout, death, missing wall; normal/slow steps | Authored connections, not global route learning; see [traversal notes](BOT_TRAVERSAL.md) for live evidence and limits |
 | Slow-motion clock/movement | Fractional integration, clock ownership/reset/overload, accumulation at several frame rates, sub-ms movement, gravity, timers, responsive angles | Render-schedule clock checks do not replay a full real input stream through the host/server/cgame loop |
 | Sword (27 cases) | Reach, wall obstruction, corpse handling, combo dispatch, lunge selection, normal/slow swing and buffering | Damage is stubbed in the sword harness; a separate combat harness now tests damage resolution |
 | Damage resolution (16 cases) | Real G_Damage and CheckArmor: clean/glancing/wrong-line parries, raise/break timing boundaries, rear hits, riposte/stagger, armor/bypass, friendly fire, lethal dispatch and knockback | Death callback and effects are stubbed; not full weapon/projectile-to-death integration |
@@ -177,3 +178,55 @@ and `projectile-water-build.log`. Real BSP traversal, multi-part moving doors,
 full death/respawn integration, remote prediction and measured latency remain
 open. The isolated classic-Nocturne smoke is a runtime-health check, not proof
 of a particular live projectile parry or water-jump manoeuvre.
+
+
+## Standard local slow motion and wall catches (2026-11-09)
+
+Local smooth timing now defaults on in the engine and both launchers. Dedicated
+launches use legacy timing; Windows `-LegacyTiming` explicitly selects it for
+network hosting/demo recording. An existing archived setting is respected when
+launching the executable directly. Engine and all native modules must match.
+
+Six new movement scenarios, each at normal and 0.04x speed, exercise a front-wall
+catch: held approach, fresh-press kick, expiry, release, actual ground-jump approach,
+and no-input falling. Hold forward into a near-vertical wall to catch for up to
+350 world milliseconds, then release/repress jump to kick away. Holding the
+approach jump never auto-kicks. Catching uses the existing wall-run airtime budget;
+release/recontact does not refill it, a kick consumes its remaining catch allowance,
+and grounding resets it. There is no new network field or camera roll for a catch.
+Low lips remain vaultable, verified by existing vault fixtures. Catching does not
+refund air jumps or wall jumps. Normal tangential wall running remains available.
+
+Total: 180 native cases + 49 Python checks. Logs: `wall-catch-tests.log` and
+`wall-catch-build.log` under `engine/build`. Synthetic collision tests establish
+behaviour; a fresh-profile smoke checks default local mode activation. Human
+playtesting is still needed to tune the 350 ms allowance and catch distance.
+
+
+## Immersive HUD prototype (2026-11-09)
+
+`exec immersive` enables a minimal HUD, five view-sword health lights, critical
+health perception and `g_noArmor 1`. `exec immersive_off` restores the normal
+HUD and armor rule. The presets do not overwrite binds or baseline grade/rim/DoF
+values. Render prerequisites (grade/postprocess/rim) are enabled by the preset.
+No armor is consumed for protection, armor pickups/purchases are rejected, and
+held armor is cleared each server end frame. Turning armor back on does not
+restore armor previously removed. The real damage harness adds a no-armor case;
+195 native cases and 49 Python checks pass.
+
+Critical health starts below 35% of maximum, reaching full strength at 10%.
+Effects ease on the real clock: peripheral desaturation/warm tint, bounded detail
+sharpening and increased existing model rim light (not visibility through walls).
+`cg_adrenaline 0` disables the effect independently of the HUD. No pulse, camera
+shake or blur is added. Minimal-HUD active gameplay bypasses DoF through a
+transient renderer flag, preserving the user's setting and killcam treatment.
+A normal health readout is retained for hidden weapons/third person/non-sword
+weapons. Scoreboard, damage direction, crosshair preference and death report remain.
+GL2 implements the post effects; GL1 retains sword lights and minimal HUD only.
+
+Live isolated smoke checks cover health 100 -> 20 -> 100 and preset disable,
+with screenshot inspection. `give health <value>` is a cheat-only bounded command
+for reproducible visual checks. Logs: `immersive-tests.log`, `immersive-build.log`;
+smoke directories start `polish-immersive-`. These checks do not establish enemy
+readability in a crowded live fight, accessibility for every player, or no-armor
+balance. Those require the next human playtest.

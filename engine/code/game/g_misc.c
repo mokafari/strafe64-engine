@@ -33,6 +33,18 @@ Used to group brushes together just for editor convenience.  They are turned int
 /*QUAKED info_camp (0 0.5 0) (-4 -4 -4) (4 4 4)
 Used as a positional target for calculations in the utilities (spotlights, etc), but removed during gameplay.
 */
+/* Authored player-origin route. spawnflags: 1 wall kick, 2 air jump, 0 jump. */
+void SP_info_bot_route(gentity_t *self) {
+ G_SetOrigin(self,self->s.origin);
+ if (!G_SpawnVector("contact","0 0 0",self->s.origin2) ||
+     !G_SpawnVector("exit","0 0 0",self->s.angles2)) {
+  G_Printf("Ignoring incomplete info_bot_route\n"); G_FreeEntity(self); return;
+ }
+ self->s.eType=ET_BOT_ROUTE;
+ self->r.svFlags=SVF_NOCLIENT;
+ self->r.contents=0;
+}
+
 void SP_info_camp( gentity_t *self ) {
 	G_SetOrigin( self, self->s.origin );
 }

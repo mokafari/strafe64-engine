@@ -1384,6 +1384,32 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	}
 
 	CG_AddWeaponWithPowerups( &gun, cent->currentState.powerups );
+	// Five steady health lights mounted along the blade near its guard.
+	// View-weapon entities share its depth range; never draw on opponents.
+	if (ps && weaponNum == WP_SWORD && cg_minimalHud.integer && ps->stats[STAT_HEALTH] > 0) {
+		int segment;
+		float maximum = ps->stats[STAT_MAX_HEALTH] > 0 ? ps->stats[STAT_MAX_HEALTH] : 100;
+		float health = Com_Clamp(0, 1, ps->stats[STAT_HEALTH] / maximum);
+		for (segment=0; segment<5; segment++) {
+			refEntity_t light;
+			float fill = Com_Clamp(0, 1, health*5-segment);
+			float brightness = .06f + .94f*fill;
+			memset(&light, 0, sizeof(light));
+			light.reType = RT_SPRITE;
+			light.renderfx = gun.renderfx;
+			light.customShader = cgs.media.swordSlashShader;
+			light.radius = .42f;
+			VectorCopy(gun.origin, light.origin);
+			VectorMA(light.origin, cg_swordTrailBaseX.value + 6.0f + segment*1.1f, gun.axis[0], light.origin);
+			VectorMA(light.origin, cg_swordTrailBaseY.value, gun.axis[1], light.origin);
+			VectorMA(light.origin, cg_swordTrailBaseZ.value + 1.8f + segment*.22f, gun.axis[2], light.origin);
+			light.shaderRGBA[0] = (byte)(brightness * (health < .35f ? 255 : 70));
+			light.shaderRGBA[1] = (byte)(brightness * (health < .35f ? 100 : 230));
+			light.shaderRGBA[2] = (byte)(brightness * (health < .35f ? 30 : 255));
+			light.shaderRGBA[3] = 255;
+			trap_R_AddRefEntityToScene(&light);
+		}
+	}
 
 	// STRAFE 64: blade-edge slash trail, anchored to the REAL rendered weapon
 	// transform (gun.origin/axis after the tag_weapon attach) so the arc rides

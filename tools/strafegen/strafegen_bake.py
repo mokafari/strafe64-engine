@@ -297,11 +297,22 @@ def bake_bsp(name, course, map_path, bake_pk3_path, dest_bsp, bounce=3):
         bm = os.path.join(maps, name + ".map")
         shutil.copy(map_path, bm)
         common = ["-fs_basepath", tmp, "-fs_game", "baseoa"]
-        _run(["-bsp"] + common + [bm])
+        bsp_log = _run(["-bsp"] + (["-meta"] if getattr(course, "bake_meta", False) else []) + common + [bm])
         bb = os.path.join(maps, name + ".bsp")
-        # NOTE: no -vis. It only builds runtime PVS (culling) and -light doesn't
-        # need it; strafegen's direct BSPs never had vis either. (-vis also
-        # crashes on some of these brush layouts.) The engine renders unvised.
+        # Opt-in for sealed combat layouts; preserve legacy bake behaviour.
+        vis_log = "VIS disabled for this course"
+        if getattr(course, "bake_vis", False):
+            vis_log = _run(["-vis", "-threads", "4"] + common + [bb])
+            data = open(bb, "rb").read()
+            _, vis_size = struct.unpack_from("<2i", data, 8 + 16*8)
+            if vis_size <= 8:
+                raise RuntimeError("VIS produced no visibility data (check map sealing)")
+        logdir = getattr(course, "bake_logdir", None)
+        if logdir:
+            os.makedirs(logdir, exist_ok=True)
+            for stage, output in (("bsp", bsp_log), ("vis", vis_log)):
+                with open(os.path.join(logdir, stage + ".log"), "w") as report:
+                    report.write(output)
         # -scale / -bouncescale as the hand-tuned domtest bake used: without
         # them sky light alone leaves enclosed layouts near-black
         light_args = ["-light", "-bounce", str(bounce),
@@ -309,7 +320,7 @@ def bake_bsp(name, course, map_path, bake_pk3_path, dest_bsp, bounce=3):
                       "-scale", str(scale),
                       # 8u luxels + 2x supersampling: crisp sun-shadow edges
                       # (16u default stair-stepped them across the cladding)
-                      "-samplesize", "8", "-super", "2",
+                      "-samplesize", str(getattr(course, "bake_sample_size", 8)), "-super", "2",
                       # deluxe maps (per-luxel light direction) so the _nh
                       # normal maps respond to the BAKED sun, not just dlights
                       "-deluxe",
@@ -320,6 +331,9 @@ def bake_bsp(name, course, map_path, bake_pk3_path, dest_bsp, bounce=3):
             # q3map2's threaded TraceGrid intermittently crashes on these
             # layouts (same input passes on a rerun); retry single-threaded
             light = _run(light_args + ["-threads", "1"] + common + [bb])
+        if logdir:
+            with open(os.path.join(logdir, "light.log"), "w") as report:
+                report.write(light)
         matched, nsurf = reinject_palette(bb, course)
         shutil.copy(bb, dest_bsp)
         suns = "?"
@@ -389,7 +403,7 @@ def build_baked_pk3(name, course, out_dir, bounce=3):
         # 4. standalone pk3
         bots = 'bots "sarge major grunt"\n' if aas else ""
         arena = ('{\nmap "%s"\nlongname "STRAFE64 %s (baked)"\n'
-                 'type "ffa tourney"\n%s}\n' % (name, name, bots))
+                 'type "%s"\n%s}\n' % (name, name, getattr(course, "arena_types", "ffa tourney"), bots))
         pk3 = os.path.join(out_dir, name + ".pk3")
         with zipfile.ZipFile(pk3, "w", zipfile.ZIP_DEFLATED) as z:
             z.write(bsp_pack, "maps/%s.bsp" % name)

@@ -1904,6 +1904,27 @@ shift glides even while cg.time is frozen. Yields to the killcam, which owns
 the grade while it runs.
 =================
 */
+static void CG_UpdateAdrenaline(void) {
+	static float amount;
+	static int previous;
+	int now = trap_Milliseconds();
+	float target = 0, dt = Com_Clamp(0, 100, now - previous) * .001f;
+	playerState_t *ps = &cg.predictedPlayerState;
+	previous = now;
+	trap_Cvar_Set("r_gameplayClarity", cg_minimalHud.integer && cg.snap && ps->pm_type == PM_NORMAL && ps->stats[STAT_HEALTH] > 0 && !CG_KillcamActive() ? "1" : "0");
+	if (cg_adrenaline.value > 0 && cg.snap && ps->pm_type == PM_NORMAL
+		&& ps->stats[STAT_HEALTH] > 0 && ps->persistant[PERS_TEAM] != TEAM_SPECTATOR
+		&& !CG_KillcamActive()) {
+		float maximum = ps->stats[STAT_MAX_HEALTH] > 0 ? ps->stats[STAT_MAX_HEALTH] : 100;
+		target = Com_Clamp(0, 1, (0.35f - ps->stats[STAT_HEALTH]/maximum) / .25f)
+			* Com_Clamp(0, 1, cg_adrenaline.value);
+	}
+	// No flashing: a real-time ease, independent of the world clock.
+	if (!target && (ps->stats[STAT_HEALTH] <= 0 || CG_KillcamActive() || ps->pm_type != PM_NORMAL || cg_adrenaline.value <= 0)) amount = 0;
+	else amount += (target - amount) * (1 - expf(-dt * 8));
+	trap_Cvar_Set("r_adrenaline", va("%.3f", amount));
+}
+
 static void CG_UpdateTimeGrade( void ) {
 	static float	sat = 1.0f, temp = 0.0f;
 	static int		lastReal;
@@ -2029,6 +2050,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	// the look on respawn or timeout) before the view is built
 	CG_KillcamUpdate();
 	CG_UpdateTimeGrade();
+	CG_UpdateAdrenaline();
 
 	// build cg.refdef
 	cg.localRenderOriginValid = qfalse;

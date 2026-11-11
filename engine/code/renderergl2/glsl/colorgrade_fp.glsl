@@ -11,6 +11,7 @@
 uniform sampler2D u_ScreenImageMap;   // composited tonemapped scene (TB_COLORMAP)
 
 uniform vec4 u_ViewInfo;     // x = highlight shoulder, y = split-tone, zw = 1/width, 1/height (rcpFrame for FXAA)
+uniform vec4 u_Color; // x = critical-health adrenaline
 uniform vec4 u_ColorGrade;   // contrast, saturation, temperature, vignette
 uniform vec4 u_ColorGradeFx; // filmGrain, fxaaEnable, frameSeed, black lift
 
@@ -71,6 +72,17 @@ void main()
 	vec3 col = (u_ColorGradeFx.y > 0.5)
 		? fxaa(var_ScreenTex, rcp)
 		: texture2D(u_ScreenImageMap, var_ScreenTex).rgb;
+
+	// Bounded detail boost. Clamp to neighbourhood extrema to avoid bright halos.
+	float adrenaline = clamp(u_Color.x, 0.0, 1.0);
+	if (adrenaline > 0.001) {
+		vec3 n = texture2D(u_ScreenImageMap, var_ScreenTex + vec2(0.0, rcp.y)).rgb;
+		vec3 s = texture2D(u_ScreenImageMap, var_ScreenTex - vec2(0.0, rcp.y)).rgb;
+		vec3 e = texture2D(u_ScreenImageMap, var_ScreenTex + vec2(rcp.x, 0.0)).rgb;
+		vec3 w = texture2D(u_ScreenImageMap, var_ScreenTex - vec2(rcp.x, 0.0)).rgb;
+		col = clamp(col + (col - (n+s+e+w)*0.25)*0.3*adrenaline,
+			min(col,min(min(n,s),min(e,w))), max(col,max(max(n,s),max(e,w))));
+	}
 
 	// --- white balance / temperature (warm = nostalgic) ---
 	// push red up & blue down (or the reverse for cool), pivoting around grey.
@@ -134,5 +146,11 @@ void main()
 		col += n * g * (1.0 - 0.6 * dot(col, LUMA));
 	}
 
+	// Peripheral desaturation and warm edge pressure leave the central aim area clear.
+	float edge = smoothstep(0.28, 0.95, length((var_ScreenTex - 0.5)*2.0));
+	float stress = edge * adrenaline;
+	col = mix(col, vec3(dot(col,LUMA)), stress * 0.65);
+	col *= 1.0 - stress * 0.12;
+	col += vec3(0.045, 0.009, 0.002) * stress;
 	gl_FragColor = vec4(col, 1.0);
 }
